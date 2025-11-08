@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models/question.dart';
 import 'services/survey_loader.dart';
 import 'widgets/question_views.dart';
+import 'services/db_service.dart';
 
 void main() {
   runApp(const SurveyApp());
@@ -22,7 +23,29 @@ class _SurveyAppState extends State<SurveyApp> {
   @override
   void initState() {
     super.initState();
-    _futureSurvey = SurveyLoader.loadFromAsset('assets/surveys/survey.xml');
+
+    // 1) init DB
+    DbService.init().then((_) async {
+      // 2) sync all surveys from assets/surveys/
+      final parsed = await DbService.syncSurveysFromAssets();
+
+      // For now, pick the first survey (you can add a picker later)
+      final surveyId = await DbService.firstSurveyId();
+      if (surveyId == null) {
+        // handle no surveys found
+        setState(() {
+          _futureSurvey = Future.error('No surveys found in assets/surveys/');
+        });
+        return;
+      }
+
+      // 3) also load questions for UI using your existing loader
+      _futureSurvey = SurveyLoader.loadFromAsset(
+          parsed.first.filename.startsWith('assets/')
+              ? parsed.first.filename
+              : 'assets/surveys/${parsed.first.filename}');
+      setState(() {});
+    });
   }
 
   void _next(List<Question> qs) {
@@ -212,16 +235,33 @@ class _SurveyAppState extends State<SurveyApp> {
     );
   }
 
-  void _showDone(BuildContext context) {
+  void _showDone(BuildContext context) async {
+    final questions = await _futureSurvey; // already loaded
+    final surveyId = await DbService.firstSurveyId();
+    if (surveyId == null) return;
+
+    try {
+      await DbService.saveInterview(
+        surveyId: surveyId,
+        answers: _answers,
+        questions: questions,
+      );
+    } catch (e) {
+      // surface error if uniqueid missing, etc.
+      debugPrint('Save failed: $e');
+    }
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('All done!'),
-        content: Text('Thanks. Answers:\n${_answers.toString()}'),
+        content: Text(
+            'Thanks. Answers saved to SQLite.\nInterview: ${_answers['uniqueid']}'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'))
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          )
         ],
       ),
     );

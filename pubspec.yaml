@@ -1,5 +1,5 @@
-name: your_app
-description: Questionnaire demo
+name: GiSTX
+description: Cross-platform Questionnaire software
 environment:
   sdk: '>=3.2.0 <4.0.0'
 
@@ -8,6 +8,12 @@ dependencies:
     sdk: flutter
   xml: ^6.5.0
   uuid: ^4.5.1
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  sqflite: ^2.3.3
+  # for desktop (Windows) – sqflite on FFI
+  sqflite_common_ffi: ^2.3.2
+  crypto: ^3.0.3
 
 flutter:
   uses-material-design: true
@@ -15,3 +21,6 @@ flutter:
     - assets/surveys/survey.xml
     - assets/branding/gistx.png
     # You can list more surveys here as you add them
+
+dev_dependencies:
+  change_app_package_name: ^1.3.0

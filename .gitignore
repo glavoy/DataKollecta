@@ -119,4 +119,3 @@ app.*.symbols
 !/dev/ci/**/Gemfile.lock
 
 # Geoff
-ToDo.md

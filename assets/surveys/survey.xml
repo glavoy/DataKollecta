@@ -47,7 +47,7 @@
     </responses>
 	</question>
 
-  
+
 	<question type = 'text' fieldname = 'comments' fieldtype = 'text'>
 		<text>Any additional comments (optional)</text>
 		<maxCharacters>255</maxCharacters>
@@ -73,7 +73,7 @@
 
 
 	<question type = 'information' fieldname = 'end_of_questions' fieldtype = 'n/a'>
-		<text>Press the 'Next' button to save the data.</text >
+		<text>Press the 'Finish' button to save the data.</text >
 	</question>
 
 

@@ -1,4 +1,4 @@
-package com.example.dist
+package com.example.gistx
 
 import io.flutter.embedding.android.FlutterActivity
 
