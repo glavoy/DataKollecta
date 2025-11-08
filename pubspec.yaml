@@ -1,0 +1,16 @@
+name: your_app
+description: Questionnaire demo
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  xml: ^6.5.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/surveys/survey.xml
+    - assets/branding/gistx.png
+    # You can list more surveys here as you add them
