@@ -112,7 +112,10 @@ class _QuestionViewState extends State<QuestionView> {
           decoration: const InputDecoration(
             hintText: 'Type your answer…',
           ),
-          onChanged: (val) => widget.answers[q.fieldName] = val,
+          onChanged: (val) {
+            widget.answers[q.fieldName] = val;
+            AutoFields.touchLastMod(widget.answers);
+          },
         ),
       ],
     );
@@ -132,6 +135,7 @@ class _QuestionViewState extends State<QuestionView> {
                 setState(() {
                   _radioSelection = val;
                   widget.answers[q.fieldName] = val;
+                  AutoFields.touchLastMod(widget.answers);
                 });
               },
               child: RadioListTile<String>(
@@ -176,6 +180,7 @@ class _QuestionViewState extends State<QuestionView> {
                       _checkboxSelection.remove(opt.value);
                     }
                     widget.answers[q.fieldName] = _checkboxSelection.toList();
+                    AutoFields.touchLastMod(widget.answers);
                   });
                 },
               ),

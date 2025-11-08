@@ -1,5 +1,6 @@
-import 'dart:math';
+// import 'dart:math';
 import '../models/question.dart';
+import 'package:uuid/uuid.dart';
 
 const swVer = "0.0.3";
 
@@ -22,10 +23,12 @@ class AutoFields {
   /// Per-survey registry of automatic fields: fieldName -> function
   /// Edit this map for your survey’s automatic variables.
   static final Map<String, AutoFieldFn> _registry = {
-    // EXAMPLES — replace/extend as needed:
+    'uniqueid': _computeUniqueId,
     'starttime': _computeStartTime,
+    'stoptime': _computeStopTime,
+    // 'lastmod': _computeLastModified,
     'swver': _computeSoftwareVersion,
-    'subjid': _computeSubjId,
+    // 'subjid': _computeSubjId,
     // Add more automatic variables here ...
 
     // 'subjid': (answers, q) => _generateSubjectId(answers, q),
@@ -51,23 +54,38 @@ class AutoFields {
     return value;
   }
 
-  // Automatic field handlers  - customize per survey
-
-  // starttime
   static String _computeStartTime(AnswerMap answers, Question q) {
-    // ISO local time
     return DateTime.now().toIso8601String();
   }
 
-  // sodtware vers
-  static String _computeSoftwareVersion(AnswerMap answers, Question q) {
-    return swVer;
+  static String _computeStopTime(AnswerMap answers, Question q) {
+    // Same idea as starttime: when this automatic question is *shown*,
+    // we stamp the stop time. You *do not* need to set it in _showDone().
+    return DateTime.now().toIso8601String();
   }
 
-  static String _computeSubjId(AnswerMap answers, Question q) {
-    final r = Random();
-    return 'SP${r.nextInt(999999).toString().padLeft(6, '0')}';
+  static String _computeSoftwareVersion(AnswerMap answers, Question q) {
+    return '1.0.0'; // replace later if you fetch from platform
   }
+
+  static String _computeUniqueId(AnswerMap answers, Question q) {
+    // Generate once per record.
+    const uuid = Uuid();
+    return uuid.v4();
+  }
+
+  /// Update record-level last modified timestamp.
+  /// Call this whenever *any* answer changes.
+  static void touchLastMod(AnswerMap answers) => _touchLastMod(answers);
+
+  static void _touchLastMod(AnswerMap answers) {
+    answers['lastmod'] = DateTime.now().toIso8601String();
+  }
+
+  // static String _computeSubjId(AnswerMap answers, Question q) {
+  //   final r = Random();
+  //   return 'SP${r.nextInt(999999).toString().padLeft(6, '0')}';
+  // }
 
   // ---------- Default/fallbacks ----------
 

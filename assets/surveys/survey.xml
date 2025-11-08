@@ -1,71 +1,80 @@
-<survey version ='XML_2020.10.02' name='gist'>
+<?xml version = '1.0' encoding = 'utf-8'?>
+<survey>
 
 
-  <question type='automatic' fieldname='swver' fieldtype ='text'>
-  </question>
-
-  <question type='automatic' fieldname='starttime' fieldtype ='datetime'>
-  </question>
-
-  <question type='automatic' fieldname='subjid' fieldtype ='text'>
-  </question>
-  
-
-  <question type ='text' fieldname ='intid' fieldtype ='integer'>
-    <text>Interviewer ID</text>
-    <maxCharacters>2</maxCharacters>
-    <rangeCheck minvalue='10' maxvalue ='50' message ='Invalid number!'></rangeCheck>
-    <!--<postskip>
-      <skip fieldname='intid' condition = '=' response='44' response_type='fixed' skiptofieldname ='radio1'></skip>
-    </postskip>-->
-  </question>
-
-
-	<question type ='information' fieldname ='info1' fieldtype ='n/a'>
-		<text>Welcome to the new Dart questionnaire.</text>
+	<question type = 'automatic' fieldname = 'starttime' fieldtype = 'datetime'>
 	</question>
 
 
-  <question type='checkbox' fieldname='checkbox1' fieldtype ='text'>
-    <text>This is an example of a multiple response question</text>
-    <responses>
-      <response value='1'>Option 1 Text</response>
-      <response value='2'>Option 2 Text</response>
-      <response value='3'>Option 3 Text</response>
-      <response value='4'>Option 4 Text</response>
-      <response value='5'>Option 5 Text</response>
-    </responses>
-    <postskip>
-      <skip fieldname='checkbox1' condition = 'does not contain' response='5' response_type='fixed' skiptofieldname ='text1'></skip>
-    </postskip>
-  </question>
-  
-  
-  
-	<question type='radio' fieldname='radio1' fieldtype ='integer'>
-		<text>This is an example of a single [[intid]] choice option</text>
+	<question type = 'text' fieldname = 'interviewerid' fieldtype = 'text_integer'>
+		<text>Enter your Interviewer ID</text>
+		<maxCharacters>3</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='99' other_values = '1' message = 'Number must be between 1 and 99!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'subjid' fieldtype = 'text_integer'>
+		<text>Subject ID</text>
+		<maxCharacters>10</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'comfort_smartphone' fieldtype = 'integer'>
+		<text>I can use the CHT app on my smartphone on my own (without asking for help from someone else).</text>
 		<responses>
-			<response value='1'>Option 1 Text</response>
-			<response value='2'>Option 2 Text</response>
-			<response value='3'>Option 3 Text</response>
-			<response value='4'>Option 4 Text</response>
-      <response value='5'>Option 5 Text</response>
+			<response value = '1'>Strongly disagree</response>
+			<response value = '2'>Somewhat Disagree</response>
+			<response value = '3'>Neutral (Neither agree nor disagree)</response>
+			<response value = '4'>Somewhat Agree</response>
+			<response value = '5'>Strongly Agree</response>
 		</responses>
-    <dont_know></dont_know>
+	</question>
+
+
+  <question type = 'checkbox' fieldname = 'smartphone_features' fieldtype = 'text'>
+    <text>Which of the following smartphone features do you use regularly? (Select all that apply)</text>
+    <responses>
+      <response value = '1'>Making phone calls</response>
+      <response value = '2'>Sending text messages</response>
+      <response value = '3'>Using mobile apps</response>
+      <response value = '4'>Browsing the internet</response>
+      <response value = '5'>Taking photos or videos</response>
+      <response value = '6'>Using social media</response>
+      <response value = '7'>Listening to music or podcasts</response>
+      <response value = '8'>Other (please specify in comments)</response>
+    </responses>
 	</question>
 
   
-  
-  <question type ='text' fieldname ='text1' fieldtype ='text'>
-    <text>Open text example.  Enter some text</text>
-    <maxCharacters>500</maxCharacters>
-  </question>
-  
-  
-
-  
-
-	<question type ='information' fieldname ='end_of_questions' fieldtype ='n/a'>
-		<text>Press the 'Next' button to save the data.</text>
+	<question type = 'text' fieldname = 'comments' fieldtype = 'text'>
+		<text>Any additional comments (optional)</text>
+		<maxCharacters>255</maxCharacters>
+		<na>-6</na>
 	</question>
+
+
+	<question type = 'automatic' fieldname = 'uniqueid' fieldtype = 'text'>
+		<maxCharacters>36</maxCharacters>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'swver' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'stoptime' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'lastmod' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'information' fieldname = 'end_of_questions' fieldtype = 'n/a'>
+		<text>Press the 'Next' button to save the data.</text >
+	</question>
+
+
 </survey>
