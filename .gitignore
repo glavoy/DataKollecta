@@ -119,3 +119,13 @@ app.*.symbols
 !/dev/ci/**/Gemfile.lock
 
 # Geoff
+
+# Local IDE/editor files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Additional platform ephemeral directories
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
