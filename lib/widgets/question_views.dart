@@ -1,5 +1,6 @@
 // lib/widgets/question_views.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../services/auto_fields.dart';
@@ -7,11 +8,15 @@ import '../services/auto_fields.dart';
 class QuestionView extends StatefulWidget {
   final Question question;
   final AnswerMap answers; // shared map so we can restore / persist answers
+  final VoidCallback? onAnswerChanged;
+  final VoidCallback? onRequestNext; // ask parent to navigate to next question
 
   const QuestionView({
     super.key,
     required this.question,
     required this.answers,
+    this.onAnswerChanged,
+    this.onRequestNext,
   });
 
   @override
@@ -20,11 +25,13 @@ class QuestionView extends StatefulWidget {
 
 class _QuestionViewState extends State<QuestionView> {
   late TextEditingController _textController;
+  late FocusNode _textFocusNode;
   late Set<String> _checkboxSelection;
   String? _radioSelection;
   String? _comboboxSelection;
   DateTime? _selectedDate;
   DateTime? _selectedDateTime;
+  String? _textError;
 
   @override
   void initState() {
@@ -34,6 +41,7 @@ class _QuestionViewState extends State<QuestionView> {
     final q = widget.question;
     final existing = widget.answers[q.fieldName];
 
+    _textFocusNode = FocusNode();
     _textController = TextEditingController(
       text: (existing is String) ? existing : '',
     );
@@ -69,6 +77,13 @@ class _QuestionViewState extends State<QuestionView> {
       final v = AutoFields.compute(widget.answers, q);
       widget.answers[q.fieldName] = v;
     }
+
+    // Autofocus text input on initial load when applicable
+    if (q.type == QuestionType.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _textFocusNode.requestFocus();
+      });
+    }
   }
 
   @override
@@ -102,12 +117,21 @@ class _QuestionViewState extends State<QuestionView> {
         _selectedDate = null;
         _selectedDateTime = null;
       }
+      _textError = null;
       setState(() {}); // ensure rebuild
+
+      // Request focus for text questions when they appear
+      if (widget.question.type == QuestionType.text) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _textFocusNode.requestFocus();
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _textFocusNode.dispose();
     _textController.dispose();
     super.dispose();
   }
@@ -141,21 +165,68 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildText(Question q) {
+    final isIntegerField = q.fieldType.toLowerCase().contains('integer');
+    final formatters = <TextInputFormatter>[];
+    if (q.maxCharacters != null) {
+      formatters.add(LengthLimitingTextInputFormatter(q.maxCharacters));
+    }
+    if (isIntegerField) {
+      formatters.add(FilteringTextInputFormatter.digitsOnly);
+    }
+    String? _validateText(String val) {
+      if (isIntegerField && val.isNotEmpty) {
+        final parsed = int.tryParse(val);
+        if (parsed == null) {
+          return 'Enter a number';
+        }
+        final nc = q.numericCheck;
+        if (nc != null) {
+          final exceptions = (nc.otherValues ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toSet();
+          if (!exceptions.contains(parsed.toString())) {
+            if (nc.minValue != null && parsed < nc.minValue!) {
+              return nc.message ?? 'Value must be >= ${nc.minValue}';
+            }
+            if (nc.maxValue != null && parsed > nc.maxValue!) {
+              return nc.message ?? 'Value must be <= ${nc.maxValue}';
+            }
+          }
+        }
+      }
+      return null;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if ((q.text ?? '').isNotEmpty) _buildSectionTitle(q.text!),
         TextField(
           controller: _textController,
+          focusNode: _textFocusNode,
+          autofocus: true,
           maxLength: q.maxCharacters,
           minLines: 1,
           maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: 'Type your answer…',
+          maxLengthEnforcement: q.maxCharacters != null
+              ? MaxLengthEnforcement.enforced
+              : MaxLengthEnforcement.none,
+          keyboardType:
+              isIntegerField ? TextInputType.number : TextInputType.text,
+          inputFormatters: formatters,
+          decoration: InputDecoration(
+            hintText: 'Type your answer',
+            errorText: _textError,
           ),
           onChanged: (val) {
+            setState(() {
+              _textError = _validateText(val);
+            });
             widget.answers[q.fieldName] = val;
             AutoFields.touchLastMod(widget.answers);
+            widget.onAnswerChanged?.call();
           },
         ),
       ],
@@ -178,6 +249,11 @@ class _QuestionViewState extends State<QuestionView> {
                   widget.answers[q.fieldName] = val;
                   AutoFields.touchLastMod(widget.answers);
                 });
+                widget.onAnswerChanged?.call();
+                // Auto-advance on selection
+                if (val != null && val.isNotEmpty) {
+                  widget.onRequestNext?.call();
+                }
               },
               child: RadioListTile<String>(
                 value: opt.value,
@@ -223,6 +299,7 @@ class _QuestionViewState extends State<QuestionView> {
                     widget.answers[q.fieldName] = _checkboxSelection.toList();
                     AutoFields.touchLastMod(widget.answers);
                   });
+                  widget.onAnswerChanged?.call();
                 },
               ),
             );
@@ -260,6 +337,11 @@ class _QuestionViewState extends State<QuestionView> {
                 widget.answers[q.fieldName] = val;
                 AutoFields.touchLastMod(widget.answers);
               });
+              widget.onAnswerChanged?.call();
+              // Auto-advance on selection
+              if (val != null && val.isNotEmpty) {
+                widget.onRequestNext?.call();
+              }
             },
           ),
         ),
@@ -286,6 +368,7 @@ class _QuestionViewState extends State<QuestionView> {
                 widget.answers[q.fieldName] = picked;
                 AutoFields.touchLastMod(widget.answers);
               });
+              widget.onAnswerChanged?.call();
             }
           },
           child: Container(
@@ -332,8 +415,8 @@ class _QuestionViewState extends State<QuestionView> {
             if (pickedDate != null) {
               final pickedTime = await showTimePicker(
                 context: context,
-                initialTime: TimeOfDay.fromDateTime(
-                    _selectedDateTime ?? DateTime.now()),
+                initialTime:
+                    TimeOfDay.fromDateTime(_selectedDateTime ?? DateTime.now()),
               );
               if (pickedTime != null) {
                 final combined = DateTime(
@@ -348,6 +431,7 @@ class _QuestionViewState extends State<QuestionView> {
                   widget.answers[q.fieldName] = combined;
                   AutoFields.touchLastMod(widget.answers);
                 });
+                widget.onAnswerChanged?.call();
               }
             }
           },

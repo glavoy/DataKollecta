@@ -22,8 +22,27 @@ class SurveyLoader {
       // Optional: <maxCharacters>...</maxCharacters>
       final maxCharsNode = q.getElement('maxCharacters');
       final maxChars = maxCharsNode != null
-          ? int.tryParse(maxCharsNode.value?.trim() ?? '')
+          ? int.tryParse(maxCharsNode.innerText.trim())
           : null;
+
+      // Optional: <numeric_check><values ... /></numeric_check>
+      NumericCheck? numericCheck;
+      final numericNode = q.getElement('numeric_check');
+      if (numericNode != null) {
+        final valuesNode = numericNode.getElement('values');
+        if (valuesNode != null) {
+          final minStr = valuesNode.getAttribute('minvalue');
+          final maxStr = valuesNode.getAttribute('maxvalue');
+          final otherVals = valuesNode.getAttribute('other_values');
+          final msg = valuesNode.getAttribute('message');
+          numericCheck = NumericCheck(
+            minValue: minStr != null ? int.tryParse(minStr) : null,
+            maxValue: maxStr != null ? int.tryParse(maxStr) : null,
+            otherValues: otherVals,
+            message: msg,
+          );
+        }
+      }
 
       // <responses> -> <response value='x'>Label</response>
       final responsesNode = q.getElement('responses');
@@ -47,6 +66,7 @@ class SurveyLoader {
           fieldType: fieldType,
           text: text,
           maxCharacters: maxChars,
+          numericCheck: numericCheck,
           options: options,
           preSkips: preSkips,
           postSkips: postSkips,

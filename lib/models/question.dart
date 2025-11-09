@@ -6,6 +6,15 @@ class QuestionOption {
   QuestionOption({required this.value, required this.label});
 }
 
+class NumericCheck {
+  final int? minValue;
+  final int? maxValue;
+  final String? otherValues; // comma-separated string of allowed exceptions
+  final String? message;
+
+  const NumericCheck({this.minValue, this.maxValue, this.otherValues, this.message});
+}
+
 /// Skip condition for navigating between questions
 class SkipCondition {
   final String fieldName;        // Field to check (e.g., 'sex')
@@ -29,6 +38,7 @@ class Question {
   final String fieldType; // e.g., integer, text, datetime
   final String? text;
   final int? maxCharacters;
+  final NumericCheck? numericCheck;
   final List<QuestionOption> options;
   final List<SkipCondition> preSkips;  // Evaluated before showing the question
   final List<SkipCondition> postSkips; // Evaluated after user answers
@@ -39,6 +49,7 @@ class Question {
     required this.fieldType,
     this.text,
     this.maxCharacters,
+    this.numericCheck,
     this.options = const [],
     this.preSkips = const [],
     this.postSkips = const [],

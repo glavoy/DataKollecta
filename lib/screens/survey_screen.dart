@@ -17,8 +17,7 @@ class SurveyScreen extends StatefulWidget {
 class _SurveyScreenState extends State<SurveyScreen> {
   final AnswerMap _answers = {};
   int _currentQuestion = 0;
-  int _previousQuestion =
-      -1; // Track the last displayed (non-automatic) question
+  final List<int> _history = []; // Navigation history of displayed questions
   late Future<List<Question>> _questions = _loadSurvey();
 
   Future<List<Question>> _loadSurvey() async {
@@ -43,10 +42,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
   void _next(List<Question> qs) {
     if (_currentQuestion >= qs.length - 1) return;
 
-    // Store current question as previous (if it's not automatic)
-    // Information questions should be tracked as they are displayed
+    // Push current displayed question to history (skip automatic)
     if (qs[_currentQuestion].type != QuestionType.automatic) {
-      _previousQuestion = _currentQuestion;
+      _history.add(_currentQuestion);
+      // history keeps track of previous questions implicitly
     }
 
     // Check for postskip conditions on the current question
@@ -120,21 +119,56 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   /// Navigate to the previous displayed question
   void _prev() {
-    if (_previousQuestion >= 0) {
-      setState(() {
-        _currentQuestion = _previousQuestion;
-        // Update _previousQuestion to the one before that
-        _previousQuestion = _findPreviousDisplayedQuestion(_currentQuestion);
-      });
+    if (_history.isEmpty) return;
+    setState(() {
+      _currentQuestion = _history.removeLast();
+    });
+  }
+
+  bool _isAnswered(Question q) {
+    final val = _answers[q.fieldName];
+    switch (q.type) {
+      case QuestionType.text:
+        return (val is String) && val.trim().isNotEmpty;
+      case QuestionType.radio:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.checkbox:
+        return (val is List) && val.isNotEmpty;
+      case QuestionType.combobox:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.date:
+      case QuestionType.datetime:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.information:
+      case QuestionType.automatic:
+        return true; // not applicable
     }
   }
 
-  /// Find the previous question that should be displayed (not automatic questions)
-  int _findPreviousDisplayedQuestion(int fromIndex) {
-    // We track previous question as we navigate, so this is not needed
-    // Will return -1 if no previous question exists
-    return -1;
+  bool _isValid(Question q) {
+    // For integer text fields, enforce numeric_check range
+    if (q.type == QuestionType.text && q.fieldType.toLowerCase().contains('integer')) {
+      final raw = _answers[q.fieldName]?.toString() ?? '';
+      if (raw.isEmpty) return false;
+      final parsed = int.tryParse(raw);
+      if (parsed == null) return false;
+      final nc = q.numericCheck;
+      if (nc != null) {
+        final exceptions = (nc.otherValues ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+        if (!exceptions.contains(parsed.toString())) {
+          if (nc.minValue != null && parsed < nc.minValue!) return false;
+          if (nc.maxValue != null && parsed > nc.maxValue!) return false;
+        }
+      }
+    }
+    return true;
   }
+
+  // Previous question lookup is handled by _history
 
   /// Process an automatic question by calculating its value
   void _processAutomaticQuestion(Question q) {
@@ -200,7 +234,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         final q = questions[_currentQuestion];
-        final isFirst = _previousQuestion < 0;
+        final isFirst = _history.isEmpty;
+        final canProceed = q.type == QuestionType.information || (_isAnswered(q) && _isValid(q));
         final isLast = _currentQuestion == questions.length - 1 ||
             !_hasNextDisplayedQuestion(questions, _currentQuestion);
         final progress = (_currentQuestion + 1) / questions.length;
@@ -321,6 +356,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   key: ValueKey('view_${q.fieldName}'),
                                   question: q,
                                   answers: _answers,
+                                  onAnswerChanged: () => setState(() {}),
+                                  onRequestNext: () => _next(questions),
                                 ),
                               ),
                             ),
@@ -348,9 +385,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
                           if (!isFirst) const SizedBox(width: 12),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () => isLast
-                                  ? _showDone(context)
-                                  : _next(questions),
+                              onPressed: canProceed
+                                  ? () => isLast
+                                      ? _showDone(context)
+                                      : _next(questions)
+                                  : null,
                               icon: Icon(
                                   isLast ? Icons.check : Icons.arrow_forward),
                               label: Text(isLast ? 'Finish' : 'Next'),
