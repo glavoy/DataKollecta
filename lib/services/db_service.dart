@@ -326,7 +326,7 @@ class DbService {
             'uniqueid': uniqueId,
             'oldvalue': oldValueStr,
             'newvalue': newValueStr,
-            // changed_at will auto-populate with DEFAULT CURRENT_TIMESTAMP
+            'changed_at': DateTime.now().toIso8601String(),
           });
           changeCount++;
           _log('Recorded change: $fieldName from "$oldValueStr" to "$newValueStr"');
