@@ -19,6 +19,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   int _currentQuestion = 0;
   final List<int> _history = []; // Navigation history of displayed questions
   late Future<List<Question>> _questions = _loadSurvey();
+  bool _isSaving = false; // Flag to prevent multiple submissions
 
   Future<List<Question>> _loadSurvey() async {
     try {
@@ -418,6 +419,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   void _showDone(BuildContext context) async {
+    // Prevent multiple submissions
+    if (_isSaving) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
     bool saveSuccessful = false;
     String? errorMessage;
 
@@ -436,9 +444,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
     if (!mounted) return;
 
     if (saveSuccessful) {
-      // Success dialog
+      // Success dialog - modal (barrierDismissible: false prevents tapping outside)
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (_) => AlertDialog(
           title: const Text('All done!'),
           content: Text('Thanks! Answers saved successfully.'),
