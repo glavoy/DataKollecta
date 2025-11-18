@@ -37,7 +37,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   AnswerMap? _originalAnswers; // Store original answers for change detection
   int _currentQuestion = 0;
   final List<int> _history = []; // Navigation history of displayed questions
-  final Set<String> _visitedFields = {}; // Track which questions were actually displayed
+  final Set<String> _visitedFields =
+      {}; // Track which questions were actually displayed
   late Future<List<Question>> _questions = _loadSurvey();
   bool _isSaving = false; // Flag to prevent multiple submissions
 
@@ -55,7 +56,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // 2) Set up ID generation context if we have idConfig
       if (widget.idConfig != null) {
-        final tableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+        final tableName =
+            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
         AutoFields.setIdGenerationContext(
           tableName: tableName,
           idConfig: widget.idConfig,
@@ -93,7 +95,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   /// Populate the answers map from an existing database record
-  void _populateAnswersFromRecord(Map<String, dynamic> record, List<Question> questions) {
+  void _populateAnswersFromRecord(
+      Map<String, dynamic> record, List<Question> questions) {
     // Build a map of field names to question types for quick lookup
     final questionTypes = <String, QuestionType>{};
     for (final q in questions) {
@@ -116,13 +119,19 @@ class _SurveyScreenState extends State<SurveyScreen> {
         // For checkbox, always convert to List (even single values)
         if (stringValue.contains(',')) {
           // Multiple values: "3,4"
-          final list = stringValue.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+          final list = stringValue
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
           _answers[key] = list;
-          debugPrint('Loaded checkbox field "$key": $list (type: ${list.runtimeType})');
+          debugPrint(
+              'Loaded checkbox field "$key": $list (type: ${list.runtimeType})');
         } else if (stringValue.trim().isNotEmpty) {
           // Single value: "2"
           _answers[key] = [stringValue.trim()];
-          debugPrint('Loaded checkbox field "$key": [${stringValue.trim()}] (type: ${_answers[key].runtimeType})');
+          debugPrint(
+              'Loaded checkbox field "$key": [${stringValue.trim()}] (type: ${_answers[key].runtimeType})');
         }
       } else if (stringValue.contains('T') && stringValue.length > 10) {
         // Likely an ISO8601 datetime string
@@ -193,13 +202,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
   /// For example: if sex changes from Female to Male, pregnancy questions should be cleared
   void _clearSkippedAnswers(List<Question> questions) {
     // Get all question field names that should collect data (not automatic/information)
-    final dataQuestions = questions.where((q) =>
-      q.type != QuestionType.automatic &&
-      q.type != QuestionType.information
-    ).map((q) => q.fieldName).toSet();
+    final dataQuestions = questions
+        .where((q) =>
+            q.type != QuestionType.automatic &&
+            q.type != QuestionType.information)
+        .map((q) => q.fieldName)
+        .toSet();
 
     // Also preserve primary key fields (they're skipped but shouldn't be cleared)
-    final primaryKeys = widget.primaryKeyFields?.map((f) => f.toLowerCase()).toSet() ?? {};
+    final primaryKeys =
+        widget.primaryKeyFields?.map((f) => f.toLowerCase()).toSet() ?? {};
 
     // Find fields that have answers but were not visited (skipped)
     final skippedFields = <String>[];
@@ -218,38 +230,93 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     // Clear the skipped fields
     if (skippedFields.isNotEmpty) {
-      debugPrint('Clearing ${skippedFields.length} skipped fields: ${skippedFields.join(", ")}');
+      debugPrint(
+          'Clearing ${skippedFields.length} skipped fields: ${skippedFields.join(", ")}');
       for (final field in skippedFields) {
         _answers[field] = null;
       }
     }
   }
 
-  /// Called whenever an answer changes - triggers async ID generation if needed
-  Future<void> _onAnswerChanged() async {
-    setState(() {}); // Update UI
+    /// Called whenever an answer changes - triggers async ID generation if needed
 
-    // Check if we need to generate an ID
-    final linkingField = widget.linkingField;
-    if (linkingField != null && widget.idConfig != null) {
-      // Check if this field has a pending ID placeholder
-      final currentValue = _answers[linkingField];
-      if (currentValue == '_PENDING_ID_GENERATION_' || currentValue == null || currentValue.toString().isEmpty) {
-        // Attempt to generate ID
-        final generatedId = await AutoFields.generateIdIfNeeded(
-          answers: _answers,
-          fieldName: linkingField,
-        );
+    Future<void> _onAnswerChanged(String changedFieldName) async {
 
-        if (generatedId != null) {
-          setState(() {
-            // ID was generated, UI will update
-            debugPrint('Generated ID: $generatedId for field: $linkingField');
-          });
+      setState(() {}); // Update UI
+
+  
+
+      // If a field that is part of the ID changes, clear the existing ID to force regeneration
+
+      if (widget.idConfig != null) {
+
+        final idFields = IdGenerator.getRequiredFields(widget.idConfig!);
+
+        if (idFields.contains(changedFieldName)) {
+
+          // These are the fields that hold the generated ID
+
+          const idHolderFields = ['subjid', 'hhid'];
+
+          for (final field in idHolderFields) {
+
+            if (_answers.containsKey(field)) {
+
+              _answers[field] = null;
+
+              debugPrint('Cleared stale ID in field "$field" because "$changedFieldName" changed.');
+
+            }
+
+          }
+
         }
+
       }
+
+  
+
+      // Check if we need to generate an ID for a linking field
+
+      final linkingField = widget.linkingField;
+
+      if (linkingField != null && widget.idConfig != null) {
+
+        // Check if this field has a pending ID placeholder
+
+        final currentValue = _answers[linkingField];
+
+        if (currentValue == '_PENDING_ID_GENERATION_' || currentValue == null || currentValue.toString().isEmpty) {
+
+          // Attempt to generate ID
+
+          final generatedId = await AutoFields.generateIdIfNeeded(
+
+            answers: _answers,
+
+            fieldName: linkingField,
+
+          );
+
+  
+
+          if (generatedId != null) {
+
+            setState(() {
+
+              // ID was generated, UI will update
+
+              debugPrint('Generated ID: $generatedId for field: $linkingField');
+
+            });
+
+          }
+
+        }
+
+      }
+
     }
-  }
 
   /// Navigate to the next question, auto-skipping automatic questions
   /// Information questions ARE displayed to the user
@@ -286,6 +353,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
     setState(() {
       _currentQuestion = nextIndex;
     });
+
+    // Trigger async operations after navigation
+    _postNavigationTasks();
   }
 
   /// Find the next question that should be displayed
@@ -412,7 +482,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // The automatic value calculation is already handled in QuestionView.initState
     // But we can also do it here for automatic questions we skip over
     if (_answers[q.fieldName] == null) {
-      final value = AutoFields.compute(_answers, q, isEditMode: widget.uniqueId != null);
+      final value =
+          AutoFields.compute(_answers, q, isEditMode: widget.uniqueId != null);
       _answers[q.fieldName] = value;
     }
   }
@@ -598,9 +669,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 ...widget.primaryKeyFields!.map((field) {
-                                  final value = _answers[field]?.toString() ?? '-';
+                                  final value =
+                                      _answers[field]?.toString() ?? '-';
                                   return Padding(
-                                    padding: const EdgeInsets.only(left: 26, top: 4),
+                                    padding:
+                                        const EdgeInsets.only(left: 26, top: 4),
                                     child: Text(
                                       '${field.toUpperCase()}: $value',
                                       style: TextStyle(
@@ -667,7 +740,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   key: ValueKey('view_${q.fieldName}'),
                                   question: q,
                                   answers: _answers,
-                                  onAnswerChanged: () => _onAnswerChanged(),
+                                  onAnswerChanged: (fieldName) => _onAnswerChanged(fieldName),
                                   onRequestNext: () => _next(questions),
                                   isEditMode: widget.uniqueId != null,
                                 ),
@@ -736,6 +809,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Clear answers for any questions that were skipped due to skip logic
     // This ensures data consistency (e.g., clearing pregnancy data if sex changed to male)
     _clearSkippedAnswers(questions);
+
+    // Final check for any pending ID generations
+    await _postNavigationTasks();
 
     // Check if there are any changes (for edit mode only)
     if (widget.uniqueId != null && !_hasChanges()) {
@@ -892,6 +968,31 @@ class _SurveyScreenState extends State<SurveyScreen> {
             ],
           ),
         );
+      }
+    }
+  }
+
+  /// Trigger asynchronous operations after navigation or before saving
+  Future<void> _postNavigationTasks() async {
+    // Check for pending ID generations
+    if (widget.idConfig != null) {
+      // Find all fields that are pending generation
+      final pendingFields = _answers.entries
+          .where((entry) => entry.value == '_PENDING_ID_GENERATION_')
+          .map((entry) => entry.key)
+          .toList();
+
+      for (final fieldName in pendingFields) {
+        final generatedId = await AutoFields.generateIdIfNeeded(
+          answers: _answers,
+          fieldName: fieldName,
+        );
+
+        if (generatedId != null) {
+          debugPrint('Asynchronously generated ID: $generatedId for field: $fieldName');
+          // The value is updated in the _answers map.
+          // No need for setState unless the ID is displayed on the current screen.
+        }
       }
     }
   }

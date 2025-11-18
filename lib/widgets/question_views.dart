@@ -8,7 +8,7 @@ import '../services/auto_fields.dart';
 class QuestionView extends StatefulWidget {
   final Question question;
   final AnswerMap answers; // shared map so we can restore / persist answers
-  final VoidCallback? onAnswerChanged;
+  final void Function(String)? onAnswerChanged;
   final VoidCallback? onRequestNext; // ask parent to navigate to next question
   final bool isEditMode; // Whether we're editing an existing record
 
@@ -237,7 +237,7 @@ class _QuestionViewState extends State<QuestionView> {
             });
             widget.answers[q.fieldName] = val;
             AutoFields.touchLastMod(widget.answers);
-            widget.onAnswerChanged?.call();
+            widget.onAnswerChanged?.call(q.fieldName);
           },
         ),
       ],
@@ -260,7 +260,7 @@ class _QuestionViewState extends State<QuestionView> {
                   widget.answers[q.fieldName] = val;
                   AutoFields.touchLastMod(widget.answers);
                 });
-                widget.onAnswerChanged?.call();
+                widget.onAnswerChanged?.call(q.fieldName);
                 // Auto-advance on selection
                 if (val != null && val.isNotEmpty) {
                   widget.onRequestNext?.call();
@@ -314,7 +314,7 @@ class _QuestionViewState extends State<QuestionView> {
                     widget.answers[q.fieldName] = _checkboxSelection.toList();
                     AutoFields.touchLastMod(widget.answers);
                   });
-                  widget.onAnswerChanged?.call();
+                  widget.onAnswerChanged?.call(q.fieldName);
                 },
               ),
             );
@@ -352,7 +352,7 @@ class _QuestionViewState extends State<QuestionView> {
                 widget.answers[q.fieldName] = val;
                 AutoFields.touchLastMod(widget.answers);
               });
-              widget.onAnswerChanged?.call();
+              widget.onAnswerChanged?.call(q.fieldName);
               // Auto-advance on selection
               if (val != null && val.isNotEmpty) {
                 widget.onRequestNext?.call();
@@ -383,7 +383,7 @@ class _QuestionViewState extends State<QuestionView> {
                 widget.answers[q.fieldName] = picked;
                 AutoFields.touchLastMod(widget.answers);
               });
-              widget.onAnswerChanged?.call();
+              widget.onAnswerChanged?.call(q.fieldName);
             }
           },
           child: Container(
@@ -446,7 +446,7 @@ class _QuestionViewState extends State<QuestionView> {
                   widget.answers[q.fieldName] = combined;
                   AutoFields.touchLastMod(widget.answers);
                 });
-                widget.onAnswerChanged?.call();
+                widget.onAnswerChanged?.call(q.fieldName);
               }
             }
           },

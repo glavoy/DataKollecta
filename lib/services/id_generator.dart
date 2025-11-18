@@ -75,16 +75,12 @@ class IdGenerator {
         final stringValue = value.toString();
         final paddedValue = stringValue.padLeft(field.length, '0');
 
-        // Validate that the padded value doesn't exceed the configured length
+        // If the padded value exceeds the configured length, take the last part of the string
         if (paddedValue.length > field.length) {
-          debugPrint(
-              'Warning: Value "$stringValue" for field "${field.name}" exceeds configured length ${field.length}');
+          baseId.write(paddedValue.substring(paddedValue.length - field.length));
+        } else {
+          baseId.write(paddedValue);
         }
-
-        baseId.write(paddedValue.substring(
-            paddedValue.length > field.length
-                ? paddedValue.length - field.length
-                : 0));
       }
 
       // Query database to find the next increment number
