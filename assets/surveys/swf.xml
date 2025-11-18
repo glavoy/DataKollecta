@@ -100,7 +100,7 @@
 	</question>
 
 
-	<question type = 'radio' fieldname = 'movedate_day' fieldtype = 'integer'>
+	<question type = 'combobox' fieldname = 'movedate_day' fieldtype = 'integer'>
 		<text>MOVE DATE (day)</text>
 		<logic_check>
 			(movedate_month = '2' and movedate_day = '29') or

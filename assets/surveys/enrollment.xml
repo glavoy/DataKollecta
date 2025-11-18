@@ -21,12 +21,14 @@
 
 
 	<question type = 'text' fieldname = 'tabletnum2' fieldtype = 'text_integer'>
-		<text>Please re- enter the tablet/phone number of the tablet you are using</text>
+		<text>Please re-enter the tablet/phone number of the tablet you are using</text>
 		<maxCharacters>2</maxCharacters>
 		<numeric_check>
 			<values minvalue ='1' maxvalue='75' other_values = '1' message = 'Number must be between 1 and 75!'></values>
 		</numeric_check>
-		<logic_check>tabletnum2 &lt;&gt; tabletnum; 'This does not match your previous entry!'</logic_check>
+		<logic_check>
+			tabletnum2 &lt;&gt; tabletnum; 'This does not match your previous entry!'
+		</logic_check>
 	</question>
 
 
