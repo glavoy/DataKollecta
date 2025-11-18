@@ -44,8 +44,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   @override
   void dispose() {
-    // Clear ID generation context when survey is disposed
-    AutoFields.clearIdGenerationContext();
     super.dispose();
   }
 
@@ -54,30 +52,18 @@ class _SurveyScreenState extends State<SurveyScreen> {
       // 1) init DB
       await DbService.init();
 
-      // 2) Set up ID generation context if we have idConfig
-      if (widget.idConfig != null) {
-        final tableName =
-            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-        AutoFields.setIdGenerationContext(
-          tableName: tableName,
-          idConfig: widget.idConfig,
-          linkingField: widget.linkingField,
-        );
-        debugPrint('ID generation context set for table: $tableName');
-      }
-
-      // 3) load questions for UI from the survey XML
+      // 2) load questions for UI from the survey XML
       // The database tables are pre-created by another app, so we just load the XML
       final assetPath = 'assets/surveys/${widget.questionnaireFilename}';
       final questions = await SurveyLoader.loadFromAsset(assetPath);
 
-      // 4) If we're editing an existing record, populate answers from the database
+      // 3) If we're editing an existing record, populate answers from the database
       if (widget.existingAnswers != null) {
         _populateAnswersFromRecord(widget.existingAnswers!, questions);
         debugPrint('Primary key fields: ${widget.primaryKeyFields}');
       }
 
-      // 5) If we have prepopulated answers (from parent ID selector), add them
+      // 4) If we have prepopulated answers (from parent ID selector), add them
       if (widget.prepopulatedAnswers != null) {
         _answers.addAll(widget.prepopulatedAnswers!);
         debugPrint('Prepopulated answers: ${widget.prepopulatedAnswers}');
@@ -238,85 +224,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
   }
 
-    /// Called whenever an answer changes - triggers async ID generation if needed
-
-    Future<void> _onAnswerChanged(String changedFieldName) async {
-
-      setState(() {}); // Update UI
-
-  
-
-      // If a field that is part of the ID changes, clear the existing ID to force regeneration
-
-      if (widget.idConfig != null) {
-
-        final idFields = IdGenerator.getRequiredFields(widget.idConfig!);
-
-        if (idFields.contains(changedFieldName)) {
-
-          // These are the fields that hold the generated ID
-
-          const idHolderFields = ['subjid', 'hhid'];
-
-          for (final field in idHolderFields) {
-
-            if (_answers.containsKey(field)) {
-
-              _answers[field] = null;
-
-              debugPrint('Cleared stale ID in field "$field" because "$changedFieldName" changed.');
-
-            }
-
-          }
-
-        }
-
-      }
-
-  
-
-      // Check if we need to generate an ID for a linking field
-
-      final linkingField = widget.linkingField;
-
-      if (linkingField != null && widget.idConfig != null) {
-
-        // Check if this field has a pending ID placeholder
-
-        final currentValue = _answers[linkingField];
-
-        if (currentValue == '_PENDING_ID_GENERATION_' || currentValue == null || currentValue.toString().isEmpty) {
-
-          // Attempt to generate ID
-
-          final generatedId = await AutoFields.generateIdIfNeeded(
-
-            answers: _answers,
-
-            fieldName: linkingField,
-
-          );
-
-  
-
-          if (generatedId != null) {
-
-            setState(() {
-
-              // ID was generated, UI will update
-
-              debugPrint('Generated ID: $generatedId for field: $linkingField');
-
-            });
-
-          }
-
-        }
-
-      }
-
-    }
+  /// Called whenever an answer changes - triggers async ID generation if needed
+  Future<void> _onAnswerChanged() async {
+    setState(() {}); // Update UI
+  }
 
   /// Navigate to the next question, auto-skipping automatic questions
   /// Information questions ARE displayed to the user
@@ -353,9 +264,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
     setState(() {
       _currentQuestion = nextIndex;
     });
-
-    // Trigger async operations after navigation
-    _postNavigationTasks();
   }
 
   /// Find the next question that should be displayed
@@ -740,7 +648,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   key: ValueKey('view_${q.fieldName}'),
                                   question: q,
                                   answers: _answers,
-                                  onAnswerChanged: (fieldName) => _onAnswerChanged(fieldName),
+                                  onAnswerChanged: () => _onAnswerChanged(),
                                   onRequestNext: () => _next(questions),
                                   isEditMode: widget.uniqueId != null,
                                 ),
@@ -810,8 +718,53 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // This ensures data consistency (e.g., clearing pregnancy data if sex changed to male)
     _clearSkippedAnswers(questions);
 
-    // Final check for any pending ID generations
-    await _postNavigationTasks();
+    // --- NEW: Synchronous ID Generation ---
+    if (widget.idConfig != null && widget.idConfig!.isNotEmpty) {
+      // Validate that all required fields are present
+      if (!IdGenerator.validateIdFields(
+        idConfigJson: widget.idConfig!,
+        answers: _answers,
+      )) {
+        // Get the list of missing fields to show in the error message
+        final required = IdGenerator.getRequiredFields(widget.idConfig!);
+        final missing = required.where((f) => _answers[f] == null || _answers[f].toString().isEmpty).toList();
+
+        // Show an error dialog and stop
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Missing Information'),
+            content: Text('Cannot generate Subject ID. Please go back and answer the following questions:\n\n- ${missing.join('\n- ')}'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return; // Stop the save process
+      }
+
+      // Generate the ID
+      final tableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+      final generatedId = await IdGenerator.generateId(
+        tableName: tableName,
+        idConfigJson: widget.idConfig!,
+        answers: _answers,
+      );
+
+      // Add the generated ID to the answers map for the correct field (subjid or hhid)
+      // We find the field by looking for an automatic question that isn't in the registry
+      final idHolderField = questions.firstWhere(
+        (q) => q.type == QuestionType.automatic && !AutoFields.getRegistry().containsKey(q.fieldName),
+        orElse: () => Question(fieldName: 'subjid', type: QuestionType.automatic, fieldType: 'text'), // fallback
+      ).fieldName;
+
+      _answers[idHolderField] = generatedId;
+      debugPrint('Generated ID "$generatedId" for field "$idHolderField"');
+    }
+    // --- End of ID Generation ---
 
     // Check if there are any changes (for edit mode only)
     if (widget.uniqueId != null && !_hasChanges()) {
@@ -968,31 +921,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
             ],
           ),
         );
-      }
-    }
-  }
-
-  /// Trigger asynchronous operations after navigation or before saving
-  Future<void> _postNavigationTasks() async {
-    // Check for pending ID generations
-    if (widget.idConfig != null) {
-      // Find all fields that are pending generation
-      final pendingFields = _answers.entries
-          .where((entry) => entry.value == '_PENDING_ID_GENERATION_')
-          .map((entry) => entry.key)
-          .toList();
-
-      for (final fieldName in pendingFields) {
-        final generatedId = await AutoFields.generateIdIfNeeded(
-          answers: _answers,
-          fieldName: fieldName,
-        );
-
-        if (generatedId != null) {
-          debugPrint('Asynchronously generated ID: $generatedId for field: $fieldName');
-          // The value is updated in the _answers map.
-          // No need for setState unless the ID is displayed on the current screen.
-        }
       }
     }
   }

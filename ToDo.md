@@ -1,5 +1,6 @@
 ### To Do
 - the tablet number is 05 and not 54 that I entered
+- add the name of the project to the DD - no hard coding in the app
 - remove the whole async thing - the fields for the subjid will always be before the generation of the ID
 - need to update gistconficx to add new crfs table format
 - add 'Special buttons'
