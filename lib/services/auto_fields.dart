@@ -2,6 +2,8 @@
 import '../models/question.dart';
 import '../config/app_config.dart';
 import 'package:uuid/uuid.dart';
+import 'id_generator.dart';
+import 'package:flutter/material.dart';
 
 /// This is the ONLY file a programmer edits for automatic variables.
 /// Add/edit entries in [_registry] to support new automatic fields.
@@ -19,6 +21,71 @@ import 'package:uuid/uuid.dart';
 typedef AutoFieldFn = String Function(AnswerMap answers, Question q, bool isEditMode);
 
 class AutoFields {
+  /// Context for ID generation - set by SurveyScreen
+  static String? _tableName;
+  static String? _idConfig;
+  static String? _linkingField;
+
+  /// Set the context for ID generation
+  static void setIdGenerationContext({
+    String? tableName,
+    String? idConfig,
+    String? linkingField,
+  }) {
+    _tableName = tableName;
+    _idConfig = idConfig;
+    _linkingField = linkingField;
+  }
+
+  /// Clear the context after survey completion
+  static void clearIdGenerationContext() {
+    _tableName = null;
+    _idConfig = null;
+    _linkingField = null;
+  }
+
+  /// Asynchronously generates an ID if needed
+  /// Call this when all required fields for ID generation are available
+  static Future<String?> generateIdIfNeeded({
+    required AnswerMap answers,
+    required String fieldName,
+  }) async {
+    // Check if ID is already set
+    final existing = answers[fieldName];
+    if (existing != null && existing.toString().isNotEmpty && existing != '_PENDING_ID_GENERATION_') {
+      return null; // ID already set
+    }
+
+    // Check if we have the necessary configuration
+    if (_idConfig == null || _tableName == null) {
+      return null; // No configuration
+    }
+
+    // Validate that all required fields are present
+    if (!IdGenerator.validateIdFields(
+      idConfigJson: _idConfig!,
+      answers: answers,
+    )) {
+      return null; // Not all required fields available
+    }
+
+    // Generate the ID
+    try {
+      final generatedId = await IdGenerator.generateId(
+        tableName: _tableName!,
+        idConfigJson: _idConfig!,
+        answers: answers,
+      );
+
+      // Update the answers map
+      answers[fieldName] = generatedId;
+      return generatedId;
+    } catch (e) {
+      debugPrint('Error generating ID: $e');
+      return null;
+    }
+  }
+
   /// Per-survey registry of automatic fields: fieldName -> function
   /// Edit this map for your survey's automatic variables.
   static final Map<String, AutoFieldFn> _registry = {
@@ -27,10 +94,9 @@ class AutoFields {
     'stoptime': _computeStopTime,
     'lastmod': _computeLastModified,
     'swver': _computeSoftwareVersion,
-    // 'subjid': _computeSubjId,
+    'subjid': _computeSubjId,  // Now enabled for dynamic ID generation
+    'hhid': _computeSubjId,    // Use same function for household IDs
     // Add more automatic variables here ...
-
-    // 'subjid': (answers, q) => _generateSubjectId(answers, q),
   };
 
   /// Public entry point: returns existing answer if present,
@@ -107,10 +173,51 @@ class AutoFields {
     answers['lastmod'] = DateTime.now().toIso8601String();
   }
 
-  // static String _computeSubjId(AnswerMap answers, Question q) {
-  //   final r = Random();
-  //   return 'SP${r.nextInt(999999).toString().padLeft(6, '0')}';
-  // }
+  /// Computes subject ID or household ID based on configuration
+  /// This function generates IDs dynamically based on:
+  /// 1. If prepopulated (from parent selector) - return existing value
+  /// 2. If base form with idConfig - generate new ID using IdGenerator
+  /// 3. Otherwise return placeholder
+  static String _computeSubjId(AnswerMap answers, Question q, bool isEditMode) {
+    final fieldName = q.fieldName;
+
+    // In edit mode, preserve existing ID
+    if (isEditMode) {
+      final existing = answers[fieldName];
+      if (existing != null && existing.toString().isNotEmpty) {
+        return existing.toString();
+      }
+    }
+
+    // If already populated (e.g., from parent ID selector), use that value
+    final existing = answers[fieldName];
+    if (existing != null && existing.toString().isNotEmpty) {
+      return existing.toString();
+    }
+
+    // If we have idConfig, this is a base form - generate new ID
+    if (_idConfig != null && _tableName != null) {
+      debugPrint('Generating ID for field: $fieldName, table: $_tableName');
+
+      // Check if all required fields are present
+      if (IdGenerator.validateIdFields(
+        idConfigJson: _idConfig!,
+        answers: answers,
+      )) {
+        // Generate ID asynchronously - we'll need to handle this differently
+        // For now, return a placeholder and let the survey screen handle async generation
+        return '_PENDING_ID_GENERATION_';
+      } else {
+        // Not all required fields available yet
+        debugPrint('Required fields for ID generation not yet available');
+        return '';
+      }
+    }
+
+    // No configuration available - shouldn't happen in production
+    debugPrint('Warning: No ID config available for $fieldName');
+    return '';
+  }
 
   // ---------- Default/fallbacks ----------
 
@@ -125,3 +232,4 @@ class AutoFields {
     }
   }
 }
+

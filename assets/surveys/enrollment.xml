@@ -6,18 +6,17 @@
 	</question>
 
 
-	<question type = 'text' fieldname = 'subjid' fieldtype = 'text'>
-		<text>Enter the participants Subject ID</text>
-		<maxCharacters>10</maxCharacters>
-	</question>
-
-
 	<question type = 'text' fieldname = 'tabletnum' fieldtype = 'text_integer'>
 		<text>Please enter the tablet/phone number of the tablet you are using</text>
 		<maxCharacters>2</maxCharacters>
 		<numeric_check>
 			<values minvalue ='1' maxvalue='75' other_values = '1' message = 'Number must be between 1 and 75!'></values>
 		</numeric_check>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'subjid' fieldtype = 'text'>
+		<maxCharacters>10</maxCharacters>
 	</question>
 
 

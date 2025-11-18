@@ -6,8 +6,7 @@
 	</question>
 
 
-	<question type = 'text' fieldname = 'subjid' fieldtype = 'text'>
-		<text>SEARCH SAPPHIRE ID</text>
+	<question type = 'automatic' fieldname = 'subjid' fieldtype = 'text'>
 		<maxCharacters>10</maxCharacters>
 	</question>
 

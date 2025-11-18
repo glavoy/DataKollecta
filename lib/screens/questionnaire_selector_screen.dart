@@ -4,15 +4,28 @@ import 'package:flutter/services.dart';
 import '../services/db_service.dart';
 import 'survey_screen.dart';
 import 'record_selector_screen.dart';
+import 'parent_id_selector_screen.dart';
 
 /// Represents a questionnaire with its filename and display name
 class QuestionnaireInfo {
   final String filename;
   final String displayName;
+  final bool requiresLink;
+  final String? linkingField;
+  final String? parentTable;
+  final String? incrementField;
+  final bool isBase;
+  final String? idConfig;
 
   QuestionnaireInfo({
     required this.filename,
     required this.displayName,
+    this.requiresLink = false,
+    this.linkingField,
+    this.parentTable,
+    this.incrementField,
+    this.isBase = false,
+    this.idConfig,
   });
 }
 
@@ -80,9 +93,23 @@ class _QuestionnaireSelectorScreenState
 
           // Only add if the XML file actually exists in assets
           if (availableXmlFiles.contains(filename)) {
+            // Parse metadata from crfs record
+            final requiresLink = (record['requireslink'] as int?) == 1;
+            final linkingField = record['linkingfield']?.toString();
+            final parentTable = record['parenttable']?.toString();
+            final incrementField = record['incrementfield']?.toString();
+            final isBase = (record['isbase'] as int?) == 1;
+            final idConfig = record['idconfig']?.toString();
+
             questionnaires.add(QuestionnaireInfo(
               filename: filename,
               displayName: displayName,
+              requiresLink: requiresLink,
+              linkingField: linkingField,
+              parentTable: parentTable,
+              incrementField: incrementField,
+              isBase: isBase,
+              idConfig: idConfig,
             ));
           }
         }
@@ -123,15 +150,36 @@ class _QuestionnaireSelectorScreenState
         ),
       );
     } else {
-      // Navigate to new survey screen with the selected questionnaire
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SurveyScreen(
-            questionnaireFilename: questionnaire.filename,
+      // Check if this questionnaire requires selecting a parent ID first
+      if (questionnaire.requiresLink &&
+          questionnaire.linkingField != null &&
+          questionnaire.parentTable != null) {
+        // Navigate to parent ID selector screen first
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ParentIdSelectorScreen(
+              questionnaireFilename: questionnaire.filename,
+              linkingField: questionnaire.linkingField!,
+              parentTable: questionnaire.parentTable!,
+              incrementField: questionnaire.incrementField,
+              idConfig: questionnaire.idConfig,
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        // Navigate directly to new survey screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SurveyScreen(
+              questionnaireFilename: questionnaire.filename,
+              idConfig: questionnaire.idConfig,
+              linkingField: questionnaire.linkingField,
+            ),
+          ),
+        );
+      }
     }
   }
 

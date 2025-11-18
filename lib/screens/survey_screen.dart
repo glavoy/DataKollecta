@@ -6,12 +6,16 @@ import '../services/db_service.dart';
 import '../services/auto_fields.dart';
 import '../services/skip_service.dart';
 import '../config/app_config.dart';
+import '../services/id_generator.dart';
 
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
   final Map<String, dynamic>? existingAnswers;
   final String? uniqueId;
   final List<String>? primaryKeyFields;
+  final Map<String, dynamic>? prepopulatedAnswers;
+  final String? idConfig;
+  final String? linkingField;
 
   const SurveyScreen({
     super.key,
@@ -19,6 +23,9 @@ class SurveyScreen extends StatefulWidget {
     this.existingAnswers,
     this.uniqueId,
     this.primaryKeyFields,
+    this.prepopulatedAnswers,
+    this.idConfig,
+    this.linkingField,
   });
 
   @override
@@ -34,20 +41,44 @@ class _SurveyScreenState extends State<SurveyScreen> {
   late Future<List<Question>> _questions = _loadSurvey();
   bool _isSaving = false; // Flag to prevent multiple submissions
 
+  @override
+  void dispose() {
+    // Clear ID generation context when survey is disposed
+    AutoFields.clearIdGenerationContext();
+    super.dispose();
+  }
+
   Future<List<Question>> _loadSurvey() async {
     try {
       // 1) init DB
       await DbService.init();
 
-      // 2) load questions for UI from the survey XML
+      // 2) Set up ID generation context if we have idConfig
+      if (widget.idConfig != null) {
+        final tableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+        AutoFields.setIdGenerationContext(
+          tableName: tableName,
+          idConfig: widget.idConfig,
+          linkingField: widget.linkingField,
+        );
+        debugPrint('ID generation context set for table: $tableName');
+      }
+
+      // 3) load questions for UI from the survey XML
       // The database tables are pre-created by another app, so we just load the XML
       final assetPath = 'assets/surveys/${widget.questionnaireFilename}';
       final questions = await SurveyLoader.loadFromAsset(assetPath);
 
-      // 3) If we're editing an existing record, populate answers from the database
+      // 4) If we're editing an existing record, populate answers from the database
       if (widget.existingAnswers != null) {
         _populateAnswersFromRecord(widget.existingAnswers!, questions);
         debugPrint('Primary key fields: ${widget.primaryKeyFields}');
+      }
+
+      // 5) If we have prepopulated answers (from parent ID selector), add them
+      if (widget.prepopulatedAnswers != null) {
+        _answers.addAll(widget.prepopulatedAnswers!);
+        debugPrint('Prepopulated answers: ${widget.prepopulatedAnswers}');
       }
 
       return questions;
@@ -190,6 +221,32 @@ class _SurveyScreenState extends State<SurveyScreen> {
       debugPrint('Clearing ${skippedFields.length} skipped fields: ${skippedFields.join(", ")}');
       for (final field in skippedFields) {
         _answers[field] = null;
+      }
+    }
+  }
+
+  /// Called whenever an answer changes - triggers async ID generation if needed
+  Future<void> _onAnswerChanged() async {
+    setState(() {}); // Update UI
+
+    // Check if we need to generate an ID
+    final linkingField = widget.linkingField;
+    if (linkingField != null && widget.idConfig != null) {
+      // Check if this field has a pending ID placeholder
+      final currentValue = _answers[linkingField];
+      if (currentValue == '_PENDING_ID_GENERATION_' || currentValue == null || currentValue.toString().isEmpty) {
+        // Attempt to generate ID
+        final generatedId = await AutoFields.generateIdIfNeeded(
+          answers: _answers,
+          fieldName: linkingField,
+        );
+
+        if (generatedId != null) {
+          setState(() {
+            // ID was generated, UI will update
+            debugPrint('Generated ID: $generatedId for field: $linkingField');
+          });
+        }
       }
     }
   }
@@ -610,7 +667,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   key: ValueKey('view_${q.fieldName}'),
                                   question: q,
                                   answers: _answers,
-                                  onAnswerChanged: () => setState(() {}),
+                                  onAnswerChanged: () => _onAnswerChanged(),
                                   onRequestNext: () => _next(questions),
                                   isEditMode: widget.uniqueId != null,
                                 ),

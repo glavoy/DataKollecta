@@ -1,5 +1,7 @@
 ### To Do
-
+- the tablet number is 05 and not 54 that I entered
+- remove the whole async thing - the fields for the subjid will always be before the generation of the ID
+- need to update gistconficx to add new crfs table format
 - add 'Special buttons'
 - add 'does not contain' and contains
 - add logic checks - multiple
