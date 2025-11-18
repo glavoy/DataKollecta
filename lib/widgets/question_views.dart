@@ -380,7 +380,8 @@ class _QuestionViewState extends State<QuestionView> {
             if (picked != null) {
               setState(() {
                 _selectedDate = picked;
-                widget.answers[q.fieldName] = picked;
+                // For 'date' type, store as 'YYYY-MM-DD' string
+                widget.answers[q.fieldName] = picked.toIso8601String().split('T')[0];
                 AutoFields.touchLastMod(widget.answers);
               });
               widget.onAnswerChanged?.call();
