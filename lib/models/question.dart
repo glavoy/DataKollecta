@@ -43,6 +43,8 @@ class Question {
   final List<SkipCondition> preSkips;  // Evaluated before showing the question
   final List<SkipCondition> postSkips; // Evaluated after user answers
   final String? logicCheck;
+  final String? dontKnow; // Special response value for "Don't know" (e.g., "-7")
+  final String? refuse;   // Special response value for "Refuse" (e.g., "-8")
 
   Question({
     required this.type,
@@ -55,6 +57,8 @@ class Question {
     this.preSkips = const [],
     this.postSkips = const [],
     this.logicCheck,
+    this.dontKnow,
+    this.refuse,
   });
 }
 

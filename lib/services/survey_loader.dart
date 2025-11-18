@@ -63,6 +63,13 @@ class SurveyLoader {
       final logicCheckNode = q.getElement('logic_check');
       final logicCheck = logicCheckNode?.innerText.trim();
 
+      // Parse special response values (for date fields)
+      final dontKnowNode = q.getElement('dont_know');
+      final dontKnow = dontKnowNode?.innerText.trim();
+
+      final refuseNode = q.getElement('refuse');
+      final refuse = refuseNode?.innerText.trim();
+
       questions.add(
         Question(
           type: type,
@@ -75,6 +82,8 @@ class SurveyLoader {
           preSkips: preSkips,
           postSkips: postSkips,
           logicCheck: logicCheck,
+          dontKnow: dontKnow,
+          refuse: refuse,
         ),
       );
     }

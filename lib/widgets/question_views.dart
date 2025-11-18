@@ -71,13 +71,19 @@ class _QuestionViewState extends State<QuestionView> {
       _selectedDate = existing;
       _selectedDateTime = existing;
     } else if (existing is String && existing.isNotEmpty) {
-      try {
-        final parsed = DateTime.parse(existing);
-        _selectedDate = parsed;
-        _selectedDateTime = parsed;
-      } catch (_) {
-        // Not a valid date string
+      // Check if it's a special response value (e.g., "-7", "-8")
+      final isSpecialResponse = existing == q.dontKnow || existing == q.refuse;
+
+      if (!isSpecialResponse) {
+        try {
+          final parsed = DateTime.parse(existing);
+          _selectedDate = parsed;
+          _selectedDateTime = parsed;
+        } catch (_) {
+          // Not a valid date string
+        }
       }
+      // If it is a special response, leave _selectedDate null and keep the string value
     }
 
     // Centralized automatic variable calculation
@@ -383,6 +389,12 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildDate(Question q) {
+    // Check if current answer is a special response
+    final currentAnswer = widget.answers[q.fieldName]?.toString();
+    final isDontKnow = currentAnswer == q.dontKnow;
+    final isRefuse = currentAnswer == q.refuse;
+    final hasSpecialResponse = isDontKnow || isRefuse;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -416,12 +428,17 @@ class _QuestionViewState extends State<QuestionView> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _selectedDate != null
-                      ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                      : 'Select a date',
+                  hasSpecialResponse
+                      ? (isDontKnow ? "Don't know" : 'Refuse')
+                      : (_selectedDate != null
+                          ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                          : 'Select a date'),
                   style: TextStyle(
                     fontSize: 16,
-                    color: _selectedDate != null ? Colors.black : Colors.grey,
+                    color: hasSpecialResponse
+                        ? Colors.orange.shade700
+                        : (_selectedDate != null ? Colors.black : Colors.grey),
+                    fontWeight: hasSpecialResponse ? FontWeight.w500 : FontWeight.normal,
                   ),
                 ),
                 Icon(Icons.calendar_today, color: Colors.grey.shade600),
@@ -429,6 +446,78 @@ class _QuestionViewState extends State<QuestionView> {
             ),
           ),
         ),
+        // Special response buttons for date fields
+        if (q.dontKnow != null || q.refuse != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(
+              children: [
+                if (q.dontKnow != null)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate = null;
+                          widget.answers[q.fieldName] = q.dontKnow;
+                          AutoFields.touchLastMod(widget.answers);
+                        });
+                        widget.onAnswerChanged?.call();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: isDontKnow ? Colors.orange.shade50 : null,
+                        side: BorderSide(
+                          color: isDontKnow ? Colors.orange.shade700 : Colors.grey.shade400,
+                          width: isDontKnow ? 2 : 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        "Don't know",
+                        style: TextStyle(
+                          color: isDontKnow ? Colors.orange.shade700 : Colors.grey.shade700,
+                          fontWeight: isDontKnow ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (q.dontKnow != null && q.refuse != null) const SizedBox(width: 12),
+                if (q.refuse != null)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate = null;
+                          widget.answers[q.fieldName] = q.refuse;
+                          AutoFields.touchLastMod(widget.answers);
+                        });
+                        widget.onAnswerChanged?.call();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: isRefuse ? Colors.orange.shade50 : null,
+                        side: BorderSide(
+                          color: isRefuse ? Colors.orange.shade700 : Colors.grey.shade400,
+                          width: isRefuse ? 2 : 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Refuse',
+                        style: TextStyle(
+                          color: isRefuse ? Colors.orange.shade700 : Colors.grey.shade700,
+                          fontWeight: isRefuse ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }

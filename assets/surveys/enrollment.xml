@@ -60,7 +60,8 @@
 		<preskip>
 			<skip fieldname='pregnant' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='village'></skip>
 		</preskip>
-		<na>-6</na>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
 	</question>
 
 
