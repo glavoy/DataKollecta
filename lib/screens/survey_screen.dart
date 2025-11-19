@@ -513,7 +513,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           backgroundColor: widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
           appBar: AppBar(
             backgroundColor: widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
-            toolbarHeight: 120,
+            toolbarHeight: 60,
             automaticallyImplyLeading: false,
             title: Row(
               children: [
@@ -521,8 +521,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   borderRadius: BorderRadius.circular(12),
                   child: Image.asset(
                     'assets/branding/gistx.png',
-                    width: 100,
-                    height: 100,
+                    width: 50,
+                    height: 50,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -564,7 +564,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('Cancel Interview'),
+                  child: const Text('Cancel'),
                 ),
               ),
             ],
@@ -625,39 +625,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
                       if (widget.primaryKeyFields != null &&
                           widget.primaryKeyFields!.isNotEmpty)
                         const SizedBox(height: 12),
-
-                      // Header with progress
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                      'Step ${_currentQuestion + 1} of ${questions.length}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium),
-                                  const Spacer(),
-                                  Text('${(progress * 100).round()}%',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelLarge),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                    value: progress, minHeight: 8),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
 
                       // Animated question card
                       Expanded(
