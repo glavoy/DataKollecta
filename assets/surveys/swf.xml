@@ -76,7 +76,6 @@
 			<response value = '2022'>2022</response>
 			<response value = '2023'>2023</response>
 		</responses>
-		<dont_know>-7</dont_know>
 	</question>
 
 
@@ -96,7 +95,6 @@
 			<response value = '11'>November</response>
 			<response value = '12'>December</response>
 		</responses>
-		<dont_know>-7</dont_know>
 	</question>
 
 
@@ -145,7 +143,6 @@
 			<response value = '30'>30</response>
 			<response value = '31'>31</response>
 		</responses>
-		<dont_know>-7</dont_know>
 	</question>
 
 

@@ -50,8 +50,6 @@
 		<preskip>
 			<skip fieldname='sex' condition = '=' response='1' response_type='fixed' skiptofieldname ='village'></skip>
 		</preskip>
-		<dont_know>-7</dont_know>
-		<refuse>-8</refuse>
 	</question>
 
 
@@ -102,8 +100,6 @@
 			<response value = '5'>Gaming console</response>
 			<response value = '99'>Other (specify)</response>
 		</responses>
-		<refuse>-8</refuse>
-		<na>-6</na>
 	</question>
 
 

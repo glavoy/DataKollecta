@@ -7,6 +7,7 @@
 - when modifying survey - make the background a differnt colour - or add some kind of widget to make it clear
 - do not allow duplicate records for the primary key values - add 'unique' logic check
 - Add time type to gistx
+- for checkbox types, when don;t know or refuse, don;t allow other options
 
 
 ## GistXConfig

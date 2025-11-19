@@ -387,8 +387,11 @@ class _QuestionViewState extends State<QuestionView> {
   Widget _buildDate(Question q) {
     // Check if current answer is a special response
     final currentAnswer = widget.answers[q.fieldName]?.toString();
-    final isDontKnow = currentAnswer == q.dontKnow;
-    final isRefuse = currentAnswer == q.refuse;
+    // Only match special response if answer exists and is non-empty, and special response is defined
+    final isDontKnow = currentAnswer != null && currentAnswer.isNotEmpty &&
+                       q.dontKnow != null && currentAnswer == q.dontKnow;
+    final isRefuse = currentAnswer != null && currentAnswer.isNotEmpty &&
+                     q.refuse != null && currentAnswer == q.refuse;
     final hasSpecialResponse = isDontKnow || isRefuse;
 
     return Column(
