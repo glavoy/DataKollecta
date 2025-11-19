@@ -13,6 +13,10 @@
 
 	<question type = 'date' fieldname = 'vdate' fieldtype = 'date'>
 		<text>Date of visit</text>
+		<date_range>
+			<min_date>-2m</min_date>
+			<max_date>+0d</max_date>
+		</date_range>
 	</question>
 
 

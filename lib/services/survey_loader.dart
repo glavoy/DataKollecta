@@ -70,6 +70,18 @@ class SurveyLoader {
       final refuseNode = q.getElement('refuse');
       final refuse = refuseNode?.innerText.trim();
 
+      // Parse date range
+      String? minDate;
+      String? maxDate;
+      final dateRangeNode = q.getElement('date_range');
+      if (dateRangeNode != null) {
+        final minDateNode = dateRangeNode.getElement('min_date');
+        minDate = minDateNode?.innerText.trim();
+        
+        final maxDateNode = dateRangeNode.getElement('max_date');
+        maxDate = maxDateNode?.innerText.trim();
+      }
+
       questions.add(
         Question(
           type: type,
@@ -84,6 +96,8 @@ class SurveyLoader {
           logicCheck: logicCheck,
           dontKnow: dontKnow,
           refuse: refuse,
+          minDate: minDate,
+          maxDate: maxDate,
         ),
       );
     }

@@ -45,6 +45,8 @@ class Question {
   final String? logicCheck;
   final String? dontKnow; // Special response value for "Don't know" (e.g., "-7")
   final String? refuse;   // Special response value for "Refuse" (e.g., "-8")
+  final String? minDate;  // Date range constraint (e.g., "-1y")
+  final String? maxDate;  // Date range constraint (e.g., "+0d")
 
   Question({
     required this.type,
@@ -59,6 +61,8 @@ class Question {
     this.logicCheck,
     this.dontKnow,
     this.refuse,
+    this.minDate,
+    this.maxDate,
   });
 }
 

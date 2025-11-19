@@ -55,6 +55,10 @@
 
 	<question type = 'date' fieldname = 'pregnant_date' fieldtype = 'date'>
 		<text>Enter the date you found out you were pregnant</text>
+		<date_range>
+			<min_date>-9m</min_date>
+			<max_date>+0d</max_date>
+		</date_range>
 		<preskip>
 			<skip fieldname='pregnant' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='village'></skip>
 		</preskip>

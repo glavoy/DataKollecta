@@ -60,6 +60,10 @@
 		<text>Withdrawal date
 
 (if due to death, record death date)</text>
+		<date_range>
+			<min_date>-1y</min_date>
+			<max_date>+0d</max_date>
+		</date_range>
 		<preskip>
 			<skip fieldname='withdrawreason' condition = '=' response='5' response_type='fixed' skiptofieldname ='movedate_year'></skip>
 		</preskip>

@@ -400,11 +400,30 @@ class _QuestionViewState extends State<QuestionView> {
         if ((q.text ?? '').isNotEmpty) _buildSectionTitle(q.text!),
         InkWell(
           onTap: () async {
+            // Calculate date limits
+            DateTime firstDate = DateTime(1900);
+            DateTime lastDate = DateTime(2100);
+
+            if (q.minDate != null) {
+              final calculated = _calculateDate(q.minDate!);
+              if (calculated != null) firstDate = calculated;
+            }
+            
+            if (q.maxDate != null) {
+              final calculated = _calculateDate(q.maxDate!);
+              if (calculated != null) lastDate = calculated;
+            }
+
+            // Ensure initial date is within range
+            DateTime initialDate = _selectedDate ?? DateTime.now();
+            if (initialDate.isBefore(firstDate)) initialDate = firstDate;
+            if (initialDate.isAfter(lastDate)) initialDate = lastDate;
+
             final picked = await showDatePicker(
               context: context,
-              initialDate: _selectedDate ?? DateTime.now(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime(2100),
+              initialDate: initialDate,
+              firstDate: firstDate,
+              lastDate: lastDate,
             );
             if (picked != null) {
               setState(() {
@@ -580,6 +599,41 @@ class _QuestionViewState extends State<QuestionView> {
         ),
       ],
     );
+  }
+
+  /// Calculate a date from a relative string like "-1y", "+30d"
+  DateTime? _calculateDate(String offset) {
+    if (offset.isEmpty) return null;
+    
+    final now = DateTime.now();
+    // Remove any whitespace
+    final clean = offset.trim();
+    
+    if (clean.length < 3) return null; // Need at least sign, number, unit
+    
+    final sign = clean.substring(0, 1);
+    final unit = clean.substring(clean.length - 1).toLowerCase();
+    final numberStr = clean.substring(1, clean.length - 1);
+    final number = int.tryParse(numberStr);
+    
+    if (number == null) return null;
+    
+    final multiplier = sign == '-' ? -1 : 1;
+    final amount = number * multiplier;
+    
+    switch (unit) {
+      case 'd':
+        return now.add(Duration(days: amount));
+      case 'w':
+        return now.add(Duration(days: amount * 7));
+      case 'm':
+        // Approximate month calculation
+        return DateTime(now.year, now.month + amount, now.day);
+      case 'y':
+        return DateTime(now.year + amount, now.month, now.day);
+      default:
+        return null;
+    }
   }
 
   @override

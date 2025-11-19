@@ -91,6 +91,16 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
       _errorMessage = null;
     });
 
+    // STRICT CHECK: Ensure ALL primary key fields have a selection
+    for (final field in data.primaryKeyFields) {
+      if (_selectedValues[field] == null || _selectedValues[field]!.isEmpty) {
+        setState(() {
+          _errorMessage = 'Please select a value for ${field.toUpperCase()}.';
+        });
+        return;
+      }
+    }
+
     // Get the filtered records based on selections
     final filtered = _getFilteredRecords(data.records, data.primaryKeyFields);
 
@@ -359,6 +369,24 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
     );
     final availableValues =
         _getUniqueValuesForField(filteredRecords, fieldName);
+
+    // Auto-select if only one option exists and it's not already selected
+    if (availableValues.length == 1 && _selectedValues[fieldName] != availableValues.first) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedValues[fieldName] = availableValues.first;
+            // Clear subsequent fields to trigger their rebuild/auto-select if needed
+             final currentIndex = data.primaryKeyFields.indexOf(fieldName);
+              for (int i = currentIndex + 1;
+                  i < data.primaryKeyFields.length;
+                  i++) {
+                _selectedValues[data.primaryKeyFields[i]] = null;
+              }
+          });
+        }
+      });
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
