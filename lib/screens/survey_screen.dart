@@ -41,7 +41,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   final Set<String> _visitedFields =
       {}; // Track which questions were actually displayed
   late Future<List<Question>> _questions = _loadSurvey();
-  List<Question>? _loadedQuestions; // Holds the questions after future completes
+  List<Question>?
+      _loadedQuestions; // Holds the questions after future completes
   bool _isSaving = false; // Flag to prevent multiple submissions
   String? _logicError; // Holds the current logic check error message
 
@@ -247,20 +248,20 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Perform uniqueness check if configured
     if (currentQ.uniqueCheck != null) {
       final value = _answers[currentQ.fieldName]?.toString();
-      
+
       // Get the original value (if any) to see if it changed
       final originalValue = _originalAnswers?[currentQ.fieldName]?.toString();
 
       // Only check if value is present AND it is different from the original
-      // If value == originalValue, it means the user hasn't changed it, 
+      // If value == originalValue, it means the user hasn't changed it,
       // so it's valid (it's their own record).
       if (value != null && value.isNotEmpty && value != originalValue) {
         final tableName =
             widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-        
-        bool isUnique = await DbService.isValueUnique(
-            tableName, currentQ.fieldName, value);
-            
+
+        bool isUnique =
+            await DbService.isValueUnique(tableName, currentQ.fieldName, value);
+
         if (!isUnique) {
           setState(() {
             _logicError = currentQ.uniqueCheck!.message ??
@@ -513,7 +514,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         final questions = snap.data!;
-        _loadedQuestions = questions; // Keep a reference to the loaded questions
+        _loadedQuestions =
+            questions; // Keep a reference to the loaded questions
 
         // Skip automatic and information questions on initial load
         if (_currentQuestion == 0) {
@@ -532,15 +534,18 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
         final isFirst = _history.isEmpty;
         final canProceed = (q.type == QuestionType.information ||
-            (_isAnswered(q) && _isValid(q))) && _logicError == null;
+                (_isAnswered(q) && _isValid(q))) &&
+            _logicError == null;
         final isLast = _currentQuestion == questions.length - 1 ||
             !_hasNextDisplayedQuestion(questions, _currentQuestion);
-        final progress = (_currentQuestion + 1) / questions.length;
+        // final progress = (_currentQuestion + 1) / questions.length;
 
         return Scaffold(
-          backgroundColor: widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
+          backgroundColor:
+              widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
           appBar: AppBar(
-            backgroundColor: widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
+            backgroundColor:
+                widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
             toolbarHeight: 60,
             automaticallyImplyLeading: false,
             title: Row(
@@ -750,14 +755,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
       )) {
         // Get the list of missing fields to show in the error message
         final required = IdGenerator.getRequiredFields(widget.idConfig!);
-        final missing = required.where((f) => _answers[f] == null || _answers[f].toString().isEmpty).toList();
+        final missing = required
+            .where((f) => _answers[f] == null || _answers[f].toString().isEmpty)
+            .toList();
 
         // Show an error dialog and stop
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Missing Information'),
-            content: Text('Cannot generate Subject ID. Please go back and answer the following questions:\n\n- ${missing.join('\n- ')}'),
+            content: Text(
+                'Cannot generate Subject ID. Please go back and answer the following questions:\n\n- ${missing.join('\n- ')}'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -770,7 +778,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
 
       // Generate the ID
-      final tableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+      final tableName =
+          widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
       final generatedId = await IdGenerator.generateId(
         tableName: tableName,
         idConfigJson: widget.idConfig!,
@@ -779,10 +788,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // Add the generated ID to the answers map for the correct field (subjid or hhid)
       // We find the field by looking for an automatic question that isn't in the registry
-      final idHolderField = questions.firstWhere(
-        (q) => q.type == QuestionType.automatic && !AutoFields.getRegistry().containsKey(q.fieldName),
-        orElse: () => Question(fieldName: 'subjid', type: QuestionType.automatic, fieldType: 'text'), // fallback
-      ).fieldName;
+      final idHolderField = questions
+          .firstWhere(
+            (q) =>
+                q.type == QuestionType.automatic &&
+                !AutoFields.getRegistry().containsKey(q.fieldName),
+            orElse: () => Question(
+                fieldName: 'subjid',
+                type: QuestionType.automatic,
+                fieldType: 'text'), // fallback
+          )
+          .fieldName;
 
       _answers[idHolderField] = generatedId;
       debugPrint('Generated ID "$generatedId" for field "$idHolderField"');

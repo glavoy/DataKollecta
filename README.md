@@ -9,6 +9,7 @@ X-platform GiST
 - logic checks can use compound statements
 - added date range functionality
 - added 'unique' logic check - do not allow duplicate records for this field
+- app checks for new crf's and also checks for new fields - it adds everything to the database.
 
 
 ### Instructions

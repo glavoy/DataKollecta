@@ -1,8 +1,9 @@
 ### To Do
 - add the name of the project to the DD - no hard coding in the app
-- add DB logic to check if all the fields exist in the database - based on the xml file - if not add new fields - this is now automatic
 - Add time type to gistx
-- upload to ftp server
+- upload/download to ftp server
+- add functionality to modify a table if necessary - for example chaning a field type from text to int and vice versa
+- add functionality to do a 'repeat' section of an interview (household members, nets, etc)
 
 
 ## GistXConfig
