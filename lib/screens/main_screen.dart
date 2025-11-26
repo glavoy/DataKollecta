@@ -10,20 +10,6 @@ class MainScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 120,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/branding/gistx.png',
-                width: 100,
-                height: 100,
-              ),
-            ),
-            const SizedBox(width: 10),
-          ],
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
@@ -50,9 +36,22 @@ class MainScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const SizedBox(height: 60),
+                  // Centered logo
+                  Center(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/branding/gistx.png',
+                        width: 150,
+                        height: 150,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   Text(
                     '${AppConfig.applicationName}',
                     style: const TextStyle(

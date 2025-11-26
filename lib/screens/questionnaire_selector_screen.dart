@@ -191,6 +191,19 @@ class _QuestionnaireSelectorScreenState
               ? 'Select Questionnaire to Modify'
               : 'Select Questionnaire',
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/branding/gistx.png',
+                width: 50,
+                height: 50,
+              ),
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

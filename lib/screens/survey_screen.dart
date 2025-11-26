@@ -604,21 +604,35 @@ class _SurveyScreenState extends State<SurveyScreen> {
             backgroundColor:
                 widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
             toolbarHeight: 60,
-            automaticallyImplyLeading: false,
-            title: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    'assets/branding/gistx.png',
-                    width: 50,
-                    height: 50,
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Cancel Interview',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Cancel Interview'),
+                    content: const Text(
+                        'Are you sure you want to cancel the interview? \n\nAll data will be lost!'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('No'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close dialog
+                          Navigator.of(context).pop(false); // Return false to indicate cancelled
+                        },
+                        child: const Text('Yes'),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                // Show progress indicator if in repeat mode
-                if (widget.repeatIndex != null && widget.repeatTotal != null)
-                  Container(
+                );
+              },
+            ),
+            title: widget.repeatIndex != null && widget.repeatTotal != null
+                ? Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.blue.shade100,
@@ -632,48 +646,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
                         color: Colors.blue.shade900,
                       ),
                     ),
-                  ),
-                // const Text("Geoff's Dart Questionnaire"), // or your new name
-              ],
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 12.0),
-                child: FilledButton.tonal(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Cancel Interview'),
-                        content: const Text(
-                            'Are you sure you want to cancel the interview? \n\nAll data will be lost!'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('No'),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop(); // Close dialog
-                              Navigator.of(context).pop(false); // Return false to indicate cancelled
-                            },
-                            child: const Text('Yes'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  style: FilledButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Cancel'),
-                ),
-              ),
-            ],
+                  )
+                : null,
           ),
           body: SafeArea(
             child: Center(

@@ -201,40 +201,7 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 120,
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/branding/gistx.png',
-                width: 100,
-                height: 100,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text('Select Record'),
-          ],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: FilledButton.tonal(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Back'),
-            ),
-          ),
-        ],
+        title: const Text('Select Record'),
       ),
       body: SafeArea(
         child: Center(
