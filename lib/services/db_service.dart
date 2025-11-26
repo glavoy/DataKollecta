@@ -558,6 +558,101 @@ class DbService {
     }
   }
 
+  /// Get CRF configuration for a specific table
+  /// Returns the CRF record with all metadata or null if not found
+  static Future<Map<String, dynamic>?> getCrfConfig(String tableName) async {
+    if (_db == null) {
+      _logError('Database not initialized');
+      return null;
+    }
+
+    try {
+      final results = await _db!.query(
+        'crfs',
+        where: 'tablename = ?',
+        whereArgs: [tableName],
+      );
+
+      if (results.isEmpty) {
+        return null;
+      }
+
+      return results.first;
+    } catch (e) {
+      _logError('Error fetching CRF config for $tableName: $e');
+      return null;
+    }
+  }
+
+  /// Count records in a table matching a where clause
+  /// Returns the count of matching records
+  static Future<int> getRecordCount({
+    required String tableName,
+    String? where,
+    List<dynamic>? whereArgs,
+  }) async {
+    if (_db == null) {
+      _logError('Database not initialized');
+      return 0;
+    }
+
+    try {
+      final tableExists = await _tableExists(tableName);
+      if (!tableExists) {
+        _logError('Table $tableName does not exist');
+        return 0;
+      }
+
+      final results = await _db!.rawQuery(
+        'SELECT COUNT(*) as count FROM $tableName${where != null ? ' WHERE $where' : ''}',
+        whereArgs,
+      );
+
+      if (results.isEmpty) {
+        return 0;
+      }
+
+      return (results.first['count'] as int?) ?? 0;
+    } catch (e) {
+      _logError('Error counting records in $tableName: $e');
+      return 0;
+    }
+  }
+
+  /// Update a specific field in a record
+  /// Used for auto-syncing counts
+  static Future<void> updateField({
+    required String tableName,
+    required String field,
+    required dynamic value,
+    required String where,
+    required List<dynamic> whereArgs,
+  }) async {
+    if (_db == null) {
+      _logError('Database not initialized');
+      return;
+    }
+
+    try {
+      final tableExists = await _tableExists(tableName);
+      if (!tableExists) {
+        _logError('Table $tableName does not exist');
+        return;
+      }
+
+      await _db!.update(
+        tableName,
+        {field: value},
+        where: where,
+        whereArgs: whereArgs,
+      );
+
+      _log('Updated $tableName.$field to $value where $where');
+    } catch (e) {
+      _logError('Error updating field $field in $tableName: $e');
+    }
+  }
+
   // Logging helpers
   static void _log(String message) {
     if (AppConfig.enableDebugLogging) {

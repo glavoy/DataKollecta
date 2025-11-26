@@ -17,6 +17,8 @@ class SurveyScreen extends StatefulWidget {
   final Map<String, dynamic>? prepopulatedAnswers;
   final String? idConfig;
   final String? linkingField;
+  final int? repeatIndex;        // Current iteration (e.g., 2)
+  final int? repeatTotal;        // Total iterations (e.g., 5)
 
   const SurveyScreen({
     super.key,
@@ -27,6 +29,8 @@ class SurveyScreen extends StatefulWidget {
     this.prepopulatedAnswers,
     this.idConfig,
     this.linkingField,
+    this.repeatIndex,
+    this.repeatTotal,
   });
 
   @override
@@ -612,6 +616,23 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
+                // Show progress indicator if in repeat mode
+                if (widget.repeatIndex != null && widget.repeatTotal != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Member ${widget.repeatIndex} of ${widget.repeatTotal}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
                 // const Text("Geoff's Dart Questionnaire"), // or your new name
               ],
             ),
@@ -634,8 +655,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                           TextButton(
                             onPressed: () {
                               Navigator.of(context).pop(); // Close dialog
-                              Navigator.of(context)
-                                  .pop(); // Return to main screen
+                              Navigator.of(context).pop(false); // Return false to indicate cancelled
                             },
                             child: const Text('Yes'),
                           ),
@@ -919,8 +939,353 @@ class _SurveyScreenState extends State<SurveyScreen> {
     if (!mounted) return;
 
     if (saveSuccessful) {
-      // Success dialog - modal (barrierDismissible: false prevents tapping outside)
-      final isUpdate = widget.uniqueId != null;
+      // Check if we should start auto-repeat for child surveys
+      await _checkAndStartAutoRepeat(context);
+    } else {
+      // Error dialog
+      _showSaveErrorDialog(context, errorMessage);
+    }
+  }
+
+  /// Check if any child surveys should auto-repeat after this survey completes
+  Future<void> _checkAndStartAutoRepeat(BuildContext context) async {
+    try {
+      final tableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+
+      // Get all CRF records to find child surveys
+      final allCrfs = await DbService.getExistingRecords('crfs');
+
+      // Sort by display_order to ensure repeats happen in correct sequence
+      final sortedCrfs = List<Map<String, dynamic>>.from(allCrfs);
+      sortedCrfs.sort((a, b) {
+        final orderA = (a['display_order'] as int?) ?? 0;
+        final orderB = (b['display_order'] as int?) ?? 0;
+        return orderA.compareTo(orderB);
+      });
+
+      for (final crf in sortedCrfs) {
+        final childTableName = crf['tablename']?.toString();
+        final parentTable = crf['parenttable']?.toString();
+        final repeatCountSource = crf['repeat_count_source']?.toString();
+        final autoStartRepeat = (crf['auto_start_repeat'] as int?) ?? 0;
+
+        // Check if this is a child of the current survey
+        if (childTableName != null &&
+            parentTable == tableName &&
+            repeatCountSource == tableName &&
+            autoStartRepeat > 0) {
+
+          // Get the repeat count field
+          final repeatCountField = crf['repeat_count_field']?.toString();
+          if (repeatCountField == null || repeatCountField.isEmpty) {
+            continue;
+          }
+
+          // Get the repeat count from the answers
+          final repeatCountValue = _answers[repeatCountField];
+          if (repeatCountValue == null) {
+            continue;
+          }
+
+          final repeatCount = int.tryParse(repeatCountValue.toString());
+          if (repeatCount == null || repeatCount <= 0) {
+            continue;
+          }
+
+          // Get the linking field to pass to child surveys
+          final linkingField = crf['linkingfield']?.toString();
+          if (linkingField == null) {
+            continue;
+          }
+
+          final linkingValue = _answers[linkingField];
+          if (linkingValue == null) {
+            continue;
+          }
+
+          // Prompt user to start repeat surveys
+          if (autoStartRepeat == 1) {
+            // Prompt mode
+            final shouldStart = await _promptStartRepeatSurveys(
+              context,
+              childTableName,
+              crf['displayname']?.toString() ?? childTableName,
+              repeatCount,
+            );
+
+            if (shouldStart == true) {
+              await _startRepeatSurveyLoop(
+                context,
+                childTableName,
+                repeatCount,
+                linkingField,
+                linkingValue.toString(),
+                crf,
+              );
+              return; // Don't show success dialog, loop handles navigation
+            }
+          } else if (autoStartRepeat == 2) {
+            // Force mode - auto start
+            await _startRepeatSurveyLoop(
+              context,
+              childTableName,
+              repeatCount,
+              linkingField,
+              linkingValue.toString(),
+              crf,
+            );
+            return; // Don't show success dialog, loop handles navigation
+          }
+        }
+      }
+
+      // No auto-repeat configured, show success dialog
+      _showSaveSuccessDialog(context);
+    } catch (e) {
+      debugPrint('Error checking auto-repeat: $e');
+      _showSaveSuccessDialog(context);
+    }
+  }
+
+  /// Prompt user to start repeat surveys
+  Future<bool?> _promptStartRepeatSurveys(
+    BuildContext context,
+    String childTableName,
+    String displayName,
+    int count,
+  ) async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Members Now?'),
+        content: Text(
+          'You indicated $count ${count == 1 ? 'person' : 'people'}.\n\n'
+          'Would you like to add them now?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Add Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Start the repeat survey loop
+  Future<void> _startRepeatSurveyLoop(
+    BuildContext context,
+    String childTableName,
+    int repeatCount,
+    String linkingField,
+    String linkingValue,
+    Map<String, dynamic> crfConfig,
+  ) async {
+    final repeatCountField = crfConfig['repeat_count_field']?.toString();
+    final enforceCountMode = (crfConfig['repeat_enforce_count'] as int?) ?? 1; // Default to warn mode
+
+    int completedCount = 0;
+
+    for (int i = 1; i <= repeatCount; i++) {
+      if (!mounted) break;
+
+      // Navigate to child survey
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SurveyScreen(
+            questionnaireFilename: '$childTableName.xml',
+            prepopulatedAnswers: {linkingField: linkingValue},
+            repeatIndex: i,
+            repeatTotal: repeatCount,
+          ),
+        ),
+      );
+
+      // Check if user completed the survey (result == true means saved)
+      if (result == true) {
+        completedCount++;
+      } else {
+        // User exited without saving
+        // Check if we should enforce count
+        if (enforceCountMode == 2) {
+          // Force mode - must complete
+          final shouldContinue = await _showMustCompleteDialog(context, repeatCount, i);
+          if (shouldContinue) {
+            i--; // Retry this iteration
+            continue;
+          } else {
+            break; // User insisted on exiting
+          }
+        } else {
+          // User can exit, but we'll check count at the end
+          break;
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    // After loop, check if count matches
+    await _checkRepeatCountMismatch(
+      context,
+      childTableName,
+      linkingField,
+      linkingValue,
+      repeatCount,
+      completedCount,
+      enforceCountMode,
+      repeatCountField,
+    );
+  }
+
+  /// Show dialog when user must complete all members
+  Future<bool> _showMustCompleteDialog(BuildContext context, int total, int current) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Must Complete All Members'),
+        content: Text('You must add all $total members.\n\nCurrently on member $current of $total.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Exit Anyway'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? true;
+  }
+
+  /// Check for count mismatch and handle based on enforce mode
+  Future<void> _checkRepeatCountMismatch(
+    BuildContext context,
+    String childTableName,
+    String linkingField,
+    String linkingValue,
+    int expectedCount,
+    int completedCount,
+    int enforceCountMode,
+    String? repeatCountField,
+  ) async {
+    // Get actual count from database
+    final actualCount = await DbService.getRecordCount(
+      tableName: childTableName,
+      where: '$linkingField = ?',
+      whereArgs: [linkingValue],
+    );
+
+    if (actualCount == expectedCount) {
+      // Perfect match, show success and return
+      _showSaveSuccessDialog(context);
+      return;
+    }
+
+    // Mismatch detected
+    debugPrint('Count mismatch: expected=$expectedCount, actual=$actualCount');
+
+    if (enforceCountMode == 0) {
+      // Flexible mode - just show success
+      _showSaveSuccessDialog(context);
+      return;
+    } else if (enforceCountMode == 1) {
+      // Warn mode - show dialog with options
+      final action = await _showCountMismatchDialog(
+        context,
+        expectedCount,
+        actualCount,
+      );
+
+      if (action == 'update' && repeatCountField != null) {
+        // Update the parent record's count field
+        final parentTableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+        final parentLinkingValue = _answers[linkingField];
+
+        await DbService.updateField(
+          tableName: parentTableName,
+          field: repeatCountField,
+          value: actualCount,
+          where: '$linkingField = ?',
+          whereArgs: [parentLinkingValue],
+        );
+
+        debugPrint('Updated $parentTableName.$repeatCountField to $actualCount');
+      }
+    } else if (enforceCountMode == 3) {
+      // Auto-sync mode - silently update parent record
+      if (repeatCountField != null) {
+        final parentTableName = widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+        final parentLinkingValue = _answers[linkingField];
+
+        await DbService.updateField(
+          tableName: parentTableName,
+          field: repeatCountField,
+          value: actualCount,
+          where: '$linkingField = ?',
+          whereArgs: [parentLinkingValue],
+        );
+
+        debugPrint('Auto-synced $parentTableName.$repeatCountField to $actualCount');
+      }
+    }
+
+    _showSaveSuccessDialog(context);
+  }
+
+  /// Show count mismatch warning dialog
+  Future<String?> _showCountMismatchDialog(
+    BuildContext context,
+    int expected,
+    int actual,
+  ) async {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Incomplete Data'),
+        content: Text(
+          'You indicated $expected ${expected == 1 ? 'person' : 'people'} but only added $actual.\n\n'
+          'This will cause data quality issues.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'force'),
+            child: const Text('Exit Anyway ⚠️'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'update'),
+            child: Text('Update Count to $actual'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show save success dialog
+  void _showSaveSuccessDialog(BuildContext context) {
+    final isUpdate = widget.uniqueId != null;
+
+    // Check if we're in a repeat loop by seeing if we have prepopulated answers (indicates child survey)
+    final isInRepeatLoop = widget.prepopulatedAnswers != null && !isUpdate;
+
+    if (isInRepeatLoop) {
+      // In repeat loop - just return true to continue to next iteration
+      Navigator.of(context).pop(true);
+    } else {
+      // Normal flow - show success dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -947,76 +1312,73 @@ class _SurveyScreenState extends State<SurveyScreen> {
           ],
         ),
       );
-    } else {
-      // Error dialog
-      if (AppConfig.enableErrorDialogs) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.red, size: 28),
-                SizedBox(width: 8),
-                Text('Save Failed'),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Failed to save the interview data to the database.',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('Error details:'),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      errorMessage ?? 'Unknown error',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Please check:\n'
-                    '• Database file exists at the configured path\n'
-                    '• Table name matches the survey filename\n'
-                    '• All required columns exist in the table',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Close dialog
-                  // Pop until we reach main screen
-                  if (widget.uniqueId != null) {
-                    // In edit mode: pop survey + record selector screens
-                    Navigator.of(context).popUntil((route) => route.isFirst);
-                  } else {
-                    // In new mode: just pop survey screen
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: const Text('Close'),
-              ),
+    }
+  }
+
+  /// Show save error dialog
+  void _showSaveErrorDialog(BuildContext context, String? errorMessage) {
+    if (AppConfig.enableErrorDialogs) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red, size: 28),
+              SizedBox(width: 8),
+              Text('Save Failed'),
             ],
           ),
-        );
-      }
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Failed to save the interview data to the database.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text('Error details:'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    errorMessage ?? 'Unknown error',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Please check:\n'
+                  '• Database file exists at the configured path\n'
+                  '• Table name matches the survey filename\n'
+                  '• All required columns exist in the table',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog
+                setState(() {
+                  _isSaving = false;
+                });
+              },
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
     }
   }
 }

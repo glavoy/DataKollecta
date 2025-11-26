@@ -27,7 +27,7 @@
 	</question>
 
 
-	<question type = 'text' fieldname = 'numhhmembers' fieldtype = 'text_integer'>
+	<question type = 'text' fieldname = 'num_people' fieldtype = 'text_integer'>
 		<text>How many people stay in this household?</text>
 		<maxCharacters>2</maxCharacters>
 		<numeric_check>

@@ -43,10 +43,16 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
       final pkFields = await DbService.getPrimaryKeyFields(tableName);
       final records = await DbService.getExistingRecords(tableName);
 
+      // Get display fields configuration from CRFs table
+      final crfConfig = await DbService.getCrfConfig(tableName);
+      final displayFieldsStr = crfConfig?['display_fields']?.toString();
+      final displayFields = displayFieldsStr?.split(',').map((s) => s.trim()).toList() ?? [];
+
       return RecordSelectorData(
         tableName: tableName,
         primaryKeyFields: pkFields,
         records: records,
+        displayFields: displayFields,
       );
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -64,6 +70,51 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
         .toList();
     values.sort();
     return values;
+  }
+
+  /// Build display text for a dropdown item
+  /// Format: "value - displayField1, displayField2" or just "value" if no display fields
+  /// Only applies display fields to non-first primary key fields (e.g., linenum, not hhid)
+  String _buildDisplayText({
+    required String value,
+    required String fieldName,
+    required List<Map<String, dynamic>> records,
+    required List<String> displayFields,
+    required List<String> primaryKeyFields,
+  }) {
+    // Only show display fields for non-first primary key fields
+    // e.g., show name for linenum (2nd field), but not for hhid (1st field)
+    final isFirstPrimaryKey = primaryKeyFields.isNotEmpty &&
+                               fieldName == primaryKeyFields.first;
+
+    if (displayFields.isEmpty || isFirstPrimaryKey) {
+      return value;
+    }
+
+    // Find the record with this value for the current field
+    final record = records.firstWhere(
+      (r) => r[fieldName]?.toString() == value,
+      orElse: () => {},
+    );
+
+    if (record.isEmpty) {
+      return value;
+    }
+
+    // Build display text from display fields
+    final displayParts = <String>[];
+    for (final displayField in displayFields) {
+      final displayValue = record[displayField]?.toString();
+      if (displayValue != null && displayValue.isNotEmpty) {
+        displayParts.add(displayValue);
+      }
+    }
+
+    if (displayParts.isEmpty) {
+      return value;
+    }
+
+    return '$value - ${displayParts.join(", ")}';
   }
 
   /// Filter records based on current selections
@@ -406,7 +457,13 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
           items: availableValues
               .map((value) => DropdownMenuItem(
                     value: value,
-                    child: Text(value),
+                    child: Text(_buildDisplayText(
+                      value: value,
+                      fieldName: fieldName,
+                      records: filteredRecords,
+                      displayFields: data.displayFields,
+                      primaryKeyFields: data.primaryKeyFields,
+                    )),
                   ))
               .toList(),
           onChanged: (value) {
@@ -434,10 +491,12 @@ class RecordSelectorData {
   final String tableName;
   final List<String> primaryKeyFields;
   final List<Map<String, dynamic>> records;
+  final List<String> displayFields;
 
   RecordSelectorData({
     required this.tableName,
     required this.primaryKeyFields,
     required this.records,
+    this.displayFields = const [],
   });
 }
