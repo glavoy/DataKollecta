@@ -356,15 +356,18 @@ class DbService {
 
       final Map<String, dynamic> rowData = {};
       for (final entry in answers.entries) {
+        final key = entry.key;
+        if (key.trim().isEmpty) continue; // Skip empty keys
+
         final val = entry.value;
         if (val == null) continue;
 
         if (val is List) {
-          rowData[entry.key] = val.map((e) => e.toString()).join(',');
+          rowData[key] = val.map((e) => e.toString()).join(',');
         } else if (val is DateTime) {
-          rowData[entry.key] = val.toIso8601String();
+          rowData[key] = val.toIso8601String();
         } else {
-          rowData[entry.key] = val;
+          rowData[key] = val;
         }
       }
 
@@ -438,6 +441,8 @@ class DbService {
 
       for (final entry in answers.entries) {
         final key = entry.key;
+        if (key.trim().isEmpty) continue; // Skip empty keys
+
         final val = entry.value;
 
         if (!existingColumns.contains(key.toLowerCase())) continue;

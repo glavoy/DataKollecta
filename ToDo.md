@@ -7,6 +7,7 @@
 - Add stats. All eligible variables in accordian type, one opens, one closes
 - app should look at the xml files listed in the json file rather than just the ones in the folder - we may remove some from the survey
 - concerned about the yaml file having hard-code assets
+- I don't think 'crfsMetadataFile' is needed in the survey_manifest.json file
 
 
 ## GistXConfig

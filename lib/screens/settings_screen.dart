@@ -1,5 +1,5 @@
 // lib/screens/settings_screen.dart
-import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/settings_service.dart';
@@ -17,16 +17,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Controllers for text fields
   final _surveyorIdController = TextEditingController();
-  final _ftpHostController = TextEditingController();
   final _ftpUsernameController = TextEditingController();
   final _ftpPasswordController = TextEditingController();
 
   bool _isLoading = true;
   bool _obscurePassword = true;
-
-  // Available surveys - will be populated by scanning assets/surveys folder
-  final List<String> _availableSurveys = [];
-  String? _selectedSurvey;
 
   @override
   void initState() {
@@ -35,15 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _initialize() async {
-    // Load surveys first, then settings
-    await _loadAvailableSurveys();
     await _loadSettings();
   }
 
   @override
   void dispose() {
     _surveyorIdController.dispose();
-    _ftpHostController.dispose();
     _ftpUsernameController.dispose();
     _ftpPasswordController.dispose();
     super.dispose();
@@ -51,66 +43,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final surveyorId = await _settingsService.surveyorId;
-    final ftpHost = await _settingsService.ftpHost;
+    // ftpHost is no longer used in UI
     final ftpUsername = await _settingsService.ftpUsername;
     final ftpPassword = await _settingsService.ftpPassword;
-    final activeSurvey = await _settingsService.activeSurvey;
 
     if (mounted) {
       setState(() {
         _surveyorIdController.text = surveyorId ?? '';
-        _ftpHostController.text = ftpHost ?? '';
         _ftpUsernameController.text = ftpUsername ?? '';
         _ftpPasswordController.text = ftpPassword ?? '';
-        _selectedSurvey = activeSurvey;
+
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _loadAvailableSurveys() async {
-    try {
-      // List of known survey folders to check
-      const surveyFolders = [
-        'fake_household_survey',
-        'fake_clinical_trial',
-      ];
-
-      debugPrint('Scanning for survey manifests in ${surveyFolders.length} folders...');
-
-      for (final folder in surveyFolders) {
-        final manifestPath = 'assets/surveys/$folder/survey_manifest.json';
-
-        try {
-          debugPrint('Attempting to load: $manifestPath');
-          final manifestJson = await rootBundle.loadString(manifestPath);
-          final surveyData = json.decode(manifestJson);
-          final surveyName = surveyData['surveyName'] as String?;
-
-          debugPrint('Found survey: $surveyName');
-
-          if (surveyName != null && !_availableSurveys.contains(surveyName)) {
-            if (mounted) {
-              setState(() {
-                _availableSurveys.add(surveyName);
-              });
-            }
-            debugPrint('Added survey to list: $surveyName');
-          }
-        } catch (e) {
-          debugPrint('Could not load manifest from $manifestPath: $e');
-          // Continue to next folder
-        }
-      }
-
-      debugPrint('Final available surveys (${_availableSurveys.length}): $_availableSurveys');
-
-      if (_availableSurveys.isEmpty) {
-        debugPrint('WARNING: No surveys found - please ensure flutter run was executed with a full rebuild');
-        debugPrint('Try: flutter clean && flutter run');
-      }
-    } catch (e) {
-      debugPrint('Error scanning for surveys: $e');
     }
   }
 
@@ -119,10 +63,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       try {
         await _settingsService.saveAllSettings(
           surveyorId: _surveyorIdController.text.trim(),
-          ftpHost: _ftpHostController.text.trim(),
+          ftpHost: '', // Host is hidden/hardcoded, passing empty for now
           ftpUsername: _ftpUsernameController.text.trim(),
           ftpPassword: _ftpPasswordController.text,
-          activeSurvey: _selectedSurvey,
         );
 
         if (mounted) {
@@ -164,7 +107,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: FilledButton.tonal(
               onPressed: _saveSettings,
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -187,9 +131,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 24),
                     Text(
                       'User Settings',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -211,84 +156,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(),
                     const SizedBox(height: 16),
                     Text(
-                      'Survey Selection',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Survey dropdown with current value display
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Active Survey',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.poll),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          value: _availableSurveys.contains(_selectedSurvey)
-                              ? _selectedSurvey
-                              : null,
-                          items: _availableSurveys.isEmpty
-                              ? [
-                                  const DropdownMenuItem(
-                                    value: null,
-                                    enabled: false,
-                                    child: Text('No surveys available - rebuild app'),
-                                  )
-                                ]
-                              : _availableSurveys.map((survey) {
-                                  return DropdownMenuItem(
-                                    value: survey,
-                                    child: Text(survey),
-                                  );
-                                }).toList(),
-                          onChanged: _availableSurveys.isEmpty
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _selectedSurvey = value;
-                                  });
-                                },
-                          hint: Text(_availableSurveys.isEmpty
-                              ? 'No surveys found'
-                              : 'Select a survey'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    Text(
-                      'FTP Settings (Optional)',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      'Server Credentials',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'These settings will be used for downloading surveys and uploading data in the future.',
+                      'Enter your credentials to access the survey server.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _ftpHostController,
-                      decoration: const InputDecoration(
-                        labelText: 'FTP Host',
-                        hintText: 'ftp.example.com',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.cloud),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
                       controller: _ftpUsernameController,
                       decoration: const InputDecoration(
-                        labelText: 'FTP Username',
-                        hintText: 'Enter FTP username',
+                        labelText: 'Username',
+                        hintText: 'Enter username',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.account_circle),
                       ),
@@ -298,8 +184,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _ftpPasswordController,
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
-                        labelText: 'FTP Password',
-                        hintText: 'Enter FTP password',
+                        labelText: 'Password',
+                        hintText: 'Enter password',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(

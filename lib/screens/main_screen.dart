@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
 import 'questionnaire_selector_screen.dart';
 import 'settings_screen.dart';
+import 'sync_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -15,23 +18,108 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   final _settingsService = SettingsService();
   final _surveyConfig = SurveyConfigService();
-  String _surveyName = 'GiSTX Survey App';
+  // Available surveys - will be populated by scanning assets/surveys folder
+  final List<String> _availableSurveys = [];
+  String _surveyName = 'Select a Survey';
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSurveyName();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _loadAvailableSurveys();
+    await _loadSurveyName();
   }
 
   Future<void> _loadSurveyName() async {
     final activeSurvey = await _settingsService.activeSurvey;
     if (mounted) {
       setState(() {
-        _surveyName = activeSurvey ?? 'GiSTX Survey App';
+        _surveyName = activeSurvey ?? 'Select a Survey';
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadAvailableSurveys() async {
+    try {
+      // List of known survey folders to check
+      const surveyFolders = [
+        'fake_household_survey',
+        'fake_clinical_trial',
+      ];
+
+      debugPrint(
+          'Scanning for survey manifests in ${surveyFolders.length} folders...');
+
+      for (final folder in surveyFolders) {
+        final manifestPath = 'assets/surveys/$folder/survey_manifest.json';
+
+        try {
+          debugPrint('Attempting to load: $manifestPath');
+          final manifestJson = await rootBundle.loadString(manifestPath);
+          final surveyData = json.decode(manifestJson);
+          final surveyName = surveyData['surveyName'] as String?;
+
+          debugPrint('Found survey: $surveyName');
+
+          if (surveyName != null && !_availableSurveys.contains(surveyName)) {
+            if (mounted) {
+              setState(() {
+                _availableSurveys.add(surveyName);
+              });
+            }
+            debugPrint('Added survey to list: $surveyName');
+          }
+        } catch (e) {
+          debugPrint('Could not load manifest from $manifestPath: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error scanning for surveys: $e');
+    }
+  }
+
+  Future<void> _changeSurvey() async {
+    if (_availableSurveys.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No surveys available to select.')),
+      );
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Select Active Survey'),
+        children: _availableSurveys.map((survey) {
+          return SimpleDialogOption(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _settingsService.setActiveSurvey(survey);
+              await _loadSurveyName();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                survey,
+                style: TextStyle(
+                  fontWeight: survey == _surveyName
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                  color: survey == _surveyName
+                      ? Theme.of(context).primaryColor
+                      : null,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   @override
@@ -44,45 +132,37 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.tonal(
-              onPressed: () async {
-                // Navigate to settings and reload survey name when returning
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                );
-                // Reload survey name after returning from settings
-                _loadSurveyName();
-              },
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+          IconButton(
+            icon: const Icon(Icons.cloud_sync_outlined),
+            tooltip: 'Sync Center',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SyncScreen(),
                 ),
-              ),
-              child: const Text('Settings'),
-            ),
+              );
+            },
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: FilledButton.tonal(
-              onPressed: () {
-                exit(0);
-              },
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
                 ),
-              ),
-              child: const Text('Exit'),
-            ),
+              );
+              _loadSurveyName();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.exit_to_app),
+            tooltip: 'Exit',
+            onPressed: () {
+              exit(0);
+            },
           ),
         ],
       ),
@@ -96,30 +176,86 @@ class _MainScreenState extends State<MainScreen> {
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 60),
+                  const SizedBox(height: 40),
                   // Centered logo
                   Center(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
                         'assets/branding/gistx.png',
-                        width: 150,
-                        height: 150,
+                        width: 120,
+                        height: 120,
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    _surveyName,
-                    style: const TextStyle(
-                        fontSize: 32, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
+
+                  // Current Survey Card
+                  Card(
+                    elevation: 0,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withOpacity(0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.2),
+                      ),
+                    ),
+                    child: InkWell(
+                      onTap: _changeSurvey,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Text(
+                              'CURRENT SURVEY',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _surveyName,
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.arrow_drop_down_circle_outlined,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
+
                   const SizedBox(height: 48),
                   FilledButton.icon(
                     onPressed: () async {
                       // Check if settings are configured
-                      final isConfigured = await _surveyConfig.areSettingsConfigured();
+                      final isConfigured =
+                          await _surveyConfig.areSettingsConfigured();
 
                       if (!isConfigured) {
                         _showSettingsRequiredDialog(context);
@@ -150,7 +286,8 @@ class _MainScreenState extends State<MainScreen> {
                   OutlinedButton.icon(
                     onPressed: () async {
                       // Check if settings are configured
-                      final isConfigured = await _surveyConfig.areSettingsConfigured();
+                      final isConfigured =
+                          await _surveyConfig.areSettingsConfigured();
 
                       if (!isConfigured) {
                         _showSettingsRequiredDialog(context);
@@ -209,14 +346,15 @@ class _MainScreenState extends State<MainScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.push(
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SettingsScreen(),
                 ),
               );
+              _loadSurveyName();
             },
             child: const Text('Go to Settings'),
           ),
