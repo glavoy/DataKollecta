@@ -3,7 +3,8 @@
 - Add time type to gistx
 - upload/download to ftp server
 - add functionality to modify a table if necessary - for example chaning a field type from text to int and vice versa
-- add functionality to do a 'repeat' section of an interview (household members, nets, etc)
+- Get setup/config working on ftp wserver
+- Add stats. All eligible variables in accordian type, one opens, one closes
 
 
 ## GistXConfig

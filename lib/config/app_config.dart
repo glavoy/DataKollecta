@@ -8,7 +8,7 @@ import 'dart:io';
 
 class AppConfig {
   // Application name - displayed on the main welcome screen
-  static const String applicationName = 'Welcome to GiSTX';
+  static const String applicationName = 'Fake Household Survey';
 
   // Software version - displayed in the app and saved with each interview
   static const String softwareVersion = 'GiSTX 0.0.1';
