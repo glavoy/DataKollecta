@@ -2,14 +2,12 @@
 - Add time type to gistx
 - upload/download to ftp server
 - add functionality to modify a table if necessary - for example changing a field type from text to int and vice versa
-- Get setup/config working on ftp server
 - Add stats. All eligible variables in accordian type, one opens, one closes
 - app should look at the xml files listed in the json file rather than just the ones in the folder - we may remove some from the survey
-- concerned about the yaml file having hard-code assets
 - I don't think 'crfsMetadataFile' is needed in the survey_manifest.json file
 - change crfs.csv to a json file
 -instructions - have a new version for each updaetd survey
-- add text backup files when writing to the database.
+- [x] add text backup files when writing to the database.
 
 
 

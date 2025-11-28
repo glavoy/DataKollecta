@@ -445,12 +445,24 @@ class DbService {
 
       await db.insert(tableName, rowData,
           conflictAlgorithm: ConflictAlgorithm.replace);
+
+      // Backup: Log INSERT statement
+      try {
+        final columns = rowData.keys.join(', ');
+        final values = rowData.values.map((v) => _escapeSqlValue(v)).join(', ');
+        final sql =
+            'INSERT OR REPLACE INTO $tableName ($columns) VALUES ($values);';
+        await _writeBackup(surveyId, tableName, sql);
+      } catch (e) {
+        _logError('Failed to write backup for INSERT: $e');
+      }
     } catch (e) {
       _logError('Failed to save interview: $e');
       throw DatabaseException('Failed to save interview: $e');
     }
   }
 
+  // ... (getExistingRecords, getRecordByUniqueId, getNextLineNum omitted for brevity, assumed unchanged)
   static Future<List<Map<String, dynamic>>> getExistingRecords(
       String surveyId, String tableName) async {
     try {
@@ -460,6 +472,31 @@ class DbService {
     } catch (e) {
       _logError('Error fetching records: $e');
       return [];
+    }
+  }
+
+  static Future<DateTime?> getLastBackupTime(String surveyId) async {
+    try {
+      final backupsDir = await _getBackupsDirectory();
+      final surveyBackupDir = Directory(p.join(backupsDir.path, surveyId));
+      if (!await surveyBackupDir.exists()) return null;
+
+      final files = await surveyBackupDir.list().toList();
+      if (files.isEmpty) return null;
+
+      DateTime? lastModified;
+      for (final file in files) {
+        if (file is File) {
+          final stat = await file.stat();
+          if (lastModified == null || stat.modified.isAfter(lastModified)) {
+            lastModified = stat.modified;
+          }
+        }
+      }
+      return lastModified;
+    } catch (e) {
+      _logError('Error getting last backup time: $e');
+      return null;
     }
   }
 
@@ -545,6 +582,18 @@ class DbService {
 
       await db.update(tableName, rowData,
           where: 'uniqueid = ?', whereArgs: [uniqueId]);
+
+      // Backup: Log UPDATE statement
+      try {
+        final setClause = rowData.entries
+            .map((e) => '${e.key} = ${_escapeSqlValue(e.value)}')
+            .join(', ');
+        final sql =
+            "UPDATE $tableName SET $setClause WHERE uniqueid = '${_escapeSqlString(uniqueId)}';";
+        await _writeBackup(surveyId, tableName, sql);
+      } catch (e) {
+        _logError('Failed to write backup for UPDATE: $e');
+      }
     } catch (e) {
       throw DatabaseException('Failed to update interview: $e');
     }
@@ -706,6 +755,46 @@ class DbService {
     } catch (e) {
       return [];
     }
+  }
+
+  static Future<void> _writeBackup(
+      String surveyId, String tableName, String sql) async {
+    try {
+      final backupsDir = await _getBackupsDirectory();
+      final surveyBackupDir = Directory(p.join(backupsDir.path, surveyId));
+      if (!await surveyBackupDir.exists()) {
+        await surveyBackupDir.create(recursive: true);
+      }
+
+      final backupFile = File(p.join(surveyBackupDir.path, '${tableName}_bak'));
+
+      // Append mode
+      await backupFile.writeAsString('$sql\n', mode: FileMode.append);
+    } catch (e) {
+      _logError('Failed to write backup: $e');
+    }
+  }
+
+  static String _escapeSqlValue(dynamic value) {
+    if (value == null) return 'NULL';
+    if (value is num) return value.toString();
+    if (value is DateTime) return "'${value.toIso8601String()}'";
+    return "'${_escapeSqlString(value.toString())}'";
+  }
+
+  static String _escapeSqlString(String str) {
+    return str.replaceAll("'", "''");
+  }
+
+  static Future<Directory> _getBackupsDirectory() async {
+    Directory baseDir;
+    if (Platform.isAndroid) {
+      baseDir = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
+    } else {
+      baseDir = await getApplicationDocumentsDirectory();
+    }
+    return Directory(p.join(baseDir.path, 'GiSTX', 'backups'));
   }
 
   static Future<Directory> _getSurveysDirectory() async {

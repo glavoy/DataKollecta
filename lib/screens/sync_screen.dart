@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:archive/archive_io.dart';
-import 'package:path_provider/path_provider.dart';
+
 import 'package:path/path.dart' as p;
 import 'package:intl/intl.dart';
 import '../services/ftp_service.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../services/db_service.dart';
 
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
@@ -27,6 +28,8 @@ class _SyncScreenState extends State<SyncScreen> {
   String? _statusMessage;
   String? _activeSurveyName;
 
+  DateTime? _lastBackupTime;
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +42,20 @@ class _SyncScreenState extends State<SyncScreen> {
       setState(() {
         _activeSurveyName = name;
       });
+      _loadBackupTime();
+    }
+  }
+
+  Future<void> _loadBackupTime() async {
+    if (_activeSurveyName == null) return;
+    final surveyId = await _surveyConfig.getSurveyId(_activeSurveyName!);
+    if (surveyId != null) {
+      final time = await DbService.getLastBackupTime(surveyId);
+      if (mounted) {
+        setState(() {
+          _lastBackupTime = time;
+        });
+      }
     }
   }
 
@@ -179,11 +196,23 @@ class _SyncScreenState extends State<SyncScreen> {
       final zipFilename = '${surveyId}_${surveyorId}_$timestamp.zip';
 
       final encoder = ZipFileEncoder();
-      final tempDir = await getTemporaryDirectory();
-      final zipPath = p.join(tempDir.path, zipFilename);
+
+      // Use 'outbox' folder instead of temp
+      final outboxDir = Directory(p.join(gistxDir.path, 'outbox'));
+      if (!await outboxDir.exists()) {
+        await outboxDir.create(recursive: true);
+      }
+      final zipPath = p.join(outboxDir.path, zipFilename);
 
       encoder.create(zipPath);
       encoder.addFile(dbFile);
+
+      // Add backups folder if exists
+      final backupsDir = Directory(p.join(gistxDir.path, 'backups', surveyId));
+      if (await backupsDir.exists()) {
+        await encoder.addDirectory(backupsDir);
+      }
+
       encoder.close();
 
       final zipFile = File(zipPath);
@@ -213,10 +242,10 @@ class _SyncScreenState extends State<SyncScreen> {
         throw Exception('Upload failed.');
       }
 
-      // Cleanup
-      if (await zipFile.exists()) {
-        await zipFile.delete();
-      }
+      // Cleanup - We keep the file in outbox now
+      // if (await zipFile.exists()) {
+      //   await zipFile.delete();
+      // }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -381,6 +410,18 @@ class _SyncScreenState extends State<SyncScreen> {
               label: Text(_isUploading
                   ? 'Uploading...'
                   : 'Upload ${_activeSurveyName ?? "Data"}'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _lastBackupTime != null
+                  ? 'Last backup: ${DateFormat('MMM d, yyyy HH:mm').format(_lastBackupTime!)}'
+                  : 'No backups yet',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
