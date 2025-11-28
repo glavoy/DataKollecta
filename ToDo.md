@@ -8,6 +8,9 @@
 - concerned about the yaml file having hard-code assets
 - I don't think 'crfsMetadataFile' is needed in the survey_manifest.json file
 - change crfs.csv to a json file
+-instructions - have a new version for each updaetd survey
+- add text backup files when writing to the database.
+
 
 
 ## GistXConfig

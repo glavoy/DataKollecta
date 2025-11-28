@@ -309,6 +309,31 @@ class SurveyConfigService {
     return availableSurveys;
   }
 
+  /// Get the survey ID for a given survey name
+  Future<String?> getSurveyId(String surveyName) async {
+    final surveysDir = await getSurveysDirectory();
+    if (!await surveysDir.exists()) return null;
+
+    final entities = await surveysDir.list().toList();
+    for (final entity in entities) {
+      if (entity is Directory) {
+        try {
+          final manifestPath = p.join(entity.path, 'survey_manifest.json');
+          final file = File(manifestPath);
+          if (await file.exists()) {
+            final manifest = await _loadManifestFromFile(file);
+            if (manifest['surveyName'] == surveyName) {
+              return manifest['surveyId'] as String?;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    return null;
+  }
+
   /// Check if a survey is currently configured in settings
   Future<bool> isSurveyConfigured() async {
     final surveyId = await getActiveSurveyId();

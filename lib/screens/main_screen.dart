@@ -113,13 +113,17 @@ class _MainScreenState extends State<MainScreen> {
           IconButton(
             icon: const Icon(Icons.cloud_sync_outlined),
             tooltip: 'Sync Center',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SyncScreen(),
                 ),
               );
+              // Re-initialize to extract any new zips
+              await _surveyConfig.initializeSurveys();
+              await _loadAvailableSurveys();
+              await _loadSurveyName();
             },
           ),
           IconButton(
@@ -193,7 +197,7 @@ class _MainScreenState extends State<MainScreen> {
                         child: Column(
                           children: [
                             Text(
-                              'CURRENT SURVEY',
+                              'CURRENT PROJECT',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
