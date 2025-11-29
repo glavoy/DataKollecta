@@ -1005,7 +1005,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
         final childTableName = crf['tablename']?.toString();
         final parentTable = crf['parenttable']?.toString();
         final repeatCountSource = crf['repeat_count_source']?.toString();
-        final autoStartRepeat = (crf['auto_start_repeat'] as int?) ?? 0;
+
+        // Safely parse auto_start_repeat, handling both int and String
+        int autoStartRepeat = 0;
+        final autoStartVal = crf['auto_start_repeat'];
+        if (autoStartVal is int) {
+          autoStartRepeat = autoStartVal;
+        } else if (autoStartVal is String) {
+          autoStartRepeat = int.tryParse(autoStartVal) ?? 0;
+        }
 
         // Check if this is a child of the current survey
         if (childTableName != null &&

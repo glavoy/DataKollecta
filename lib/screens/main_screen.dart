@@ -36,9 +36,21 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _loadSurveyName() async {
     final activeSurvey = await _settingsService.activeSurvey;
+
+    // Validate that the active survey actually exists
+    String displayName = 'Select a Survey';
+    if (activeSurvey != null && activeSurvey.isNotEmpty) {
+      if (_availableSurveys.contains(activeSurvey)) {
+        displayName = activeSurvey;
+      } else {
+        // Active survey not found (maybe deleted), clear it
+        await _settingsService.setActiveSurvey('');
+      }
+    }
+
     if (mounted) {
       setState(() {
-        _surveyName = activeSurvey ?? 'Select a Survey';
+        _surveyName = displayName;
         _isLoading = false;
       });
     }

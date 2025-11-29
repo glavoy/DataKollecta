@@ -7,7 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:path/path.dart' as p;
-import 'package:csv/csv.dart';
+
 import '../config/app_config.dart';
 import '../models/question.dart';
 import 'survey_loader.dart';
@@ -237,11 +237,30 @@ class DbService {
       ''');
     }
 
-    // Populate from CSV
+    // Populate from Manifest JSON
     // We always try to sync/update the metadata
-    final crfsMetadataFile = manifest['crfsMetadataFile'] as String?;
-    if (crfsMetadataFile != null) {
-      await _populateCrfsTable(surveyId, db, crfsMetadataFile);
+    final crfsList = manifest['crfs'] as List?;
+    if (crfsList != null) {
+      try {
+        // Clear existing data to ensure fresh sync
+        await db.delete('crfs');
+
+        for (final item in crfsList) {
+          if (item is Map<String, dynamic>) {
+            final Map<String, dynamic> rowData = Map.from(item);
+
+            // Handle idconfig: if it's a Map, convert to JSON string
+            if (rowData['idconfig'] is Map) {
+              rowData['idconfig'] = json.encode(rowData['idconfig']);
+            }
+
+            await db.insert('crfs', rowData);
+          }
+        }
+        _log('Populated crfs table for $surveyId with ${crfsList.length} rows');
+      } catch (e) {
+        _logError('Error populating crfs table from manifest: $e');
+      }
     }
   }
 
@@ -261,55 +280,6 @@ class DbService {
             changed_at   DATETIME DEFAULT (CURRENT_TIMESTAMP)
         )
       ''');
-    }
-  }
-
-  static Future<void> _populateCrfsTable(
-      String surveyId, Database db, String csvFilename) async {
-    try {
-      final surveysDir = await _getSurveysDirectory();
-      final surveyDir = Directory(p.join(surveysDir.path, surveyId));
-      final csvFile = File(p.join(surveyDir.path, csvFilename));
-      String csvContent;
-
-      if (await csvFile.exists()) {
-        csvContent = await csvFile.readAsString();
-      } else {
-        _logError('CRFS metadata file not found: ${csvFile.path}');
-        return;
-      }
-
-      final List<List<dynamic>> csvData =
-          const CsvToListConverter().convert(csvContent);
-      if (csvData.isEmpty) return;
-
-      // Headers are in the first row
-      final headers = csvData[0].map((h) => h.toString().trim()).toList();
-
-      // Clear existing data to ensure fresh sync
-      await db.delete('crfs');
-
-      for (int i = 1; i < csvData.length; i++) {
-        final row = csvData[i];
-        if (row.isEmpty) continue;
-
-        final Map<String, dynamic> rowData = {};
-        for (int j = 0; j < headers.length && j < row.length; j++) {
-          final header = headers[j];
-          final value = row[j];
-
-          // Handle boolean/integer conversion if needed based on schema defaults
-          // The schema uses INTEGER for flags like isbase, requireslink
-          // We assume the CSV contains appropriate values (0/1) or we might need conversion
-          rowData[header] = value;
-        }
-
-        await db.insert('crfs', rowData);
-      }
-      _log(
-          'Populated crfs table for $surveyId with ${csvData.length - 1} rows');
-    } catch (e) {
-      _logError('Error populating crfs table: $e');
     }
   }
 
