@@ -396,20 +396,18 @@ class DbService {
           rowData[key] = val.map((e) => e.toString()).join(',');
         } else if (val is DateTime) {
           rowData[key] = val.toIso8601String();
-        } else {
           rowData[key] = val;
         }
       }
 
       await db.insert(tableName, rowData,
-          conflictAlgorithm: ConflictAlgorithm.replace);
+          conflictAlgorithm: ConflictAlgorithm.abort);
 
       // Backup: Log INSERT statement
       try {
         final columns = rowData.keys.join(', ');
         final values = rowData.values.map((v) => _escapeSqlValue(v)).join(', ');
-        final sql =
-            'INSERT OR REPLACE INTO $tableName ($columns) VALUES ($values);';
+        final sql = 'INSERT INTO $tableName ($columns) VALUES ($values);';
         await _writeBackup(surveyId, tableName, sql);
       } catch (e) {
         _logError('Failed to write backup for INSERT: $e');
@@ -420,7 +418,6 @@ class DbService {
     }
   }
 
-  // ... (getExistingRecords, getRecordByUniqueId, getNextLineNum omitted for brevity, assumed unchanged)
   static Future<List<Map<String, dynamic>>> getExistingRecords(
       String surveyId, String tableName) async {
     try {
@@ -639,6 +636,18 @@ class DbService {
       return results.isNotEmpty ? results.first : null;
     } catch (e) {
       return null;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getAllPrimaryKeys(
+      String surveyId, String tableName, List<String> pkFields) async {
+    try {
+      final db = await _getDbOrThrow(surveyId);
+      // Select only the primary key fields
+      return await db.query(tableName, columns: pkFields);
+    } catch (e) {
+      _logError('Failed to get all primary keys: $e');
+      return [];
     }
   }
 

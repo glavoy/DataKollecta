@@ -52,6 +52,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
   bool _isSaving = false; // Flag to prevent multiple submissions
   String? _activeSurveyId;
 
+  // Duplicate check variables
+  Set<String> _existingPrimaryKeys = {};
+  List<String> _pkFields = [];
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +103,50 @@ class _SurveyScreenState extends State<SurveyScreen> {
       if (widget.prepopulatedAnswers != null) {
         _answers.addAll(widget.prepopulatedAnswers!);
         debugPrint('Prepopulated answers: ${widget.prepopulatedAnswers}');
+      }
+
+      // 4b) Load existing primary keys for duplicate checking (New Record Mode only)
+      if (widget.existingAnswers == null) {
+        final surveyId = await SurveyConfigService().getActiveSurveyId();
+        if (surveyId != null) {
+          final tableName =
+              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+          _pkFields = await DbService.getPrimaryKeyFields(surveyId, tableName);
+
+          if (_pkFields.isNotEmpty) {
+            final allKeys = await DbService.getAllPrimaryKeys(
+                surveyId, tableName, _pkFields);
+
+            _existingPrimaryKeys = allKeys.map((row) {
+              return _pkFields.map((f) => row[f]?.toString() ?? '').join('|');
+            }).toSet();
+
+            debugPrint(
+                'Loaded ${_existingPrimaryKeys.length} existing primary keys for duplicate check');
+          }
+        }
+      }
+
+      // 4b) Load existing primary keys for duplicate checking (New Record Mode only)
+      if (widget.existingAnswers == null) {
+        final surveyId = await SurveyConfigService().getActiveSurveyId();
+        if (surveyId != null) {
+          final tableName =
+              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+          _pkFields = await DbService.getPrimaryKeyFields(surveyId, tableName);
+
+          if (_pkFields.isNotEmpty) {
+            final allKeys = await DbService.getAllPrimaryKeys(
+                surveyId, tableName, _pkFields);
+
+            _existingPrimaryKeys = allKeys.map((row) {
+              return _pkFields.map((f) => row[f]?.toString() ?? '').join('|');
+            }).toSet();
+
+            debugPrint(
+                'Loaded ${_existingPrimaryKeys.length} existing primary keys for duplicate check');
+          }
+        }
       }
 
       // 5) Calculate linenum if needed (for new records only)
@@ -334,7 +382,50 @@ class _SurveyScreenState extends State<SurveyScreen> {
     setState(() {
       final q = _loadedQuestions![_currentQuestion];
       _logicError = LogicService.evaluateLogicChecks(q, _answers);
+
+      // Real-time duplicate check (New Record Mode only)
+      if (widget.existingAnswers == null &&
+          _pkFields.contains(q.fieldName.toLowerCase())) {
+        // Check if all PK fields have values
+        bool allPkPresent = true;
+        for (final pkField in _pkFields) {
+          if (_answers[pkField] == null ||
+              _answers[pkField].toString().isEmpty) {
+            allPkPresent = false;
+            break;
+          }
+        }
+
+        if (allPkPresent) {
+          final signature =
+              _pkFields.map((f) => _answers[f]?.toString() ?? '').join('|');
+          if (_existingPrimaryKeys.contains(signature)) {
+            // Duplicate found!
+            _showDuplicateErrorDialog(q.fieldName);
+            // Don't clear the answer, but set logic error to prevent proceeding
+            _logicError = 'A record with this ID already exists.';
+          }
+        }
+      }
     });
+  }
+
+  void _showDuplicateErrorDialog(String fieldName) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Duplicate Record'),
+        content: Text(
+            'A record with this ID already exists. Please enter a unique ID.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Navigate to the next question, auto-skipping automatic questions
