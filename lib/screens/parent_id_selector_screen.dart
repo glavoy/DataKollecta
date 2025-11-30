@@ -65,17 +65,20 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
       final records =
           await DbService.getExistingRecords(surveyId, widget.parentTable);
 
-      // Extract unique linking field values
-      final Set<String> ids = {};
+      final uniqueIds = <String>{};
       for (final record in records) {
-        final id = record[widget.linkingField]?.toString();
-        if (id != null && id.isNotEmpty) {
-          ids.add(id);
+        // Normalize keys to lowercase for case-insensitive lookup
+        final normalizedRecord =
+            record.map((k, v) => MapEntry(k.toLowerCase(), v));
+
+        final val = normalizedRecord[widget.linkingField.toLowerCase()];
+        if (val != null && val.toString().isNotEmpty) {
+          uniqueIds.add(val.toString());
         }
       }
 
       // Sort the IDs
-      _availableIds = ids.toList()..sort();
+      _availableIds = uniqueIds.toList()..sort();
       _filteredIds = List.from(_availableIds);
 
       if (_availableIds.isEmpty) {

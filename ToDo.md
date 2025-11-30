@@ -5,6 +5,7 @@
 - Add time type to gistx
 - examine "idconfig" - have option of entering the subjid manually
 - subjid and hhid - these should be normal automatic variables
+- Add functionality to pick data from the database i.e. Who sleep under the net. Who is the mother
 
 
 - add functionality to modify a table if necessary - for example changing a field type from text to int and vice versa

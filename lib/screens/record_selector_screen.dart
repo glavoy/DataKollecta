@@ -72,7 +72,10 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
   List<String> _getUniqueValuesForField(
       List<Map<String, dynamic>> records, String fieldName) {
     final values = records
-        .map((r) => r[fieldName]?.toString() ?? '')
+        .map((r) {
+          final normalized = r.map((k, v) => MapEntry(k.toLowerCase(), v));
+          return normalized[fieldName.toLowerCase()]?.toString() ?? '';
+        })
         .where((v) => v.isNotEmpty)
         .toSet()
         .toList();
@@ -101,7 +104,10 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
 
     // Find the record with this value for the current field
     final record = records.firstWhere(
-      (r) => r[fieldName]?.toString() == value,
+      (r) {
+        final normalized = r.map((k, v) => MapEntry(k.toLowerCase(), v));
+        return normalized[fieldName.toLowerCase()]?.toString() == value;
+      },
       orElse: () => {},
     );
 
@@ -135,9 +141,11 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
       final selectedValue = _selectedValues[field];
 
       if (selectedValue != null && selectedValue.isNotEmpty) {
-        filtered = filtered
-            .where((r) => r[field]?.toString() == selectedValue)
-            .toList();
+        filtered = filtered.where((r) {
+          // Normalize record keys
+          final normalized = r.map((k, v) => MapEntry(k.toLowerCase(), v));
+          return normalized[field.toLowerCase()]?.toString() == selectedValue;
+        }).toList();
       }
     }
 

@@ -245,10 +245,11 @@ class DbService {
             await db.insert('crfs', rowData);
           }
         }
-        _log('Populated crfs table for $surveyId with ${crfsList.length} rows');
       } catch (e) {
         _logError('Error populating crfs table from manifest: $e');
       }
+    } else {
+      _logError('No "crfs" section found in manifest for $surveyId');
     }
   }
 
@@ -396,6 +397,7 @@ class DbService {
           rowData[key] = val.map((e) => e.toString()).join(',');
         } else if (val is DateTime) {
           rowData[key] = val.toIso8601String();
+        } else {
           rowData[key] = val;
         }
       }
@@ -423,7 +425,12 @@ class DbService {
     try {
       final db = await _getDbOrThrow(surveyId);
       if (!await _tableExists(db, tableName)) return [];
-      return await db.query(tableName);
+      final results = await db.query(tableName);
+
+      // Normalize keys to lowercase to avoid case-sensitivity issues across platforms
+      return results.map((row) {
+        return row.map((key, value) => MapEntry(key.toLowerCase(), value));
+      }).toList();
     } catch (e) {
       _logError('Error fetching records: $e');
       return [];
@@ -461,7 +468,12 @@ class DbService {
       final db = await _getDbOrThrow(surveyId);
       final results = await db
           .query(tableName, where: 'uniqueid = ?', whereArgs: [uniqueId]);
-      return results.isNotEmpty ? results.first : null;
+
+      if (results.isEmpty) return null;
+
+      // Normalize keys to lowercase
+      return results.first
+          .map((key, value) => MapEntry(key.toLowerCase(), value));
     } catch (e) {
       return null;
     }
@@ -716,9 +728,15 @@ class DbService {
       Database db, String tableName) async {
     try {
       final result = await db.rawQuery('PRAGMA table_info($tableName)');
-      return result
-          .map((row) => (row['name'] as String).toLowerCase())
-          .toList();
+
+      final columns = result.map((row) {
+        // Handle case-insensitive key lookup for 'name'
+        // sqflite on Android might return uppercase keys
+        final normalizedRow = row.map((k, v) => MapEntry(k.toLowerCase(), v));
+        return (normalizedRow['name'] as String).toLowerCase();
+      }).toList();
+
+      return columns;
     } catch (e) {
       return [];
     }
