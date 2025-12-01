@@ -54,14 +54,81 @@ class SurveyLoader {
         }
       }
 
-      // <responses> -> <response value='x'>Label</response>
+      // <responses> - can be static, csv, or database
       final responsesNode = q.getElement('responses');
       final options = <QuestionOption>[];
+      ResponseConfig? responseConfig;
+
       if (responsesNode != null) {
-        for (final r in responsesNode.findElements('response')) {
-          final value = r.getAttribute('value') ?? '';
-          final label = r.innerText.trim();
-          options.add(QuestionOption(value: value, label: label));
+        final sourceAttr = responsesNode.getAttribute('source') ?? 'static';
+        final source = _parseResponseSource(sourceAttr);
+
+        if (source == ResponseSource.static_) {
+          // Static responses: <response value='x'>Label</response>
+          for (final r in responsesNode.findElements('response')) {
+            final value = r.getAttribute('value') ?? '';
+            final label = r.innerText.trim();
+            options.add(QuestionOption(value: value, label: label));
+          }
+        } else {
+          // CSV or Database responses
+          final file = responsesNode.getAttribute('file');
+          final table = responsesNode.getAttribute('table');
+          final filters = <ResponseFilter>[];
+
+          // Parse <filter> elements
+          for (final filterNode in responsesNode.findElements('filter')) {
+            final column = filterNode.getAttribute('column') ?? '';
+            final value = filterNode.getAttribute('value') ?? '';
+            final operator = filterNode.getAttribute('operator') ?? '=';
+
+            if (column.isNotEmpty) {
+              filters.add(ResponseFilter(
+                column: column,
+                value: value,
+                operator: operator,
+              ));
+            }
+          }
+
+          // Parse <display>, <value>, <distinct>, <empty_message>
+          final displayNode = responsesNode.getElement('display');
+          final displayColumn = displayNode?.getAttribute('column');
+
+          final valueNode = responsesNode.getElement('value');
+          final valueColumn = valueNode?.getAttribute('column');
+
+          final distinctNode = responsesNode.getElement('distinct');
+          final distinct = distinctNode == null
+              ? true  // Default to true when element is absent
+              : distinctNode.innerText.trim().toLowerCase() == 'true';
+
+          final emptyMessageNode = responsesNode.getElement('empty_message');
+          final emptyMessage = emptyMessageNode?.innerText.trim();
+
+          // Parse optional don't_know and not_in_list nodes
+          final dontKnowNode = responsesNode.getElement('dont_know');
+          final dontKnowValue = dontKnowNode?.getAttribute('value');
+          final dontKnowLabel = dontKnowNode?.getAttribute('label') ?? "Don't know";
+
+          final notInListNode = responsesNode.getElement('not_in_list');
+          final notInListValue = notInListNode?.getAttribute('value');
+          final notInListLabel = notInListNode?.getAttribute('label') ?? "Not in this list";
+
+          responseConfig = ResponseConfig(
+            source: source,
+            file: file,
+            table: table,
+            filters: filters,
+            displayColumn: displayColumn,
+            valueColumn: valueColumn,
+            distinct: distinct,
+            emptyMessage: emptyMessage,
+            dontKnowValue: dontKnowValue,
+            dontKnowLabel: dontKnowLabel,
+            notInListValue: notInListValue,
+            notInListLabel: notInListLabel,
+          );
         }
       }
 
@@ -124,6 +191,7 @@ class SurveyLoader {
           maxCharacters: maxChars,
           numericCheck: numericCheck,
           options: options,
+          responseConfig: responseConfig,
           preSkips: preSkips,
           postSkips: postSkips,
           logicCheck: logicCheck,
@@ -161,6 +229,19 @@ class SurveyLoader {
       }
     }
     return skips;
+  }
+
+  /// Parse response source type
+  static ResponseSource _parseResponseSource(String source) {
+    switch (source.toLowerCase()) {
+      case 'csv':
+        return ResponseSource.csv;
+      case 'database':
+        return ResponseSource.database;
+      case 'static':
+      default:
+        return ResponseSource.static_;
+    }
   }
 
   /// Very simple placeholder expansion like "This is [[intid]]"

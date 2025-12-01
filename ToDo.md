@@ -1,11 +1,18 @@
 ### To Do
 - Update GiSTXConfig to create the json files - add survey_id to the json config in GiSTConfig
-- Add utilization of csv files in the app - nested selects as well
-- add functionality so that structures/names can be the options for a question
+- Add utilization of csv files in the app - nested selects as well - also add 'static' to <responses>
+- Add functionality to pick data from the database i.e. Who sleep under the net. Who is the mother; - add functionality so that structures/names can be the options for a question
+
 - Add time type to gistx
 - examine "idconfig" - have option of entering the subjid manually
 - subjid and hhid - these should be normal automatic variables
-- Add functionality to pick data from the database i.e. Who sleep under the net. Who is the mother
+- revisit automatic variables - is there a better way so we don;t need to change the code
+- add auto gen of responses for prism css - schools - mrccode  - select school
+
+- add this to gistxconfig
+		<unique_check>
+			<message>barcode will create duplicates</message>
+		</unique_check>
 
 
 - add functionality to modify a table if necessary - for example changing a field type from text to int and vice versa

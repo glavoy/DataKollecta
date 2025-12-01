@@ -1,0 +1,88 @@
+<?xml version = '1.0' encoding = 'utf-8'?>
+<survey>
+
+
+	<question type = 'automatic' fieldname = 'starttime' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'hhid' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'linenum' fieldtype = 'integer'>
+	</question>
+
+
+	<question type = 'text' fieldname = 'participantsname' fieldtype = 'text'>
+		<text>Participants name</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'sex' fieldtype = 'integer'>
+		<text>Participants sex</text>
+		<responses>
+			<response value = '1'>Female</response>
+			<response value = '2'>Male</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'census_age' fieldtype = 'text_integer'>
+		<text>How old is [[participantsname]] in completed years?
+
+(Enter 0 if age &lt; 1 year)</text>
+		<maxCharacters>3</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='110' other_values = '0' message = 'Number must be between 0 and 110!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'household_relation' fieldtype = 'integer'>
+		<text>Relationship to head of household</text>
+		<responses>
+			<response value = '1'>Head of household</response>
+			<response value = '2'>Spouse</response>
+			<response value = '3'>Son/daughter</response>
+			<response value = '4'>Other relative</response>
+			<response value = '5'>Other (specify)</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'comments' fieldtype = 'text'>
+		<text>Any additional comments (optional)</text>
+		<maxCharacters>255</maxCharacters>
+		<na>-6</na>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'uniqueid' fieldtype = 'text'>
+		<maxCharacters>36</maxCharacters>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'swver' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'survey_id' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'stoptime' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'lastmod' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'information' fieldname = 'end_of_questions' fieldtype = 'n/a'>
+		<text>Press the 'Finish' button to save the data.</text >
+	</question>
+
+
+</survey>

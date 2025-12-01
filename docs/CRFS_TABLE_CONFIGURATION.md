@@ -19,7 +19,6 @@ CREATE TABLE crfs (
 	requireslink	INTEGER DEFAULT 0,
 	idconfig	TEXT,
 	repeat_count_field TEXT,
-	repeat_count_source TEXT,
 	auto_start_repeat INTEGER,
 	repeat_enforce_count INTEGER,
 	display_order INTEGER DEFAULT 0,
@@ -343,7 +342,6 @@ linkingfield = 'parent_id_field'
 idconfig = NULL
 incrementfield = 'linenum' or similar
 repeat_count_field = 'num_items'
-repeat_count_source = 'base_table_name'
 auto_start_repeat = 1
 repeat_enforce_count = 1
 display_fields = 'descriptive_field'

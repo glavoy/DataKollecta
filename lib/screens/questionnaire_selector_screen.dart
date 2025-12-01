@@ -207,6 +207,7 @@ class _QuestionnaireSelectorScreenState
               questionnaireFilename: questionnaire.filename,
               idConfig: questionnaire.idConfig,
               linkingField: questionnaire.linkingField,
+              incrementField: questionnaire.incrementField,
             ),
           ),
         );

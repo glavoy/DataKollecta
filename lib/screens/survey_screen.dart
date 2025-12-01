@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../widgets/question_views.dart';
@@ -10,6 +11,7 @@ import '../config/app_config.dart';
 import '../services/id_generator.dart';
 import '../services/logic_service.dart';
 import '../services/survey_config_service.dart';
+import '../services/csv_data_service.dart';
 
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
@@ -19,6 +21,8 @@ class SurveyScreen extends StatefulWidget {
   final Map<String, dynamic>? prepopulatedAnswers;
   final String? idConfig;
   final String? linkingField;
+  final String?
+      incrementField; // Field to auto-increment (e.g., 'linenum', 'netnum')
   final int? repeatIndex; // Current iteration (e.g., 2)
   final int? repeatTotal; // Total iterations (e.g., 5)
 
@@ -31,6 +35,7 @@ class SurveyScreen extends StatefulWidget {
     this.prepopulatedAnswers,
     this.idConfig,
     this.linkingField,
+    this.incrementField,
     this.repeatIndex,
     this.repeatTotal,
   });
@@ -51,6 +56,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _loadedQuestions; // Holds the questions after future completes
   bool _isSaving = false; // Flag to prevent multiple submissions
   String? _activeSurveyId;
+  final CsvDataService _csvDataService = CsvDataService();
 
   // Duplicate check variables
   Set<String> _existingPrimaryKeys = {};
@@ -92,6 +98,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
 
       final questions = await SurveyLoader.loadFromFile(File(assetPath));
+
+      // 2b) Load CSV files for questions with CSV responses
+      final surveyDirectory = p.dirname(assetPath);
+      await _csvDataService.loadAllCsvFiles(surveyDirectory, questions);
 
       // 3) If we're editing an existing record, populate answers from the database
       if (widget.existingAnswers != null) {
@@ -247,13 +257,21 @@ class _SurveyScreenState extends State<SurveyScreen> {
     return copy;
   }
 
-  /// Calculate linenum for the current record based on primary key
+  /// Calculate auto-increment field for the current record based on primary key
   Future<void> _calculateLineNum(List<Question> questions) async {
     try {
-      // Check if this survey has a linenum field
-      final hasLineNum = questions.any((q) => q.fieldName == 'linenum');
-      if (!hasLineNum) {
-        return; // No linenum field in this survey
+      // Check if an increment field is configured
+      if (widget.incrementField == null || widget.incrementField!.isEmpty) {
+        return; // No increment field configured
+      }
+
+      final incrementFieldName = widget.incrementField!;
+
+      // Check if this survey has the configured increment field
+      final hasIncrementField =
+          questions.any((q) => q.fieldName == incrementFieldName);
+      if (!hasIncrementField) {
+        return; // Configured increment field doesn't exist in this survey
       }
 
       // Get the table name
@@ -269,8 +287,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       if (primaryKeyFields.isEmpty) {
         debugPrint(
-            'No primary key fields found for $tableName, defaulting linenum to 1');
-        _answers['linenum'] = '1';
+            'No primary key fields found for $tableName, defaulting $incrementFieldName to 1');
+        _answers[incrementFieldName] = '1';
         return;
       }
 
@@ -282,25 +300,28 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       if (primaryKeyValue == null || primaryKeyValue.toString().isEmpty) {
         debugPrint(
-            'Primary key field $primaryKeyField not set, defaulting linenum to 1');
-        _answers['linenum'] = '1';
+            'Primary key field $primaryKeyField not set, defaulting $incrementFieldName to 1');
+        _answers[incrementFieldName] = '1';
         return;
       }
 
-      // Query the database for the next linenum
-      final nextLineNum = await DbService.getNextLineNum(
+      // Query the database for the next increment value
+      final nextValue = await DbService.getNextIncrementValue(
         surveyId: surveyId,
         tableName: tableName,
+        incrementField: incrementFieldName,
         primaryKeyField: primaryKeyField,
         primaryKeyValue: primaryKeyValue.toString(),
       );
 
-      _answers['linenum'] = nextLineNum.toString();
+      _answers[incrementFieldName] = nextValue.toString();
       debugPrint(
-          'Calculated linenum=$nextLineNum for $primaryKeyField=${primaryKeyValue.toString()}');
+          'Calculated $incrementFieldName=$nextValue for $primaryKeyField=${primaryKeyValue.toString()}');
     } catch (e) {
-      debugPrint('Error calculating linenum: $e');
-      _answers['linenum'] = '1'; // Default to 1 on error
+      if (widget.incrementField != null && widget.incrementField!.isNotEmpty) {
+        debugPrint('Error calculating ${widget.incrementField}: $e');
+        _answers[widget.incrementField!] = '1'; // Default to 1 on error
+      }
     }
   }
 
@@ -495,6 +516,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _currentQuestion = nextIndex;
       _logicError = null; // Clear error on navigation
     });
+
+    // Show verification reminder for hhid_verif question
+    if (nextIndex < qs.length) {
+      final nextQuestion = qs[nextIndex];
+      if (nextQuestion.fieldName.toLowerCase() == 'hhid_verif') {
+        await _showVerificationReminder('hhid');
+      }
+    }
   }
 
   /// Find the next question that should be displayed
@@ -867,6 +896,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   onRequestNext: () => _next(questions),
                                   isEditMode: widget.uniqueId != null,
                                   logicError: _logicError,
+                                  csvDataService: _csvDataService,
+                                  surveyId: _activeSurveyId ?? '',
                                 ),
                               ),
                             ),
@@ -1095,7 +1126,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
       for (final crf in sortedCrfs) {
         final childTableName = crf['tablename']?.toString();
         final parentTable = crf['parenttable']?.toString();
-        final repeatCountSource = crf['repeat_count_source']?.toString();
 
         // Safely parse auto_start_repeat, handling both int and String
         int autoStartRepeat = 0;
@@ -1107,9 +1137,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         // Check if this is a child of the current survey
+        // Use parentTable
         if (childTableName != null &&
             parentTable == tableName &&
-            repeatCountSource == tableName &&
             autoStartRepeat > 0) {
           // Get the repeat count field
           final repeatCountField = crf['repeat_count_field']?.toString();
@@ -1140,12 +1170,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
           }
 
           // Prompt user to start repeat surveys
+          final displayName = crf['displayname']?.toString() ?? childTableName;
+
           if (autoStartRepeat == 1) {
             // Prompt mode
             final shouldStart = await _promptStartRepeatSurveys(
               context,
               childTableName,
-              crf['displayname']?.toString() ?? childTableName,
+              displayName,
               repeatCount,
             );
 
@@ -1153,6 +1185,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
               await _startRepeatSurveyLoop(
                 context,
                 childTableName,
+                displayName,
                 repeatCount,
                 linkingField,
                 linkingValue.toString(),
@@ -1165,6 +1198,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
             await _startRepeatSurveyLoop(
               context,
               childTableName,
+              displayName,
               repeatCount,
               linkingField,
               linkingValue.toString(),
@@ -1194,10 +1228,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Add Members Now?'),
-        content:
-            Text('You indicated $count ${count == 1 ? 'person' : 'people'}.\n\n'
-                'Would you like to add them now?'),
+        title: Text('Add $displayName Now?'),
+        content: Text(
+            'You indicated $count ${count == 1 ? 'record' : 'records'}.\n\n'
+            'Would you like to add them now?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1216,6 +1250,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Future<void> _startRepeatSurveyLoop(
     BuildContext context,
     String childTableName,
+    String displayName,
     int repeatCount,
     String linkingField,
     String linkingValue,
@@ -1237,6 +1272,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           builder: (context) => SurveyScreen(
             questionnaireFilename: '$childTableName.xml',
             prepopulatedAnswers: {linkingField: linkingValue},
+            incrementField: crfConfig['incrementfield']?.toString(),
             repeatIndex: i,
             repeatTotal: repeatCount,
           ),
@@ -1272,6 +1308,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
     await _checkRepeatCountMismatch(
       context,
       childTableName,
+      displayName,
       linkingField,
       linkingValue,
       repeatCount,
@@ -1312,6 +1349,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Future<void> _checkRepeatCountMismatch(
     BuildContext context,
     String childTableName,
+    String displayName,
     String linkingField,
     String linkingValue,
     int expectedCount,
@@ -1347,6 +1385,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       // Warn mode - show dialog with options
       final action = await _showCountMismatchDialog(
         context,
+        displayName,
         expectedCount,
         actualCount,
       );
@@ -1396,6 +1435,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   /// Show count mismatch warning dialog
   Future<String?> _showCountMismatchDialog(
     BuildContext context,
+    String displayName,
     int expected,
     int actual,
   ) async {
@@ -1405,7 +1445,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Incomplete Data'),
         content: Text(
-            'You indicated $expected ${expected == 1 ? 'person' : 'people'} but only added $actual.\n\n'
+            'You indicated $expected ${expected == 1 ? 'record' : 'records'} for $displayName but only added $actual.\n\n'
             'This will cause data quality issues.'),
         actions: [
           TextButton(
@@ -1416,6 +1456,66 @@ class _SurveyScreenState extends State<SurveyScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, 'update'),
             child: Text('Update Count to $actual'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show verification reminder dialog before user enters verification field
+  Future<void> _showVerificationReminder(String fieldToVerify) async {
+    final value = _answers[fieldToVerify]?.toString();
+    if (value == null || value.isEmpty) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: Theme.of(context).primaryColor),
+            const SizedBox(width: 8),
+            const Text('Please Verify'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You entered the following value for ${fieldToVerify.toUpperCase()}:',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Please re-enter this value in the next field to verify.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
         ],
       ),

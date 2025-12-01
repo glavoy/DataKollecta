@@ -142,6 +142,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
           prepopulatedAnswers: prepopulatedAnswers,
           idConfig: widget.idConfig,
           linkingField: widget.linkingField,
+          incrementField: widget.incrementField,
         ),
       ),
     );

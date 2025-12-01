@@ -1,9 +1,53 @@
 enum QuestionType { automatic, text, checkbox, radio, information, date, combobox, datetime }
 
+enum ResponseSource { static_, csv, database }
+
 class QuestionOption {
   final String value;
   final String label;
   QuestionOption({required this.value, required this.label});
+}
+
+class ResponseFilter {
+  final String column;
+  final String value;
+  final String operator;
+
+  ResponseFilter({
+    required this.column,
+    required this.value,
+    this.operator = '=',
+  });
+}
+
+class ResponseConfig {
+  final ResponseSource source;
+  final String? file;  // For CSV source
+  final String? table;  // For database source
+  final List<ResponseFilter> filters;
+  final String? displayColumn;
+  final String? valueColumn;
+  final bool distinct;
+  final String? emptyMessage;
+  final String? dontKnowValue;  // Optional: Value for "Don't know" option
+  final String? dontKnowLabel;  // Optional: Label for "Don't know" option
+  final String? notInListValue; // Optional: Value for "Not in this list" option
+  final String? notInListLabel; // Optional: Label for "Not in this list" option
+
+  ResponseConfig({
+    required this.source,
+    this.file,
+    this.table,
+    this.filters = const [],
+    this.displayColumn,
+    this.valueColumn,
+    this.distinct = true,  // Default to true - almost always want unique values
+    this.emptyMessage,
+    this.dontKnowValue,
+    this.dontKnowLabel,
+    this.notInListValue,
+    this.notInListLabel,
+  });
 }
 
 class NumericCheck {
@@ -46,6 +90,7 @@ class Question {
   final int? maxCharacters;
   final NumericCheck? numericCheck;
   final List<QuestionOption> options;
+  final ResponseConfig? responseConfig;  // New: for dynamic responses
   final List<SkipCondition> preSkips;  // Evaluated before showing the question
   final List<SkipCondition> postSkips; // Evaluated after user answers
   final String? logicCheck;
@@ -63,6 +108,7 @@ class Question {
     this.maxCharacters,
     this.numericCheck,
     this.options = const [],
+    this.responseConfig,
     this.preSkips = const [],
     this.postSkips = const [],
     this.logicCheck,

@@ -216,8 +216,7 @@ class DbService {
           incrementfield TEXT,
           requireslink INTEGER DEFAULT 0,
           idconfig TEXT,
-          repeat_count_field TEXT, 
-          repeat_count_source TEXT, 
+          repeat_count_field TEXT,
           auto_start_repeat INTEGER, 
           repeat_enforce_count INTEGER,
           display_fields TEXT
@@ -372,6 +371,11 @@ class DbService {
     return db;
   }
 
+  /// Public method to get database for queries (used by DatabaseResponseService)
+  static Future<Database> getDatabaseForQueries(String surveyId) async {
+    return await _getDbOrThrow(surveyId);
+  }
+
   static Future<void> saveInterview({
     required String surveyId,
     required String surveyFilename,
@@ -479,9 +483,11 @@ class DbService {
     }
   }
 
-  static Future<int> getNextLineNum({
+  /// Get the next auto-increment value for a field (e.g., linenum, netnum)
+  static Future<int> getNextIncrementValue({
     required String surveyId,
     required String tableName,
+    required String incrementField,
     required String primaryKeyField,
     required String primaryKeyValue,
   }) async {
@@ -490,12 +496,12 @@ class DbService {
       if (!await _tableExists(db, tableName)) return 1;
 
       final results = await db.rawQuery(
-        'SELECT MAX(linenum) as maxLineNum FROM $tableName WHERE $primaryKeyField = ?',
+        'SELECT MAX($incrementField) as maxValue FROM $tableName WHERE $primaryKeyField = ?',
         [primaryKeyValue],
       );
 
-      if (results.isEmpty || results.first['maxLineNum'] == null) return 1;
-      return (results.first['maxLineNum'] as int) + 1;
+      if (results.isEmpty || results.first['maxValue'] == null) return 1;
+      return (results.first['maxValue'] as int) + 1;
     } catch (e) {
       return 1;
     }

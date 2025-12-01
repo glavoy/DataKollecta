@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../services/auto_fields.dart';
+import '../services/csv_data_service.dart';
+import '../services/database_response_service.dart';
 
 class QuestionView extends StatefulWidget {
   final Question question;
@@ -12,6 +14,8 @@ class QuestionView extends StatefulWidget {
   final VoidCallback? onRequestNext; // ask parent to navigate to next question
   final bool isEditMode; // Whether we're editing an existing record
   final String? logicError; // The logic check error message to display
+  final CsvDataService csvDataService;
+  final String surveyId;
 
   const QuestionView({
     super.key,
@@ -21,6 +25,8 @@ class QuestionView extends StatefulWidget {
     this.onRequestNext,
     this.isEditMode = false,
     this.logicError,
+    required this.csvDataService,
+    required this.surveyId,
   });
 
   @override
@@ -36,6 +42,7 @@ class _QuestionViewState extends State<QuestionView> {
   DateTime? _selectedDate;
   DateTime? _selectedDateTime;
   String? _textError;
+  List<QuestionOption> _dynamicOptions = [];
 
   @override
   void initState() {
@@ -102,6 +109,43 @@ class _QuestionViewState extends State<QuestionView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _textFocusNode.requestFocus();
       });
+    }
+
+    // Load dynamic options for CSV/database sources
+    if (q.responseConfig != null) {
+      _loadDynamicOptions();
+    }
+  }
+
+  Future<void> _loadDynamicOptions() async {
+    final config = widget.question.responseConfig;
+    if (config == null) return;
+
+    try {
+      List<QuestionOption> options = [];
+
+      if (config.source == ResponseSource.csv) {
+        options = await widget.csvDataService.getResponseOptions(config, widget.answers);
+      } else if (config.source == ResponseSource.database) {
+        options = await DatabaseResponseService.getResponseOptions(
+          widget.surveyId,
+          config,
+          widget.answers,
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _dynamicOptions = options;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading dynamic options: $e');
+      if (mounted) {
+        setState(() {
+          _dynamicOptions = [];
+        });
+      }
     }
   }
 
@@ -252,6 +296,26 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildRadio(Question q) {
+    // Use dynamic options if available, otherwise use static options
+    final options = _dynamicOptions.isNotEmpty ? _dynamicOptions : q.options;
+
+    // Show empty message if no options and config has empty message
+    if (options.isEmpty && q.responseConfig?.emptyMessage != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((q.text ?? '').isNotEmpty) _buildSectionTitle(SurveyLoader.expandPlaceholders(q.text!, widget.answers)),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              q.responseConfig!.emptyMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,7 +328,7 @@ class _QuestionViewState extends State<QuestionView> {
               style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
             ),
           ),
-        ...q.options.map(
+        ...options.map(
           (opt) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: RadioGroup<String>(
@@ -295,6 +359,31 @@ class _QuestionViewState extends State<QuestionView> {
     // Debug: Log checkbox state
     debugPrint('Building checkbox ${q.fieldName}, selection: $_checkboxSelection');
 
+    // Use dynamic options if available, otherwise use static options
+    final options = _dynamicOptions.isNotEmpty ? _dynamicOptions : q.options;
+
+    // Show empty message if no options and config has empty message
+    if (options.isEmpty && q.responseConfig?.emptyMessage != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((q.text ?? '').isNotEmpty) _buildSectionTitle(SurveyLoader.expandPlaceholders(q.text!, widget.answers)),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              q.responseConfig!.emptyMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Get special option values (from static config or dynamic config)
+    final dontKnowValue = q.responseConfig?.dontKnowValue ?? q.dontKnow;
+    final refuseValue = q.refuse;
+    final notInListValue = q.responseConfig?.notInListValue;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -309,7 +398,7 @@ class _QuestionViewState extends State<QuestionView> {
           ),
         Wrap(
           runSpacing: 8,
-          children: q.options.map((opt) {
+          children: options.map((opt) {
             final checked = _checkboxSelection.contains(opt.value);
             debugPrint('  Option ${opt.value} (${opt.label}): checked=$checked');
             return Padding(
@@ -324,7 +413,10 @@ class _QuestionViewState extends State<QuestionView> {
                 tileColor: Colors.white,
                 onChanged: (val) {
                   setState(() {
-                    final isSpecial = opt.value == q.dontKnow || opt.value == q.refuse;
+                    // Check if this is a special option (don't know, refuse, not in list)
+                    final isSpecial = opt.value == dontKnowValue ||
+                                     opt.value == refuseValue ||
+                                     opt.value == notInListValue;
 
                     if (val == true) {
                       if (isSpecial) {
@@ -333,8 +425,9 @@ class _QuestionViewState extends State<QuestionView> {
                         _checkboxSelection.add(opt.value);
                       } else {
                         // If selecting a normal option, remove any special options
-                        if (q.dontKnow != null) _checkboxSelection.remove(q.dontKnow);
-                        if (q.refuse != null) _checkboxSelection.remove(q.refuse);
+                        if (dontKnowValue != null) _checkboxSelection.remove(dontKnowValue);
+                        if (refuseValue != null) _checkboxSelection.remove(refuseValue);
+                        if (notInListValue != null) _checkboxSelection.remove(notInListValue);
                         _checkboxSelection.add(opt.value);
                       }
                     } else {
@@ -354,6 +447,26 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildCombobox(Question q) {
+    // Use dynamic options if available, otherwise use static options
+    final options = _dynamicOptions.isNotEmpty ? _dynamicOptions : q.options;
+
+    // Show empty message if no options and config has empty message
+    if (options.isEmpty && q.responseConfig?.emptyMessage != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((q.text ?? '').isNotEmpty) _buildSectionTitle(SurveyLoader.expandPlaceholders(q.text!, widget.answers)),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              q.responseConfig!.emptyMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -377,7 +490,7 @@ class _QuestionViewState extends State<QuestionView> {
             hint: const Text('Select an option'),
             isExpanded: true,
             underline: const SizedBox(),
-            items: q.options.map((opt) {
+            items: options.map((opt) {
               return DropdownMenuItem<String>(
                 value: opt.value,
                 child: Text(opt.label),
