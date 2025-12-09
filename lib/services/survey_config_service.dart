@@ -151,9 +151,18 @@ class SurveyConfigService {
   Future<Directory> _getBaseDir() async {
     if (Platform.isAndroid) {
       return await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+          await getApplicationSupportDirectory();
+    } else if (Platform.isWindows) {
+      // Windows: Use LOCALAPPDATA for AppData\Local
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null) {
+        return Directory(localAppData);
+      } else {
+        return await getApplicationSupportDirectory();
+      }
     } else {
-      return await getApplicationDocumentsDirectory();
+      // Linux/Mac
+      return await getApplicationSupportDirectory();
     }
   }
 
@@ -162,9 +171,18 @@ class SurveyConfigService {
     Directory baseDir;
     if (Platform.isAndroid) {
       baseDir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+          await getApplicationSupportDirectory();
+    } else if (Platform.isWindows) {
+      // Windows: Use LOCALAPPDATA for AppData\Local
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null) {
+        baseDir = Directory(localAppData);
+      } else {
+        baseDir = await getApplicationSupportDirectory();
+      }
     } else {
-      baseDir = await getApplicationDocumentsDirectory();
+      // Linux/Mac
+      baseDir = await getApplicationSupportDirectory();
     }
     return Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
   }
@@ -174,9 +192,18 @@ class SurveyConfigService {
     Directory baseDir;
     if (Platform.isAndroid) {
       baseDir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+          await getApplicationSupportDirectory();
+    } else if (Platform.isWindows) {
+      // Windows: Use LOCALAPPDATA for AppData\Local
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null) {
+        baseDir = Directory(localAppData);
+      } else {
+        baseDir = await getApplicationSupportDirectory();
+      }
     } else {
-      baseDir = await getApplicationDocumentsDirectory();
+      // Linux/Mac
+      baseDir = await getApplicationSupportDirectory();
     }
     return Directory(p.join(baseDir.path, 'GiSTX', 'outbox'));
   }

@@ -47,9 +47,18 @@ class FtpService {
       Directory baseDir;
       if (Platform.isAndroid) {
         baseDir = await getExternalStorageDirectory() ??
-            await getApplicationDocumentsDirectory();
+            await getApplicationSupportDirectory();
+      } else if (Platform.isWindows) {
+        // Windows: Use LOCALAPPDATA for AppData\Local
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+        if (localAppData != null) {
+          baseDir = Directory(localAppData);
+        } else {
+          baseDir = await getApplicationSupportDirectory();
+        }
       } else {
-        baseDir = await getApplicationDocumentsDirectory();
+        // Linux/Mac
+        baseDir = await getApplicationSupportDirectory();
       }
       final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
       if (!await zipsDir.exists()) {

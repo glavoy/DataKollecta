@@ -1,4 +1,4 @@
-package com.glavoy.gistx
+package com.gistx.gistx
 
 import io.flutter.embedding.android.FlutterActivity
 

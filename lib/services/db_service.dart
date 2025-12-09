@@ -141,13 +141,22 @@ class DbService {
         final extDir = await getExternalStorageDirectory();
         if (extDir == null) {
           // Fallback to internal if external not available
-          baseDbDir = await getApplicationDocumentsDirectory();
+          baseDbDir = await getApplicationSupportDirectory();
         } else {
           baseDbDir = extDir;
         }
+      } else if (Platform.isWindows) {
+        // Windows: Use LOCALAPPDATA for AppData\Local
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+        if (localAppData != null) {
+          baseDbDir = Directory(localAppData);
+        } else {
+          // Fallback if LOCALAPPDATA not set (unlikely)
+          baseDbDir = await getApplicationSupportDirectory();
+        }
       } else {
-        // Windows/Linux/Mac
-        baseDbDir = await getApplicationDocumentsDirectory();
+        // Linux/Mac: Use standard application support directory
+        baseDbDir = await getApplicationSupportDirectory();
       }
 
       final dbDir = Directory(p.join(baseDbDir.path, 'GiSTX', 'databases'));
@@ -877,9 +886,18 @@ class DbService {
     Directory baseDir;
     if (Platform.isAndroid) {
       baseDir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+          await getApplicationSupportDirectory();
+    } else if (Platform.isWindows) {
+      // Windows: Use LOCALAPPDATA for AppData\Local
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null) {
+        baseDir = Directory(localAppData);
+      } else {
+        baseDir = await getApplicationSupportDirectory();
+      }
     } else {
-      baseDir = await getApplicationDocumentsDirectory();
+      // Linux/Mac
+      baseDir = await getApplicationSupportDirectory();
     }
     return Directory(p.join(baseDir.path, 'GiSTX', 'backups'));
   }
@@ -888,9 +906,18 @@ class DbService {
     Directory baseDir;
     if (Platform.isAndroid) {
       baseDir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+          await getApplicationSupportDirectory();
+    } else if (Platform.isWindows) {
+      // Windows: Use LOCALAPPDATA for AppData\Local
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null) {
+        baseDir = Directory(localAppData);
+      } else {
+        baseDir = await getApplicationSupportDirectory();
+      }
     } else {
-      baseDir = await getApplicationDocumentsDirectory();
+      // Linux/Mac
+      baseDir = await getApplicationSupportDirectory();
     }
     return Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
   }
