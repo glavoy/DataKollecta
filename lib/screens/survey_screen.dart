@@ -334,6 +334,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     // Compare each answer
     for (final key in _answers.keys) {
+      // Ignore automatic fields that auto-update
+      if (key == 'lastmod' || key == 'swver' || key == 'survey_id') continue;
+
       final newValue = _answers[key];
       final oldValue = _originalAnswers![key];
 
@@ -346,7 +349,30 @@ class _SurveyScreenState extends State<SurveyScreen> {
       } else if (newValue is DateTime && oldValue is DateTime) {
         if (newValue != oldValue) return true;
       } else {
-        if (newValue.toString() != oldValue.toString()) return true;
+        if (newValue.toString() != oldValue.toString()) {
+          // Check if they are numerically equivalent (e.g. "1" vs "0001")
+          final n1 = num.tryParse(newValue.toString());
+          final n2 = num.tryParse(oldValue.toString());
+          if (n1 != null && n2 != null && n1 == n2) {
+            continue; // Numerically equal, so not a real change (database stores as int)
+          }
+
+          // Check if they are DateTime equivalent (e.g. "2025-12-09 11:22" vs "2025-12-09T11:22")
+          try {
+            final d1 = DateTime.tryParse(newValue.toString());
+            final d2 = DateTime.tryParse(oldValue.toString());
+            if (d1 != null && d2 != null && d1.isAtSameMomentAs(d2)) {
+              continue; // Same moment in time
+            }
+          } catch (_) {}
+
+          debugPrint(
+              '[ChangeDetection] Change in $key: "$oldValue" -> "$newValue"');
+          // q and allowNumericEquivalence logic removed as we now check all numerics
+          debugPrint('  (Numeric equivalence check failed or not numeric)');
+
+          return true;
+        }
       }
     }
 
@@ -589,6 +615,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // Skip primary key questions in edit mode
       if (widget.uniqueId != null && _isPrimaryKeyField(q.fieldName)) {
+        // CRITICAL FIX: Even if we skip DISPLAYING the primary key in edit mode,
+        // we MUST recalculate it because the user might have changed the fields that compose it
+        // (e.g. changing vcode should update hhid, so hhid_verif validation works)
+        await _processAutomaticQuestion(q);
         index++;
         continue;
       }
@@ -734,6 +764,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Check if this is a primary key field that needs ID generation
     final isIdField = !AutoFields.getRegistry().containsKey(q.fieldName);
 
+    debugPrint('[ProcessingAuto] ${q.fieldName} isIdField=$isIdField');
+    if (q.fieldName == 'hhid') {
+      debugPrint(
+          '[ProcessingAuto] hhid components: vcode=${_answers['vcode']}, mrccode=${_answers['mrccode']}, hhnum=${_answers['hhnum']}');
+      debugPrint('[ProcessingAuto] idConfig: ${widget.idConfig}');
+    }
+
     // For primary key fields, ALWAYS regenerate (don't use cached value)
     // This ensures that if user goes back and changes dependent fields, the ID updates
     if (isIdField && widget.idConfig != null && widget.idConfig!.isNotEmpty) {
@@ -770,9 +807,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _answers[q.fieldName] = '-9';
     } else {
       // Regular automatic field (starttime, uniqueid, etc.)
-      if (_answers[q.fieldName] != null) {
-        return; // Already computed
-      }
+
+      // Force re-calculation even if value exists (unless preserve is handled by AutoFields)
+      // This ensures dependent fields update when their dependencies change.
 
       final value = await AutoFields.compute(
         _answers,
@@ -802,6 +839,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       // Skip primary key questions in edit mode
       if (widget.uniqueId != null && _isPrimaryKeyField(q.fieldName)) {
         debugPrint('Skipping primary key question on load: ${q.fieldName}');
+        // CRITICAL FIX: Recalculate PK even if hidden
+        await _processAutomaticQuestion(q);
         index++;
         continue;
       }
@@ -813,6 +852,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
     if (index < questions.length && index != _currentQuestion) {
       setState(() {
         _currentQuestion = index;
+      });
+    }
+
+    // Initial validation check
+    if (mounted && index < questions.length) {
+      setState(() {
+        _logicError =
+            LogicService.evaluateLogicChecks(questions[index], _answers);
       });
     }
   }
@@ -964,10 +1011,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
                           padding: const EdgeInsets.all(12),
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .error
+                                .withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Theme.of(context).colorScheme.error.withValues(alpha: 0.3),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .error
+                                  .withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -1125,6 +1178,35 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Update lastmod timestamp only when actually saving
     AutoFields.touchLastMod(_answers);
 
+    // Verify questions loaded for sanitization
+    // Create a deep copy to sanitize (convert "0001" back to 1 for integer fields)
+    final sanitizedAnswers = Map<String, dynamic>.from(_answers);
+
+    if (_loadedQuestions != null) {
+      for (final q in _loadedQuestions!) {
+        final val = sanitizedAnswers[q.fieldName];
+        // If the field is an integer type, force it to be an integer (remove padding)
+        if (val != null && q.fieldType.toLowerCase().contains('integer')) {
+          final asNum = num.tryParse(val.toString());
+          if (asNum != null) {
+            sanitizedAnswers[q.fieldName] = asNum.toInt();
+          }
+        }
+        // Enforce ISO8601 format for date/datetime fields
+        if (val != null &&
+            (q.type == QuestionType.date || q.type == QuestionType.datetime)) {
+          final valStr = val.toString();
+          // If it looks like it might be space-separated or non-ISO, fix it
+          try {
+            final dt = DateTime.tryParse(valStr);
+            if (dt != null) {
+              sanitizedAnswers[q.fieldName] = dt.toIso8601String();
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
     bool saveSuccessful = false;
     String? errorMessage;
 
@@ -1138,7 +1220,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         await DbService.updateInterview(
           surveyId: surveyId,
           surveyFilename: widget.questionnaireFilename,
-          answers: _answers,
+          answers: sanitizedAnswers,
           uniqueId: widget.uniqueId!,
           originalAnswers: _originalAnswers,
         );
@@ -1147,7 +1229,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         await DbService.saveInterview(
           surveyId: surveyId,
           surveyFilename: widget.questionnaireFilename,
-          answers: _answers,
+          answers: sanitizedAnswers,
         );
       }
       saveSuccessful = true;

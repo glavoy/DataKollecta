@@ -43,6 +43,20 @@ class SurveyLoader {
         }
       }
 
+      // Optional: <numeric_range>=x</numeric_range> for zero padding
+      int? numericRange;
+      final numericRangeNode = q.getElement('numeric_range');
+      if (numericRangeNode != null) {
+        final rangeText = numericRangeNode.innerText.trim();
+        if (rangeText.startsWith('=')) {
+          numericRange = int.tryParse(rangeText.substring(1));
+        } else {
+          numericRange = int.tryParse(rangeText);
+        }
+      }
+
+      // Fallback removed: numericRange is purely optional, padding controlled by fixedLength
+
       // Optional: <numeric_check><values ... /></numeric_check>
       NumericCheck? numericCheck;
       final numericNode = q.getElement('numeric_check');
@@ -230,6 +244,7 @@ class SurveyLoader {
           text: text,
           maxCharacters: maxChars,
           fixedLength: fixedLength,
+          numericRange: numericRange,
           numericCheck: numericCheck,
           options: options,
           responseConfig: responseConfig,

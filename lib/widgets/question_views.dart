@@ -67,10 +67,29 @@ class _QuestionViewState extends State<QuestionView> {
     final q = widget.question;
     final existing = widget.answers[q.fieldName];
 
+    // Handle padding for fixed length numeric fields
+    String initialText = (existing is String) ? existing : '';
+    final originalText = initialText;
+
+    if (q.fixedLength && q.maxCharacters != null && initialText.isNotEmpty) {
+      // Check if it's a valid integer before padding
+      if (int.tryParse(initialText) != null) {
+        initialText = initialText.padLeft(q.maxCharacters!, '0');
+      }
+    }
+
     _textFocusNode = FocusNode();
     _textController = TextEditingController(
-      text: (existing is String) ? existing : '',
+      text: initialText,
     );
+
+    // If we padded the text, update the source of truth immediately
+    if (initialText != originalText) {
+      widget.answers[q.fieldName] = initialText;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onAnswerChanged?.call();
+      });
+    }
 
     _checkboxSelection = {
       if (existing is List) ...existing.map((e) => e.toString()),
@@ -110,8 +129,11 @@ class _QuestionViewState extends State<QuestionView> {
     // Centralized automatic variable calculation
     // Only compute automatic fields, NOT date/datetime fields
     // Date/datetime fields should require explicit user selection
-    if (q.type == QuestionType.automatic) {
-      if (existing == null) {
+    if (q.type == QuestionType.automatic || q.calculation != null) {
+      // Force calculation if it's automatic OR has a calculation defined
+      // We do NOT check 'existing == null' here anymore, because we want updates
+      // to propagate (AutoFields.compute handles 'preserve' flag if needed).
+      if (q.type != QuestionType.date && q.type != QuestionType.datetime) {
         _computeAutoValue();
       }
     }
@@ -186,7 +208,57 @@ class _QuestionViewState extends State<QuestionView> {
 
         // Check if current selection exists in options
         if (_radioSelection != null) {
-          final matchFound = options.any((opt) => opt.value == _radioSelection);
+          bool matchFound = options.any((opt) => opt.value == _radioSelection);
+
+          if (!matchFound) {
+            // Try flexible matching (handling leading zeros / int vs string)
+            for (final opt in options) {
+              // Try integer comparison
+              final optInt = int.tryParse(opt.value);
+              final selInt = int.tryParse(_radioSelection!);
+              if (optInt != null && selInt != null && optInt == selInt) {
+                matchFound = true;
+                _radioSelection = opt.value; // Correct the selection
+                break;
+              }
+            }
+          }
+
+          if (matchFound) {
+            // Ensure answers map uses the clean option value
+            // FIX: If we found a fuzzy match (e.g. "3" matches "03"), DO NOT update the answer
+            // merely for formatting. Keep the original DB value ("3") to prevent false change detection.
+            // Only update if it was NOT a fuzzy match (meaning _radioSelection == widget.answers[...] already?)
+            // Actually, if we fuzzy matched, we UPDATED _radioSelection to the opt.value ("03").
+            // So now _radioSelection ("03") != widget.answers[...] ("3").
+            // We should ONLY update widget.answers if strict equivalence was the goal (which user rejected for padding).
+            // So: If numerically equivalent, LEAVE IT ALONE.
+
+            final currentAnswer =
+                widget.answers[widget.question.fieldName]?.toString();
+            bool isFuzzyMatch = false;
+            if (currentAnswer != null &&
+                _radioSelection != null &&
+                currentAnswer != _radioSelection) {
+              final aNum = num.tryParse(currentAnswer);
+              final bNum = num.tryParse(_radioSelection!);
+              if (aNum != null && bNum != null && aNum == bNum) {
+                isFuzzyMatch = true;
+              }
+            }
+
+            if (!isFuzzyMatch &&
+                widget.answers[widget.question.fieldName] != _radioSelection) {
+              widget.answers[widget.question.fieldName] = _radioSelection;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) widget.onAnswerChanged?.call();
+              });
+            } else if (isFuzzyMatch) {
+              debugPrint(
+                  '[QuestionView] Fuzzy match detected ("$currentAnswer" ~ "$_radioSelection"). Preserving original answer to avoid change detection.');
+            }
+          }
+
           debugPrint(
               '[QuestionView]   Selection "$_radioSelection" ${matchFound ? "FOUND" : "NOT FOUND"} in options');
         }
@@ -207,8 +279,27 @@ class _QuestionViewState extends State<QuestionView> {
     // If we navigated to a different question, refresh local state
     if (oldWidget.question.fieldName != widget.question.fieldName) {
       final existing = widget.answers[widget.question.fieldName];
+
+      // Handle padding for numeric_range
+      String initialText = (existing is String) ? existing : '';
+      final originalText = initialText;
+
+      if (widget.question.numericRange != null && initialText.isNotEmpty) {
+        if (int.tryParse(initialText) != null) {
+          initialText = initialText.padLeft(widget.question.numericRange!, '0');
+        }
+      }
+
       // Reset text field
-      _textController.text = (existing is String) ? existing : '';
+      _textController.text = initialText;
+
+      // If we padded the text, update the source of truth immediately
+      if (initialText != originalText) {
+        widget.answers[widget.question.fieldName] = initialText;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) widget.onAnswerChanged?.call();
+        });
+      }
       // Reset radio/checkbox/combobox selections
       // Convert to string to ensure consistency with option values
       _radioSelection = existing != null ? existing.toString() : null;
@@ -361,32 +452,32 @@ class _QuestionViewState extends State<QuestionView> {
       children: [
         // Radio buttons
         RadioGroup<String>(
-                groupValue: _radioSelection,
-                onChanged: (val) {
-                  setState(() {
-                    _radioSelection = val;
-                    widget.answers[q.fieldName] = val;
-                  });
-                  widget.onAnswerChanged?.call();
-                },
-                child: Column(
-                  children: options
-                      .map(
-                        (opt) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: AppRadioTheme(
-                            child: RadioListTile<String>(
-                              value: opt.value,
-                              title: Text(opt.label),
-                              dense: true,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              tileColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
+          groupValue: _radioSelection,
+          onChanged: (val) {
+            setState(() {
+              _radioSelection = val;
+              widget.answers[q.fieldName] = val;
+            });
+            widget.onAnswerChanged?.call();
+          },
+          child: Column(
+            children: options
+                .map(
+                  (opt) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: AppRadioTheme(
+                      child: RadioListTile<String>(
+                        value: opt.value,
+                        title: Text(opt.label),
+                        dense: true,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        tileColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
         ),
       ],
@@ -431,52 +522,51 @@ class _QuestionViewState extends State<QuestionView> {
         // Checkbox options
         Column(
           children: options.map((opt) {
-                  final checked = _checkboxSelection.contains(opt.value);
-                  debugPrint(
-                      '  Option ${opt.value} (${opt.label}): checked=$checked');
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: CheckboxListTile(
-                      value: checked,
-                      dense: true,
-                      title: Text(opt.label),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      tileColor: Colors.white,
-                      onChanged: (val) {
-                        setState(() {
-                          // Check if this is a special option (don't know, refuse, not in list)
-                          final isSpecial = opt.value == dontKnowValue ||
-                              opt.value == refuseValue ||
-                              opt.value == notInListValue;
+            final checked = _checkboxSelection.contains(opt.value);
+            debugPrint(
+                '  Option ${opt.value} (${opt.label}): checked=$checked');
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: CheckboxListTile(
+                value: checked,
+                dense: true,
+                title: Text(opt.label),
+                controlAffinity: ListTileControlAffinity.leading,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                tileColor: Colors.white,
+                onChanged: (val) {
+                  setState(() {
+                    // Check if this is a special option (don't know, refuse, not in list)
+                    final isSpecial = opt.value == dontKnowValue ||
+                        opt.value == refuseValue ||
+                        opt.value == notInListValue;
 
-                          if (val == true) {
-                            if (isSpecial) {
-                              // If selecting a special option, clear everything else
-                              _checkboxSelection.clear();
-                              _checkboxSelection.add(opt.value);
-                            } else {
-                              // If selecting a normal option, remove any special options
-                              if (dontKnowValue != null)
-                                _checkboxSelection.remove(dontKnowValue);
-                              if (refuseValue != null)
-                                _checkboxSelection.remove(refuseValue);
-                              if (notInListValue != null)
-                                _checkboxSelection.remove(notInListValue);
-                              _checkboxSelection.add(opt.value);
-                            }
-                          } else {
-                            // Deselecting is always allowed
-                            _checkboxSelection.remove(opt.value);
-                          }
-                          widget.answers[q.fieldName] =
-                              _checkboxSelection.toList();
-                        });
-                        widget.onAnswerChanged?.call();
-                      },
-                    ),
-                  );
+                    if (val == true) {
+                      if (isSpecial) {
+                        // If selecting a special option, clear everything else
+                        _checkboxSelection.clear();
+                        _checkboxSelection.add(opt.value);
+                      } else {
+                        // If selecting a normal option, remove any special options
+                        if (dontKnowValue != null)
+                          _checkboxSelection.remove(dontKnowValue);
+                        if (refuseValue != null)
+                          _checkboxSelection.remove(refuseValue);
+                        if (notInListValue != null)
+                          _checkboxSelection.remove(notInListValue);
+                        _checkboxSelection.add(opt.value);
+                      }
+                    } else {
+                      // Deselecting is always allowed
+                      _checkboxSelection.remove(opt.value);
+                    }
+                    widget.answers[q.fieldName] = _checkboxSelection.toList();
+                  });
+                  widget.onAnswerChanged?.call();
+                },
+              ),
+            );
           }).toList(),
         ),
       ],

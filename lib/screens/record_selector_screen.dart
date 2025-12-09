@@ -65,7 +65,8 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
       if (!questionCache.isLoadedForSurvey(surveyId)) {
         final manifest = await surveyConfig.getActiveSurveyManifest();
         if (manifest != null) {
-          final xmlFiles = (manifest['xmlFiles'] as List?)?.cast<String>() ?? [];
+          final xmlFiles =
+              (manifest['xmlFiles'] as List?)?.cast<String>() ?? [];
 
           // Find the survey directory
           final surveysDir = await surveyConfig.getSurveysDirectory();
@@ -76,7 +77,8 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
               final manifestFile = File(manifestPath);
               if (await manifestFile.exists()) {
                 // Check if this is the right survey directory
-                final dirManifest = jsonDecode(await manifestFile.readAsString());
+                final dirManifest =
+                    jsonDecode(await manifestFile.readAsString());
                 if (dirManifest['surveyId'] == surveyId) {
                   await questionCache.loadQuestionsForSurvey(
                     surveyId: surveyId,
@@ -91,11 +93,14 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
         }
       }
 
+      final idConfig = crfConfig?['idconfig']?.toString();
+
       return RecordSelectorData(
         tableName: tableName,
         primaryKeyFields: pkFields,
         records: records,
         displayFields: displayFields,
+        idConfig: idConfig,
       );
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -246,6 +251,7 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
           existingAnswers: record,
           uniqueId: uniqueId,
           primaryKeyFields: data.primaryKeyFields,
+          idConfig: data.idConfig,
         ),
       ),
     );
@@ -514,11 +520,13 @@ class RecordSelectorData {
   final List<String> primaryKeyFields;
   final List<Map<String, dynamic>> records;
   final List<String> displayFields;
+  final String? idConfig;
 
   RecordSelectorData({
     required this.tableName,
     required this.primaryKeyFields,
     required this.records,
     this.displayFields = const [],
+    this.idConfig,
   });
 }

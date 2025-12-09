@@ -497,6 +497,8 @@ class DbService {
           rowData[key] = val.map((e) => e.toString()).join(',');
         } else if (val is DateTime) {
           rowData[key] = val.toIso8601String();
+        } else if (val is DateTime) {
+          rowData[key] = val.toIso8601String();
         } else {
           rowData[key] = val;
         }
@@ -629,6 +631,8 @@ class DbService {
           rowData[key] = null;
         } else if (val is List) {
           rowData[key] = val.map((e) => e.toString()).join(',');
+        } else if (val is DateTime) {
+          rowData[key] = val.toIso8601String();
         } else if (val is DateTime) {
           rowData[key] = val.toIso8601String();
         } else {

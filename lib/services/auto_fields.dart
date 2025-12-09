@@ -2,6 +2,7 @@ import '../models/question.dart';
 import '../config/app_config.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
+import 'package:flutter/foundation.dart';
 
 /// This is the ONLY file a programmer edits for automatic variables.
 /// Add/edit entries in [_registry] to support new automatic fields.
@@ -44,17 +45,30 @@ class AutoFields {
     final key = q.fieldName;
     final existing = answers[key];
 
+    // Debug logging for preservation logic
+    if (key == 'starttime' ||
+        key == 'stoptime' ||
+        key == 'uniqueid' ||
+        key == 'intnum' ||
+        key == 'vcode' ||
+        key == 'lastmod') {
+      debugPrint(
+          '[AutoFields] computing $key. isEditMode=$isEditMode, existing=$existing (${existing.runtimeType})');
+    }
+
     // In edit mode, preserve existing values for certain fields
-    if (isEditMode && existing is String && existing.isNotEmpty) {
+    // Fix: check for null or empty string, but allow DateTime objects (which are not strings)
+    bool hasValue = existing != null;
+    if (existing is String) hasValue = existing.isNotEmpty;
+
+    if (isEditMode && hasValue) {
       // Always preserve these fields in edit mode
-      if (key == 'uniqueid' ||
-          key == 'starttime' ||
-          key == 'stoptime' ||
-          key == 'survey_id') {
-        return existing;
+      if (key == 'uniqueid' || key == 'starttime' || key == 'stoptime') {
+        if (existing is DateTime) return existing.toIso8601String();
+        return existing.toString();
       }
-      // For lastmod, we want to update it even in edit mode
-      if (key != 'lastmod') {
+      // Fields that should update in edit mode: lastmod, swver, survey_id
+      if (key != 'lastmod' && key != 'swver' && key != 'survey_id') {
         return existing;
       }
     }

@@ -11,7 +11,20 @@ Kollect, the name of the app
 - revisit 'repeat' sections - maybe have them 'inline' - asked at a point in time before the 'main' survey is over - then user can go 'back' through all of them.
 - Add 'button' question type?
 - Add dynamic date ranges. If someone is two years old, don't let date go back now tham 2 years. This can also be logic check
-- have "=4" for maxChar - must be this length
+For Android (APK)
+Instead of flutter build apk: Run 
+.\build_apk.ps1
+
+For Windows
+Instead of flutter build windows: Run 
+.\build_windows.ps1
+
+Both of these scripts will now:
+
+Automatically increment the version in 
+pubspec.yaml
+ (e.g., 0.0.1 -> 0.0.2).
+Run the build command for you.
 
 
 

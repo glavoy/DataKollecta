@@ -151,6 +151,7 @@ class Question {
   final String? text;
   final int? maxCharacters;
   final bool fixedLength;
+  final int? numericRange; // For zero padding (e.g. numeric_range=x)
   final NumericCheck? numericCheck;
   final List<QuestionOption> options;
   final ResponseConfig? responseConfig; // New: for dynamic responses
@@ -171,6 +172,7 @@ class Question {
     this.text,
     this.maxCharacters,
     this.fixedLength = false,
+    this.numericRange,
     this.numericCheck,
     this.options = const [],
     this.responseConfig,

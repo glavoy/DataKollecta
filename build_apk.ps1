@@ -1,3 +1,9 @@
+Write-Host "Updating version..."
+dart run tool/update_version.dart
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Version update failed."
+}
+
 Write-Host "Building APK..."
 flutter build apk
 
@@ -9,9 +15,11 @@ if ($?) {
     if (Test-Path $source) {
         Copy-Item -Path $source -Destination $dest -Force
         Write-Host "APK created at: $dest"
-    } else {
+    }
+    else {
         Write-Host "Error: Could not find output APK at $source"
     }
-} else {
+}
+else {
     Write-Host "Build failed."
 }
