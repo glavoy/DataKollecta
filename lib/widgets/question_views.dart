@@ -349,7 +349,15 @@ class _QuestionViewState extends State<QuestionView> {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.all(14),
-          child: Text(display, style: const TextStyle(fontSize: 16)),
+          child: Text(
+            display,
+            style: TextStyle(
+              fontSize: 16,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black87
+                  : null,
+            ),
+          ),
         ),
       ],
     );
@@ -449,13 +457,22 @@ class _QuestionViewState extends State<QuestionView> {
                   (opt) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: AppRadioTheme(
-                      child: RadioListTile<String>(
-                        value: opt.value,
-                        title: Text(opt.label),
-                        dense: true,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        tileColor: Colors.white,
+                      child: Builder(
+                        builder: (context) => RadioListTile<String>(
+                          value: opt.value,
+                          title: Text(
+                            opt.label,
+                            style: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.black87
+                                  : null,
+                            ),
+                          ),
+                          dense: true,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          tileColor: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -513,7 +530,14 @@ class _QuestionViewState extends State<QuestionView> {
               child: CheckboxListTile(
                 value: checked,
                 dense: true,
-                title: Text(opt.label),
+                title: Text(
+                  opt.label,
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.black87
+                        : null,
+                  ),
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -593,6 +617,12 @@ class _QuestionViewState extends State<QuestionView> {
             hint: const Text('Select an option'),
             isExpanded: true,
             underline: const SizedBox(),
+            style: TextStyle(
+              fontSize: 16,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black87
+                  : Colors.black87,
+            ),
             items: options.map((opt) {
               return DropdownMenuItem<String>(
                 value: opt.value,

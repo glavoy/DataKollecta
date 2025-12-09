@@ -919,11 +919,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
         // final progress = (_currentQuestion + 1) / questions.length;
 
         return Scaffold(
-          backgroundColor:
-              widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
+          backgroundColor: widget.uniqueId != null
+              ? (Theme.of(context).brightness == Brightness.dark
+                  ? Colors.blueGrey.shade800
+                  : Colors.blueGrey.shade50)
+              : null,
           appBar: AppBar(
-            backgroundColor:
-                widget.uniqueId != null ? Colors.blueGrey.shade50 : null,
+            backgroundColor: widget.uniqueId != null
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.blueGrey.shade800
+                    : Colors.blueGrey.shade50)
+                : null,
             toolbarHeight: 60,
             leading: IconButton(
               icon: const Icon(Icons.close),
@@ -960,7 +966,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.blue.shade700
+                          : Colors.blue.shade100,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -973,7 +981,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Colors.blue.shade900,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.blue.shade900,
                       ),
                     ),
                   )

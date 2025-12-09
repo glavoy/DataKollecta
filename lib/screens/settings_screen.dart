@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../services/theme_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +16,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _settingsService = SettingsService();
+  late final ThemeService _themeService;
 
   // Controllers for text fields
   final _surveyorIdController = TextEditingController();
@@ -28,7 +30,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService = ThemeService();
+    _themeService.addListener(_onThemeChanged);
     _initialize();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _initialize() async {
@@ -50,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _surveyorIdController.dispose();
     _ftpUsernameController.dispose();
     _ftpPasswordController.dispose();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -114,6 +123,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings'),
         actions: [
+          if (_appVersion.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 12.0),
+              child: Center(
+                child: Text(
+                  'v$_appVersion',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: FilledButton.tonal(
@@ -135,57 +156,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: ListView(
                   children: [
-                    // Version display at the top
-                    if (_appVersion.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 8, horizontal: 12),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primaryContainer
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(8),
+                    // Dark Mode Toggle
+                    Row(
+                      children: [
+                        const Spacer(),
+                        Icon(
+                          _themeService.isDarkMode
+                              ? Icons.dark_mode
+                              : Icons.light_mode,
+                          size: 20,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 16,
-                              color:
-                                  Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Version $_appVersion',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
+                        const SizedBox(width: 8),
+                        Text(_themeService.isDarkMode ? 'Dark Mode' : 'Light Mode'),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: _themeService.isDarkMode,
+                          onChanged: (value) async {
+                            await _themeService.toggleTheme();
+                          },
                         ),
-                      ),
-                    const SizedBox(height: 24),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
                     Text(
                       'User Settings',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _surveyorIdController,
                       decoration: const InputDecoration(
@@ -201,15 +207,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 24),
-                    const Divider(),
                     const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 12),
                     Text(
                       'Server Credentials',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -218,7 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: Colors.grey[600],
                           ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _ftpUsernameController,
                       decoration: const InputDecoration(
@@ -251,17 +256,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
                     const Divider(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Text(
                       'Manage Surveys',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: _showDeleteSurveyDialog,
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -272,7 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),

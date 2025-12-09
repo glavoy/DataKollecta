@@ -367,7 +367,8 @@ class _MainScreenState extends State<MainScreen> {
           'Please configure your settings before starting a survey.\n\n'
           'You need to:\n'
           '• Enter your Surveyor ID\n'
-          '• Select an active survey',
+          '• Enter your credentials\n'
+          '• Download/select an active survey',
         ),
         actions: [
           TextButton(
