@@ -80,6 +80,9 @@ class SurveyConfigService {
                 }
               }
             }
+
+            // Associate current global credentials with newly extracted survey
+            await _associateCurrentCredentialsWithSurvey(surveyFolderName);
           } catch (e) {
             debugPrint('[SurveyConfig] Failed to extract $zipName: $e');
           }
@@ -87,6 +90,32 @@ class SurveyConfigService {
       }
     } catch (e) {
       debugPrint('[SurveyConfig] Error initializing surveys: $e');
+    }
+  }
+
+  /// Associate current global credentials with a survey (used for manually added surveys)
+  Future<void> _associateCurrentCredentialsWithSurvey(String surveyName) async {
+    try {
+      final surveyId = await getSurveyId(surveyName);
+      if (surveyId == null) return;
+
+      // Check if survey already has credentials
+      final existingCreds = await _settingsService.getSurveyUsername(surveyId);
+      if (existingCreds != null) {
+        // Already has credentials, don't overwrite
+        return;
+      }
+
+      // Get current global credentials
+      final username = await _settingsService.ftpUsername;
+      final password = await _settingsService.ftpPassword;
+
+      if (username != null && password != null) {
+        await _settingsService.setSurveyCredentials(surveyId, username, password);
+        debugPrint('[SurveyConfig] Associated current credentials with survey: $surveyId');
+      }
+    } catch (e) {
+      debugPrint('[SurveyConfig] Error associating credentials: $e');
     }
   }
 

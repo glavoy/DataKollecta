@@ -92,4 +92,39 @@ class SettingsService {
   Future<void> clearAllSettings() async {
     await _storage.deleteAll();
   }
+
+  // Survey-specific credentials
+  Future<String?> getSurveyUsername(String surveyId) async {
+    return await _storage.read(key: 'survey_${surveyId}_username');
+  }
+
+  Future<String?> getSurveyPassword(String surveyId) async {
+    return await _storage.read(key: 'survey_${surveyId}_password');
+  }
+
+  Future<void> setSurveyCredentials(String surveyId, String username, String password) async {
+    await _storage.write(key: 'survey_${surveyId}_username', value: username);
+    await _storage.write(key: 'survey_${surveyId}_password', value: password);
+  }
+
+  /// Get credentials for a survey - returns survey-specific if available, otherwise falls back to global
+  Future<Map<String, String>?> getCredentialsForSurvey(String surveyId) async {
+    // Try survey-specific first
+    final surveyUsername = await getSurveyUsername(surveyId);
+    final surveyPassword = await getSurveyPassword(surveyId);
+
+    if (surveyUsername != null && surveyPassword != null) {
+      return {'username': surveyUsername, 'password': surveyPassword};
+    }
+
+    // Fall back to global credentials
+    final globalUsername = await ftpUsername;
+    final globalPassword = await ftpPassword;
+
+    if (globalUsername != null && globalPassword != null) {
+      return {'username': globalUsername, 'password': globalPassword};
+    }
+
+    return null;
+  }
 }

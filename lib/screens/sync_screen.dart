@@ -156,6 +156,11 @@ class _SyncScreenState extends State<SyncScreen> {
       final file = await _ftpService.downloadSurveyZip(filename);
 
       if (file != null) {
+        // Extract surveyId from the downloaded zip to save credentials
+        // The zip file name should be something like "surveyname.zip"
+        // After extraction, we need to read the manifest to get the surveyId
+        await _associateCredentialsWithDownloadedSurvey(filename, username, password);
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -186,23 +191,39 @@ class _SyncScreenState extends State<SyncScreen> {
     }
   }
 
+  Future<void> _associateCredentialsWithDownloadedSurvey(
+      String filename, String username, String password) async {
+    try {
+      // Extract zip first (it's in the zips folder)
+      await _surveyConfig.initializeSurveys();
+
+      // The survey name is the filename without .zip extension
+      final surveyName = filename.replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
+
+      // Get the surveyId for this survey
+      final surveyId = await _surveyConfig.getSurveyId(surveyName);
+
+      if (surveyId != null) {
+        // Save the credentials that were used to download this survey
+        await _settingsService.setSurveyCredentials(surveyId, username, password);
+        debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
+      }
+    } catch (e) {
+      debugPrint('[SyncScreen] Error associating credentials: $e');
+    }
+  }
+
   Future<void> _uploadData() async {
     setState(() {
       _isUploading = true;
     });
 
     try {
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
       final surveyorId = await _settingsService.surveyorId;
       final surveyName = await _settingsService.activeSurvey;
 
-      if (username == null ||
-          password == null ||
-          surveyorId == null ||
-          surveyName == null) {
-        throw Exception(
-            'Missing settings (FTP creds, Surveyor ID, or Active Survey).');
+      if (surveyorId == null || surveyName == null) {
+        throw Exception('Missing settings (Surveyor ID or Active Survey).');
       }
 
       // 1. Get Survey ID and DB Path
@@ -210,6 +231,16 @@ class _SyncScreenState extends State<SyncScreen> {
       if (surveyId == null)
         throw Exception('Could not find ID for survey: $surveyName');
 
+      // 2. Get credentials for THIS survey (survey-specific or falls back to global)
+      final credentials = await _settingsService.getCredentialsForSurvey(surveyId);
+      if (credentials == null) {
+        throw Exception('No credentials available for this survey.');
+      }
+
+      final username = credentials['username']!;
+      final password = credentials['password']!;
+
+      // 3. Get DB Path
       final baseDir = await _surveyConfig.getSurveysDirectory();
       // Go up one level from surveys to get to GiSTX root, then into databases
       final gistxDir = baseDir.parent;
@@ -220,7 +251,7 @@ class _SyncScreenState extends State<SyncScreen> {
         throw Exception('Database file not found: $dbPath');
       }
 
-      // 2. Create Zip
+      // 4. Create Zip
       final timestamp = DateFormat('yyyy-MM-dd_HH_mm').format(DateTime.now());
       final zipFilename = '${surveyId}_${surveyorId}_$timestamp.zip';
 
@@ -246,7 +277,7 @@ class _SyncScreenState extends State<SyncScreen> {
 
       final zipFile = File(zipPath);
 
-      // 3. Upload
+      // 5. Upload
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Uploading data...')),
