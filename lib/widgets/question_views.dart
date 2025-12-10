@@ -193,56 +193,14 @@ class _QuestionViewState extends State<QuestionView> {
           _dynamicOptions = options;
         });
 
-        // Check if current selection exists in options
-        if (_radioSelection != null) {
-          bool matchFound = options.any((opt) => opt.value == _radioSelection);
-
-          if (!matchFound) {
-            // Try flexible matching (handling leading zeros / int vs string)
-            for (final opt in options) {
-              // Try integer comparison
-              final optInt = int.tryParse(opt.value);
-              final selInt = int.tryParse(_radioSelection!);
-              if (optInt != null && selInt != null && optInt == selInt) {
-                matchFound = true;
-                _radioSelection = opt.value; // Correct the selection
-                break;
-              }
-            }
-          }
-
-          if (matchFound) {
-            // Ensure answers map uses the clean option value
-            // FIX: If we found a fuzzy match (e.g. "3" matches "03"), DO NOT update the answer
-            // merely for formatting. Keep the original DB value ("3") to prevent false change detection.
-            // Only update if it was NOT a fuzzy match (meaning _radioSelection == widget.answers[...] already?)
-            // Actually, if we fuzzy matched, we UPDATED _radioSelection to the opt.value ("03").
-            // So now _radioSelection ("03") != widget.answers[...] ("3").
-            // We should ONLY update widget.answers if strict equivalence was the goal (which user rejected for padding).
-            // So: If numerically equivalent, LEAVE IT ALONE.
-
-            final currentAnswer =
-                widget.answers[widget.question.fieldName]?.toString();
-            bool isFuzzyMatch = false;
-            if (currentAnswer != null &&
-                _radioSelection != null &&
-                currentAnswer != _radioSelection) {
-              final aNum = num.tryParse(currentAnswer);
-              final bNum = num.tryParse(_radioSelection!);
-              if (aNum != null && bNum != null && aNum == bNum) {
-                isFuzzyMatch = true;
-              }
-            }
-
-            if (!isFuzzyMatch &&
-                widget.answers[widget.question.fieldName] != _radioSelection) {
-              widget.answers[widget.question.fieldName] = _radioSelection;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) widget.onAnswerChanged?.call();
-              });
-            } else if (isFuzzyMatch) {
-              // Fuzzy match detected ("$currentAnswer" ~ "$_radioSelection"). Preserving original answer to avoid change detection.
-            }
+        // Update answers map if current selection exists in options
+        if (_radioSelection != null &&
+            options.any((opt) => opt.value == _radioSelection)) {
+          if (widget.answers[widget.question.fieldName] != _radioSelection) {
+            widget.answers[widget.question.fieldName] = _radioSelection;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) widget.onAnswerChanged?.call();
+            });
           }
         }
       }
@@ -263,26 +221,10 @@ class _QuestionViewState extends State<QuestionView> {
     if (oldWidget.question.fieldName != widget.question.fieldName) {
       final existing = widget.answers[widget.question.fieldName];
 
-      // Handle padding for numeric_range
-      String initialText = (existing is String) ? existing : '';
-      final originalText = initialText;
-
-      if (widget.question.numericRange != null && initialText.isNotEmpty) {
-        if (int.tryParse(initialText) != null) {
-          initialText = initialText.padLeft(widget.question.numericRange!, '0');
-        }
-      }
-
       // Reset text field
+      String initialText = (existing is String) ? existing : '';
       _textController.text = initialText;
 
-      // If we padded the text, update the source of truth immediately
-      if (initialText != originalText) {
-        widget.answers[widget.question.fieldName] = initialText;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) widget.onAnswerChanged?.call();
-        });
-      }
       // Reset radio/checkbox/combobox selections
       // Convert to string to ensure consistency with option values
       _radioSelection = existing != null ? existing.toString() : null;

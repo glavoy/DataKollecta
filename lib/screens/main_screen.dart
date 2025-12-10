@@ -102,7 +102,7 @@ class _MainScreenState extends State<MainScreen> {
                       ? FontWeight.bold
                       : FontWeight.normal,
                   color: survey == _surveyName
-                      ? Theme.of(context).primaryColor
+                      ? Theme.of(context).colorScheme.primary
                       : null,
                 ),
               ),

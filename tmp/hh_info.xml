@@ -1,0 +1,1449 @@
+<?xml version = '1.0' encoding = 'utf-8'?>
+<survey>
+
+
+	<question type = 'automatic' fieldname = 'starttime' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'text' fieldname = 'intnum' fieldtype = 'text_integer'>
+		<text>Interviewer's Number</text>
+		<maxCharacters>=2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='99' other_values = '1' message = 'Number must be between 1 and 99!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'region' fieldtype = 'integer'>
+		<text>Region where the MRC is located</text>
+		<responses>
+			<response value = '1'>Busoga</response>
+			<response value = '2'>Bukedi</response>
+			<response value = '4'>Teso</response>
+			<response value = '5'>Karamoja</response>
+			<response value = '6'>Lango</response>
+			<response value = '7'>Acholi</response>
+			<response value = '8'>West Nile</response>
+			<response value = '9'>Bunyoro</response>
+			<response value = '10'>Tooro</response>
+			<response value = '11'>Kigezi</response>
+			<response value = '14'>North Buganda</response>
+			<response value = '15'>Kampala</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'mrccode' fieldtype = 'integer'>
+		<text>MRC Code</text>
+		<maxCharacters>=2</maxCharacters>
+		<responses source='csv' file='mrcvillage.csv'>
+			<filter column='region' operator='=' value='[[region]]'/>
+			<display column='mrcname'/>
+			<value column='mrccode'/>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'vcode' fieldtype = 'integer'>
+		<text>Village</text>
+		<maxCharacters>=2</maxCharacters>
+		<responses source='csv' file='mrcvillage.csv'>
+			<filter column='region' operator='=' value='[[region]]'/>
+			<filter column='mrccode' operator='=' value='[[mrccode]]'/>
+			<display column='villagename'/>
+			<value column='vcode'/>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'hhnum' fieldtype = 'text_integer'>
+		<text>Household number</text>
+		<maxCharacters>=4</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='9999' other_values = '1' message = 'Number must be between 1 and 9999!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'hhid' fieldtype = 'integer'>
+	</question>
+
+
+	<question type = 'text' fieldname = 'hhid_verif' fieldtype = 'text_integer'>
+		<text>Household ID</text>
+		<maxCharacters>=9</maxCharacters>
+		<numeric_check>
+			<values minvalue ='300000000' maxvalue='399999999' other_values = '300000000' message = 'Number must be between 300000000 and 399999999!'></values>
+		</numeric_check>
+		<logic_check>
+			hhid_verif &lt;&gt; hhid; 'This hhid does not match with the information you entered!'
+		</logic_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'enrolled' fieldtype = 'integer'>
+		<text>Household enrolled in the survey?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'exclreason' fieldtype = 'integer'>
+		<text>If not enrolled, reason for exclusion?</text>
+		<responses>
+			<response value = '1'>Dwelling destroyed or not found</response>
+			<response value = '2'>Household vacant</response>
+			<response value = '3'>Unable to locate adult x 3 attempts</response>
+			<response value = '4'>No Adult resident aged 18 or older present</response>
+			<response value = '5'>Adult is not a usual resident, present on the previous night</response>
+			<response value = '6'>Adult resident not willing to provide informed consent</response>
+		</responses>
+		<preskip>
+			<skip fieldname='enrolled' condition = '=' response='1' response_type='fixed' skiptofieldname ='swater'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'swater' fieldtype = 'integer'>
+		<text>What is the main source of drinking water for members of your household?</text>
+		<responses>
+			<response value = '10'>borehole</response>
+			<response value = '11'>pipe into dwelling</response>
+			<response value = '12'>piped into yard/compound</response>
+			<response value = '13'>public tap</response>
+			<response value = '14'>private/personal tap</response>
+			<response value = '15'>Tap in the neigbourhood</response>
+			<response value = '21'>open well in yard/compound</response>
+			<response value = '22'>open public well</response>
+			<response value = '31'>protected well in yard/compound</response>
+			<response value = '32'>protected public well</response>
+			<response value = '41'>protected spring</response>
+			<response value = '42'>unprotected spring</response>
+			<response value = '43'>river/stream</response>
+			<response value = '44'>pond/lake</response>
+			<response value = '45'>dam</response>
+			<response value = '51'>rainwater</response>
+			<response value = '61'>water truck</response>
+			<response value = '71'>bottled water</response>
+			<response value = '96'>other</response>
+		</responses>
+		<preskip>
+			<skip fieldname='enrolled' condition = '=' response='0' response_type='fixed' skiptofieldname ='totvisit'></skip>
+		</preskip>
+		<postskip>
+			<skip fieldname='swater' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='tfaclty'></skip>
+		</postskip>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'otherscs' fieldtype = 'text'>
+		<text>Specify other source of water</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'tfaclty' fieldtype = 'integer'>
+		<text>What kind of toilet facility do members of your household usually use?</text>
+		<responses>
+			<response value = '1'>flush toilet</response>
+			<response value = '2'>vip latrine</response>
+			<response value = '3'>covered pit latrine no slab</response>
+			<response value = '4'>covered pit latrine w/slab</response>
+			<response value = '5'>uncovered pit latrine no slab</response>
+			<response value = '6'>uncovered pit latrine w/slab</response>
+			<response value = '7'>composting toilet</response>
+			<response value = '8'>no facility/bush/field</response>
+			<response value = '96'>other</response>
+		</responses>
+		<postskip>
+			<skip fieldname='tfaclty' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='fueltype'></skip>
+		</postskip>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'otherfcy' fieldtype = 'text'>
+		<text>Specify other kind of toilet facilities</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'fueltype' fieldtype = 'integer'>
+		<text>What type of fuel does your household mainly use for cooking?</text>
+		<responses>
+			<response value = '1'>electricity</response>
+			<response value = '2'>lpg/natural gas</response>
+			<response value = '3'>biogas</response>
+			<response value = '4'>paraffin/kerosene</response>
+			<response value = '5'>charcoal</response>
+			<response value = '6'>firewood</response>
+			<response value = '7'>straw/shrubs/grass</response>
+			<response value = '8'>animal dung</response>
+			<response value = '9'>maize cobs</response>
+			<response value = '95'>no food cooked in household</response>
+			<response value = '96'>other</response>
+		</responses>
+		<postskip>
+			<skip fieldname='fueltype' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='senergy'></skip>
+		</postskip>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'otherfuel' fieldtype = 'text'>
+		<text>Specify other type of fuel used</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'senergy' fieldtype = 'integer'>
+		<text>What is the main source of energy for lighting in the household?</text>
+		<responses>
+			<response value = '1'>electricity</response>
+			<response value = '2'>solar</response>
+			<response value = '3'>gas</response>
+			<response value = '4'>paraffin-hurricane lamp</response>
+			<response value = '5'>paraffin-pressure lamp</response>
+			<response value = '6'>paraffin-wick lamp</response>
+			<response value = '7'>firewood</response>
+			<response value = '8'>candles</response>
+			<response value = '9'>torch/battery powered lamp</response>
+			<response value = '10'>Phone light</response>
+			<response value = '11'>Grass</response>
+			<response value = '96'>other</response>
+		</responses>
+		<postskip>
+			<skip fieldname='senergy' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='electricity'></skip>
+		</postskip>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'othereng' fieldtype = 'text'>
+		<text>Specify other source of energy for lighting</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'electricity' fieldtype = 'integer'>
+		<text>Does your household have...
+
+...Electricity?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'radio' fieldtype = 'integer'>
+		<text>...Radio?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'tv' fieldtype = 'integer'>
+		<text>…Television?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'tble' fieldtype = 'integer'>
+		<text>…Table?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'chair' fieldtype = 'integer'>
+		<text>…Chairs?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'sofa' fieldtype = 'integer'>
+		<text>…Sofa set?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'bed' fieldtype = 'integer'>
+		<text>…Bed?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'cupboard' fieldtype = 'integer'>
+		<text>…Cupboard?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'mobile' fieldtype = 'integer'>
+		<text>Does any member of your household own or have…
+
+ …Mobile phone?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'bicycle' fieldtype = 'integer'>
+		<text>….A bicycle?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'scooter' fieldtype = 'integer'>
+		<text>…A motorcycle or motor scooter?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'bankacco' fieldtype = 'integer'>
+		<text>…A bank account?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'internet' fieldtype = 'integer'>
+		<text>…A device that can be used to access the internet?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='internet' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='numaland'></skip>
+		</postskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'smartphone' fieldtype = 'integer'>
+		<text>Do you have a Smartphone that you can use to access internet?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'tablet' fieldtype = 'integer'>
+		<text>Do you have a Tablet that you can use to access internet?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'laptop' fieldtype = 'integer'>
+		<text>Do you have a laptop that you can use to access internet?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'desktop' fieldtype = 'integer'>
+		<text>Do you have a desktop computer that you can use to access internet?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'numaland' fieldtype = 'text_decimal'>
+		<text>How many acres of agricultural land do members of this household own?
+
+IF NONE, ENTER '0'
+IF 10,000 OR MORE, ENTER 10,000</text>
+		<maxCharacters>7</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='10000' other_values = '0' message = 'Number must be between 0 and 10000!'></values>
+		</numeric_check>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'dmarkt' fieldtype = 'text_decimal'>
+		<text>How far is it to the nearest market place( in KM)?</text>
+		<maxCharacters>5</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='100' other_values = '0' message = 'Number must be between 0 and 100!'></values>
+		</numeric_check>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'hhmeals' fieldtype = 'text_integer'>
+		<text>Now I would like to ask you about the food your household eats.
+How many meals does your household usually have per day?</text>
+		<maxCharacters>1</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='8' other_values = '1' message = 'Number must be between 1 and 8!'></values>
+		</numeric_check>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'hhnumt' fieldtype = 'text_integer'>
+		<text>In the past week, on how many days did the household eat meat?</text>
+		<maxCharacters>1</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='7' other_values = '0' message = 'Number must be between 0 and 7!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'hhpsf' fieldtype = 'integer'>
+		<text>How often in the last year did you have problems in satisfying the food needs of the household?</text>
+		<responses>
+			<response value = '1'>Never</response>
+			<response value = '2'>Seldom</response>
+			<response value = '3'>Sometimes</response>
+			<response value = '4'>Often</response>
+			<response value = '5'>Always</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'dhfcty' fieldtype = 'text_decimal'>
+		<text>How far is it to the nearest health facility?
+
+If less than 1 km, enter 0
+If more than 100 km, enter 100</text>
+		<maxCharacters>5</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='100' other_values = '0' message = 'Number must be between 0 and 100!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'mthfcty' fieldtype = 'integer'>
+		<text>If you were to go to this facility,how would you most likely go there?</text>
+		<maxCharacters>10</maxCharacters>
+		<responses>
+			<response value = '1'>Car/motorcycle</response>
+			<response value = '2'>Public transport(bus,taxi)</response>
+			<response value = '3'>Animal/animal cart</response>
+			<response value = '4'>Walking</response>
+			<response value = '5'>Bicycle</response>
+			<response value = '7'>Boat</response>
+			<response value = '8'>Wheel Chair</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'primsouemptbw' fieldtype = 'integer'>
+		<text>What is the primary source of employment over the last 12 months for the main breadwinner or head of household?</text>
+		<responses>
+			<response value = '1'>Subsistence farmer</response>
+			<response value = '2'>Business/Trader</response>
+			<response value = '3'>Government worker</response>
+			<response value = '4'>Large scale farmer</response>
+			<response value = '5'>Private formal worker</response>
+			<response value = '6'>Casual worker for wages</response>
+			<response value = '7'>None</response>
+			<response value = '96'>Other</response>
+		</responses>
+		<postskip>
+			<skip fieldname='primsouemptbw' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='hohearn'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'primsouemptbwoth' fieldtype = 'text'>
+		<text>Specify other primary source of Income</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'hohearn' fieldtype = 'text_integer'>
+		<text>How much does the main bread winner/head of the household earn in UGX?  
+Note: The question coming after, will ask about rates whether it is hourly, weekly, monthly or Annually</text>
+		<maxCharacters>9</maxCharacters>
+		<preskip>
+			<skip fieldname='primsouemptbw' condition = '=' response='7' response_type='fixed' skiptofieldname ='spendmealsday'></skip>
+		</preskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'hohearnrate' fieldtype = 'integer'>
+		<text>Indicate whether it is an hourly, weekly , monthly or annual rate</text>
+		<responses>
+			<response value = '1'>hourly</response>
+			<response value = '2'>weekly</response>
+			<response value = '3'>monthly</response>
+			<response value = '4'>annual</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spendmealsday' fieldtype = 'text_integer'>
+		<text>How much does your family typically spend on meals for one day? In UGX</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'othsouincome' fieldtype = 'integer'>
+		<text>Are there any other sources of income for your household (from other jobs, other household members who contribute to the household income)?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='othsouincome' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='spend_rent'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'approxtotalothcont' fieldtype = 'text_integer'>
+		<text>If yes, what is the approximate TOTAL amount of these other contributions per month? In UGX</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_rent' fieldtype = 'text_integer'>
+		<text>How much does your household spend on the following every month? In UGX
+….. Rent ( Eneter 0 if no expense made on rent)</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_food' fieldtype = 'text_integer'>
+		<text>…. Food</text>
+		<maxCharacters>9</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='1000000000' other_values = '0' message = 'Number must be between 0 and 1000000000!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_transport' fieldtype = 'text_integer'>
+		<text>…. Transportation ( Enter 0 if no costs on transport)</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_schoolfees' fieldtype = 'text_integer'>
+		<text>…. Schoolfees( If fees is paid per term, divide the amount by 3 to monthly expense)</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_insurance' fieldtype = 'text_integer'>
+		<text>…. Medical Insurance( If no expense on insurance, enter 0 (Zero))</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'spend_clothing' fieldtype = 'text_integer'>
+		<text>…. Clothing(Get total amount used to buy clothes in the year, divide by 12 months)</text>
+		<maxCharacters>9</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'pspray' fieldtype = 'integer'>
+		<text>At any time in the past 12 months, has anyone asked permission to come into your dwelling to spray the interior walls against mosquitoes?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='pspray' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='smcgiven'></skip>
+		</postskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'gpspray' fieldtype = 'integer'>
+		<text>Did you grant them permission to spray the interior walls of your dwelling?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='gpspray' condition = '=' response='1' response_type='fixed' skiptofieldname ='tspray'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'rgspray' fieldtype = 'integer'>
+		<text>What was the primary reason that you did not grant permission to spray the interior walls of your dwelling against mosquitoes?
+
+DO NOT PROMPT.</text>
+		<responses>
+			<response value = '1'>Had a sick person/baby</response>
+			<response value = '2'>Spraying not effective against mosquitoes</response>
+			<response value = '3'>Spraying chemicals are harmful</response>
+			<response value = '4'>Someone in the house was pregnant</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'tspray' fieldtype = 'text_integer'>
+		<text>How many months ago was the dwelling last sprayed?
+
+If less than 1 month, enter 0</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='12' other_values = '0' message = 'Number must be between 0 and 12!'></values>
+		</numeric_check>
+		<preskip>
+			<skip fieldname='gpspray' condition = '=' response='0' response_type='fixed' skiptofieldname ='smcgiven'></skip>
+		</preskip>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'spraysponsor' fieldtype = 'integer'>
+		<text>Who sponsored the spraying of the interior walls of your dwelling against mosquitoes?</text>
+		<responses>
+			<response value = '1'>Government</response>
+			<response value = '2'>NGO</response>
+			<response value = '3'>Personal Initiative</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'smcgiven' fieldtype = 'integer'>
+		<text>Has Seasonal Malaria Chemoprevention(SMC) been given in this MRC target area?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<preskip>
+			<skip fieldname='region' condition = '&lt;&gt;' response='5' response_type='fixed' skiptofieldname ='havenets'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'havenets' fieldtype = 'integer'>
+		<text>Does your household have any mosquito nets that can be used while sleeping?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'netsinhouse' fieldtype = 'integer'>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'receivenet' fieldtype = 'integer'>
+		<text>Bednets were distributed in your community between November to Dec 2023 (programmed to know MRC date of distribution) Did you receive one or more bednets in the recent net campaign (Universal Coverage Campaign) led by the Ministry of Health?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='receivenet' condition = '=' response='0' response_type='fixed' skiptofieldname ='whynonet'></skip>
+		</postskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'manynet' fieldtype = 'text_integer'>
+		<text>If yes – 
+How many nets did you receive?</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='20' other_values = '1' message = 'Number must be between 1 and 20!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'manynow' fieldtype = 'text_integer'>
+		<text>How many nets from the campaign do you still have?</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='20' other_values = '0' message = 'Number must be between 0 and 20!'></values>
+		</numeric_check>
+		<logic_check>
+			manynow &gt; manynet; 'You cannot have more nets than you received!'
+		</logic_check>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'nettype' fieldtype = 'integer'>
+		<text>What type of nets did you receive</text>
+		<responses>
+			<response value = '1'>Royal Guard</response>
+			<response value = '2'>Permanet 3.0</response>
+			<response value = '3'>Other</response>
+			<response value = '4'>PermaNet Dual</response>
+			<response value = '5'>Olyset Dual</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'othernet' fieldtype = 'text'>
+		<text>Please specify other net type</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='nettype' condition = '&lt;&gt;' response='3' response_type='fixed' skiptofieldname ='neteduc'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'neteduc' fieldtype = 'integer'>
+		<text>Did you receive any education on how to hang (or use) the bednets prior to or during distribution?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'whynonet' fieldtype = 'integer'>
+		<text>If no, why did you not receive nets?</text>
+		<responses>
+			<response value = '1'>No nets were delivered to the area (village or parish)</response>
+			<response value = '2'>We did not go to collect the nets</response>
+			<response value = '3'>We were never told to collect the nets</response>
+			<response value = '4'>We were told our household did not need nets</response>
+			<response value = '5'>We were away when the nets were distributed</response>
+			<response value = '6'>The local leaders refused to accept the nets</response>
+			<response value = '8'>Other</response>
+			<response value = '9'>I had no National Identity Card</response>
+			<response value = '10'>Nets were not enough</response>
+			<response value = '11'>Our household was not registered for nets</response>
+		</responses>
+		<preskip>
+			<skip fieldname='receivenet' condition = '=' response='1' response_type='fixed' skiptofieldname ='ahwker'></skip>
+		</preskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'text' fieldname = 'whyother' fieldtype = 'text'>
+		<text>Please specify other reason</text>
+		<maxCharacters>255</maxCharacters>
+		<preskip>
+			<skip fieldname='whynonet' condition = '&lt;&gt;' response='8' response_type='fixed' skiptofieldname ='ahwker'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'ahwker' fieldtype = 'integer'>
+		<text>Is there a community health worker (community medicine distributor/CMD, village health team/VHT, community own resource person/CORP) who distributes malaria medicines in your village or community?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='ahwker' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='vaxreceive'></skip>
+		</postskip>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'amchwker' fieldtype = 'integer'>
+		<text>Does the community health worker currently have malaria medicines available?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<dont_know>-7</dont_know>
+		<refuse>-8</refuse>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'carefromchworker' fieldtype = 'integer'>
+		<text>In the last two weeks, has anyone received care from a Community Health Worker?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'vaxreceive' fieldtype = 'integer'>
+		<text>Has any member in this household received malaria vaccine</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'vxlastwhere' fieldtype = 'integer'>
+		<text>QUESTIONS TO THE CARE GIVER
+At your last visit to get the malaria vaccine, where did you seek immunization services?</text>
+		<responses>
+			<response value = '1'>Health Facility</response>
+			<response value = '2'>Outreaches</response>
+			<response value = '3'>Integrated Child Health Days</response>
+			<response value = '96'>Other</response>
+		</responses>
+		<preskip>
+			<skip fieldname='vaxreceive' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='nstructures'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'vxlastwh_otherspfy' fieldtype = 'text'>
+		<text>Specify other</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='vxlastwhere' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='vxlastwhspfy_hf'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'vxlastwhspfy_hf' fieldtype = 'text'>
+		<text>Specify health facility</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='vxlastwhere' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='vxlastwhspfy_village'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'vxlastwhspfy_village' fieldtype = 'text'>
+		<text>Outreaches (specify village)</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='vxlastwhere' condition = '&lt;&gt;' response='2' response_type='fixed' skiptofieldname ='intchildhdays_spfy'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'intchildhdays_spfy' fieldtype = 'text'>
+		<text>Integrated Child Health Days  (specify which month and year)</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='vxlastwhere' condition = '&lt;&gt;' response='3' response_type='fixed' skiptofieldname ='lastvstspend_days'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lastvstspend_days' fieldtype = 'text_integer'>
+		<text>During your last visit to get the malaria vaccine, how much time did you spend at the health facility or outreach?
+Days ( Enter 0 if  time spent is less than 1 day)</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lastvstspend_hrs' fieldtype = 'text_integer'>
+		<text>Specify time in hours ( Enter 0 if time spent is less than an hour)</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lastvstspend_mins' fieldtype = 'text_integer'>
+		<text>Specify time in minutes(This field should not be left empty, if no minutes spent, enter 0)</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'travanyone' fieldtype = 'integer'>
+		<text>Did anyone travel with you /visit you at the clinic?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='travanyone' condition = '=' response='0' response_type='fixed' skiptofieldname ='moneyclinic'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'travperson' fieldtype = 'integer'>
+		<text>Who did you travel with or visited you at the clinic?</text>
+		<responses>
+			<response value = '1'>Caregivers Mother</response>
+			<response value = '2'>Caregivers Father</response>
+			<response value = '3'>Father of the child</response>
+			<response value = '4'>Sister/uncle</response>
+			<response value = '5'>Grandparent</response>
+			<response value = '96'>Other</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'travanyone_oth' fieldtype = 'text'>
+		<text>Specify the other person you traveled with to the clinic</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='travanyone' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='caregiveroccup'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'caregiveroccup' fieldtype = 'integer'>
+		<text>What is his/her  occupation?</text>
+		<responses>
+			<response value = '1'>Subsistence farmer</response>
+			<response value = '2'>Business</response>
+			<response value = '3'>Private formal worker</response>
+			<response value = '4'>Casual worker for wages</response>
+			<response value = '96'>Other</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'caregiveroccup_oth' fieldtype = 'text'>
+		<text>Specify other care givers occupation</text>
+		<maxCharacters>80</maxCharacters>
+		<preskip>
+			<skip fieldname='caregiveroccup' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='spsametime'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'spsametime' fieldtype = 'integer'>
+		<text>Did the person accompanying you spend the same amount of time?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='spsametime' condition = '=' response='1' response_type='fixed' skiptofieldname ='moneyclinic'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'pacc_spend_days' fieldtype = 'text_integer'>
+		<text>If  "NO”, how much time?
+In Days</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'pacc_spend_hrs' fieldtype = 'text_integer'>
+		<text>Specify time in hours</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'pacc_spend_mins' fieldtype = 'text_integer'>
+		<text>Specify time in minutes</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'moneyclinic' fieldtype = 'integer'>
+		<text>Apart from travel costs, did you use any money at the clinic or due to the visit? (this includes her/his, the person accompanying/visiting etc, but not travel costs)</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='moneyclinic' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='havetracostsclin'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'payregbook' fieldtype = 'text_integer'>
+		<text>How much money did you spend on each of the following: (in Ugandan Shillings , Enter 0 if no amount was spent)
+Registration book</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'paychcard' fieldtype = 'text_integer'>
+		<text>Child health card</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'payfooddrink' fieldtype = 'text_integer'>
+		<text>Food/drink</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'payundertable' fieldtype = 'text_integer'>
+		<text>Under-the-table payment</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'paygifthw' fieldtype = 'text_integer'>
+		<text>Gift for health worker</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'payothlabtests' fieldtype = 'text_integer'>
+		<text>Other laboratory tests</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'otherlabtests_spfy' fieldtype = 'text'>
+		<text>Specify other Laboratory tests</text>
+		<maxCharacters>8</maxCharacters>
+		<preskip>
+			<skip fieldname='payothlabtests' condition = '=' response='0' response_type='fixed' skiptofieldname ='besesttotatvist'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'besesttotatvist' fieldtype = 'text_integer'>
+		<text>If she/he doesn't know details, ask her to give her best estimate of the total she/he spent at the last visit:</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'havetracostsclin' fieldtype = 'integer'>
+		<text>Did you have travel costs to the clinic?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='havetracostsclin' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='transmodeclin'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'totcostclin' fieldtype = 'text_integer'>
+		<text>How much money did you spend in total on travel to the clinic  (this includes person accompanying and child)?</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'transmodeclin' fieldtype = 'integer'>
+		<text>What mode of transport did you use to the clinic?</text>
+		<responses>
+			<response value = '1'>Walking</response>
+			<response value = '2'>Own bicycle</response>
+			<response value = '3'>Bicycle taxi</response>
+			<response value = '4'>Minbus</response>
+			<response value = '5'>Pickup</response>
+			<response value = '6'>Motor cycle taxi (Boda Bodas/Pikipiki)</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'timetoclinic' fieldtype = 'integer'>
+		<text>How much time did you spend travelling to the clinic</text>
+		<responses>
+			<response value = '1'>hours</response>
+			<response value = '2'>minutes</response>
+			<response value = '3'>hours and some minutes</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'timetoclinic_hr' fieldtype = 'text_integer'>
+		<text>State the number of hours</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='24' other_values = '0' message = 'Number must be between 0 and 24!'></values>
+		</numeric_check>
+		<preskip>
+			<skip fieldname='timetoclinic' condition = '=' response='2' response_type='fixed' skiptofieldname ='timetoclinic_min'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'timetoclinic_min' fieldtype = 'text_integer'>
+		<text>State the number of minutes</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='0' maxvalue='59' other_values = '0' message = 'Number must be between 0 and 59!'></values>
+		</numeric_check>
+		<preskip>
+			<skip fieldname='timetoclinic' condition = '=' response='1' response_type='fixed' skiptofieldname ='receiver21vax'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'receiver21vax' fieldtype = 'integer'>
+		<text>Did your child receive the R21 vaccine?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+		<postskip>
+			<skip fieldname='receiver21vax' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='manytimchmal'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'numdoses' fieldtype = 'integer'>
+		<text>If Yes to receiving the R21 vaccine, 
+How many doses have they received so far? One dose, Two doses, Three doses, Four doses.</text>
+		<responses>
+			<response value = '1'>One Dose</response>
+			<response value = '2'>Two Doses</response>
+			<response value = '3'>Three Doses</response>
+			<response value = '4'>Four Doses</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'timeschmal_befvac' fieldtype = 'integer'>
+		<text>In the year before your child received the malaria vaccine, how many times did your child have malaria?</text>
+		<responses>
+			<response value = '0'>0</response>
+			<response value = '1'>1</response>
+			<response value = '2'>2</response>
+			<response value = '3'>3</response>
+			<response value = '4'>4</response>
+			<response value = '5'>5</response>
+			<response value = '6'>6</response>
+			<response value = '7'>7</response>
+			<response value = '8'>8</response>
+			<response value = '9'>9</response>
+			<response value = '10'>10</response>
+			<response value = '11'>More than 10</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'timeschmal_aftvac' fieldtype = 'integer'>
+		<text>Since your child received the malaria vaccine, how many times has your child had malaria?</text>
+		<responses>
+			<response value = '0'>0</response>
+			<response value = '1'>1</response>
+			<response value = '2'>2</response>
+			<response value = '3'>3</response>
+			<response value = '4'>4</response>
+			<response value = '5'>5</response>
+			<response value = '6'>6</response>
+			<response value = '7'>7</response>
+			<response value = '8'>8</response>
+			<response value = '9'>9</response>
+			<response value = '10'>10</response>
+			<response value = '11'>More than 10</response>
+		</responses>
+		<postskip>
+			<skip fieldname='timeschmal_aftvac' condition = '=' response='0' response_type='fixed' skiptofieldname ='compbvacspend'></skip>
+		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepisvac_consul' fieldtype = 'text_integer'>
+		<text>Think about the most recent malaria episode after vaccination, how much did you spend on?( Enter 0 if no amount was spent)
+Consultation</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_lab' fieldtype = 'text_integer'>
+		<text>Expense on laboratory</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_med' fieldtype = 'text_integer'>
+		<text>Expense on medicines</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_admin' fieldtype = 'text_integer'>
+		<text>Expense on admission</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_fooddrink' fieldtype = 'text_integer'>
+		<text>Expense on food/drink</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_transp' fieldtype = 'text_integer'>
+		<text>Expense on transport</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'recmalepis_other' fieldtype = 'text_integer'>
+		<text>other expenses</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'daysmisswork_lasmalepi' fieldtype = 'text_integer'>
+		<text>How many days did you miss work or usual activities during your child’s last episode of malaria?</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'incomelo_mislasmalepi' fieldtype = 'text_integer'>
+		<text>How much income did you lose during these days?</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'compbvacspend' fieldtype = 'integer'>
+		<text>Compared to before receiving the vaccine, do you spend more, less, or about the same on malaria treatment now?</text>
+		<responses>
+			<response value = '1'>Spend More</response>
+			<response value = '2'>Spend Less</response>
+			<response value = '3'>Spend Same</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'maleepireduvac' fieldtype = 'integer'>
+		<text>Has the number of malaria episodes reduced since vaccination?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'malvachelp' fieldtype = 'integer'>
+		<text>Has the malaria vaccine helped reduce missed workdays for you?</text>
+		<responses>
+			<response value = '1'>Yes</response>
+			<response value = '0'>No</response>
+		</responses>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'manytimchmal' fieldtype = 'integer'>
+		<text>If  the child did not receive the R21 vaccine, In the last year, how many times has your child had malaria?</text>
+		<responses>
+			<response value = '0'>0</response>
+			<response value = '1'>1</response>
+			<response value = '2'>2</response>
+			<response value = '3'>3</response>
+			<response value = '4'>4</response>
+			<response value = '5'>5</response>
+			<response value = '6'>6</response>
+			<response value = '7'>7</response>
+			<response value = '8'>8</response>
+			<response value = '9'>9</response>
+			<response value = '10'>10</response>
+			<response value = '11'>More than 10</response>
+		</responses>
+		<preskip>
+			<skip fieldname='receiver21vax' condition = '=' response='0' response_type='fixed' skiptofieldname ='nstructures'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_consul' fieldtype = 'text_integer'>
+		<text>During the last malaria episode for your child, how much did you spend on?
+Consultation</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_lab' fieldtype = 'text_integer'>
+		<text>Expense on laboratory</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_med' fieldtype = 'text_integer'>
+		<text>Expense on medicines</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_admin' fieldtype = 'text_integer'>
+		<text>Expense on admission</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_fooddrink' fieldtype = 'text_integer'>
+		<text>Expense on food/drink</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_transp' fieldtype = 'text_integer'>
+		<text>Expense on transport</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'lasmalepis_otherex' fieldtype = 'text_integer'>
+		<text>other expenses</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'manydayslespmal' fieldtype = 'text_integer'>
+		<text>How many days did you miss work or usual activities during your child’s last episode of malaria?</text>
+		<maxCharacters>2</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'incomloslepimal' fieldtype = 'text_integer'>
+		<text>How much income did you lose during these days?</text>
+		<maxCharacters>8</maxCharacters>
+	</question>
+
+
+	<question type = 'text' fieldname = 'nstructures' fieldtype = 'text_integer'>
+		<text>How many structures in your household have rooms used for sleeping?</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='20' other_values = '1' message = 'Number must be between 1 and 20!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'nmembers' fieldtype = 'text_integer'>
+		<text>How many people live in this household (permanent residents)?</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='30' other_values = '1' message = 'Number must be between 1 and 30!'></values>
+		</numeric_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'nnets' fieldtype = 'text_integer'>
+		<text>How many bednets do you currently have in your household?</text>
+		<maxCharacters>2</maxCharacters>
+		<numeric_check>
+			<values minvalue ='1' maxvalue='15' other_values = '1' message = 'Number must be between 1 and 15!'></values>
+		</numeric_check>
+		<logic_check>
+			nnets &lt; manynow; 'You cannot have current total nets less than those both you currently have from the campaign and other sources. Current bednets in the household include total available nets from the campaign and nets obtained from other sources!'
+		</logic_check>
+		<preskip>
+			<skip fieldname='havenets' condition = '&lt;&gt;' response='1' response_type='fixed' skiptofieldname ='comments'></skip>
+		</preskip>
+	</question>
+
+
+	<question type = 'information' fieldname = 'totals' fieldtype = 'n/a'>
+		<text>You have recorded the following. If this is not correct, click 'Previous' to change the totals. If this is correct, clisk 'Next'
+
+Number of sleeping structures: [[nstructures]]
+Number of household members: [[nmembers]]
+Number of bednets: [[nnets]]</text>
+	</question>
+
+
+	<question type = 'radio' fieldname = 'totvisit' fieldtype = 'integer'>
+		<text>How many visits have you made to this household?</text>
+		<responses>
+			<response value = '1'>One Visit</response>
+			<response value = '2'>Two Visits</response>
+			<response value = '3'>Three Visits</response>
+		</responses>
+	</question>
+
+
+	<question type = 'text' fieldname = 'comments' fieldtype = 'text'>
+		<text>Comments (optional)</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'uniqueid' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'swver' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'survey_id' fieldtype = 'text'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'lastmod' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'automatic' fieldname = 'stoptime' fieldtype = 'datetime'>
+	</question>
+
+
+	<question type = 'information' fieldname = 'end_of_questions' fieldtype = 'n/a'>
+		<text>Press the 'Finish' button to save the data.</text >
+	</question>
+
+
+</survey>

@@ -350,13 +350,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
         if (newValue != oldValue) return true;
       } else {
         if (newValue.toString() != oldValue.toString()) {
-          // Check if they are numerically equivalent (e.g. "1" vs "0001")
-          final n1 = num.tryParse(newValue.toString());
-          final n2 = num.tryParse(oldValue.toString());
-          if (n1 != null && n2 != null && n1 == n2) {
-            continue; // Numerically equal, so not a real change (database stores as int)
-          }
-
           // Check if they are DateTime equivalent (e.g. "2025-12-09 11:22" vs "2025-12-09T11:22")
           try {
             final d1 = DateTime.tryParse(newValue.toString());
@@ -1183,20 +1176,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Update lastmod timestamp only when actually saving
     AutoFields.touchLastMod(_answers);
 
-    // Verify questions loaded for sanitization
-    // Create a deep copy to sanitize (convert "0001" back to 1 for integer fields)
-    final sanitizedAnswers = Map<String, dynamic>.from(_answers);
+    // Create a deep copy for saving
+    // Values are saved as-is (padding preserved)
+    final answersToSave = Map<String, dynamic>.from(_answers);
 
     if (_loadedQuestions != null) {
       for (final q in _loadedQuestions!) {
-        final val = sanitizedAnswers[q.fieldName];
-        // If the field is an integer type, force it to be an integer (remove padding)
-        if (val != null && q.fieldType.toLowerCase().contains('integer')) {
-          final asNum = num.tryParse(val.toString());
-          if (asNum != null) {
-            sanitizedAnswers[q.fieldName] = asNum.toInt();
-          }
-        }
+        final val = answersToSave[q.fieldName];
         // Enforce ISO8601 format for date/datetime fields
         if (val != null &&
             (q.type == QuestionType.date || q.type == QuestionType.datetime)) {
@@ -1205,7 +1191,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           try {
             final dt = DateTime.tryParse(valStr);
             if (dt != null) {
-              sanitizedAnswers[q.fieldName] = dt.toIso8601String();
+              answersToSave[q.fieldName] = dt.toIso8601String();
             }
           } catch (_) {}
         }
@@ -1225,7 +1211,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         await DbService.updateInterview(
           surveyId: surveyId,
           surveyFilename: widget.questionnaireFilename,
-          answers: sanitizedAnswers,
+          answers: answersToSave,
           uniqueId: widget.uniqueId!,
           originalAnswers: _originalAnswers,
         );
@@ -1234,7 +1220,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         await DbService.saveInterview(
           surveyId: surveyId,
           surveyFilename: widget.questionnaireFilename,
-          answers: sanitizedAnswers,
+          answers: answersToSave,
         );
       }
       saveSuccessful = true;

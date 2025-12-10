@@ -419,7 +419,7 @@ class DbService {
         bool hasUniqueId = false;
 
         for (final q in dataQuestions) {
-          colDefs.add('${q.fieldName} ${_getSqlType(q)}');
+          colDefs.add('${q.fieldName} TEXT');
           if (q.fieldName.toLowerCase() == 'uniqueid') hasUniqueId = true;
         }
 
@@ -438,7 +438,7 @@ class DbService {
           if (!existingColumns.contains(q.fieldName.toLowerCase())) {
             try {
               await db.execute(
-                  'ALTER TABLE $tableName ADD COLUMN ${q.fieldName} ${_getSqlType(q)}');
+                  'ALTER TABLE $tableName ADD COLUMN ${q.fieldName} TEXT');
               _log('Added column ${q.fieldName} to $tableName');
             } catch (e) {
               _logError('Failed to add column ${q.fieldName}: $e');
@@ -448,17 +448,6 @@ class DbService {
       }
     } catch (e) {
       _logError('Error syncing table $tableName: $e');
-    }
-  }
-
-  static String _getSqlType(Question q) {
-    final ft = q.fieldType.toLowerCase();
-    if (ft == 'integer' || ft == 'text_integer') {
-      return 'INTEGER';
-    } else if (ft == 'text_decimal' || ft == 'real') {
-      return 'REAL';
-    } else {
-      return 'TEXT';
     }
   }
 
