@@ -396,9 +396,13 @@ class _QuestionViewState extends State<QuestionView> {
           child: Column(
             children: options
                 .map(
-                  (opt) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppRadioTheme(
+                  (opt) {
+                    // Check if this is a special response option
+                    final isDontKnow = q.dontKnow != null && opt.value == q.dontKnow;
+                    final isRefuse = q.refuse != null && opt.value == q.refuse;
+                    final isSpecial = isDontKnow || isRefuse;
+
+                    final radioTile = AppRadioTheme(
                       child: Builder(
                         builder: (context) => RadioListTile<String>(
                           value: opt.value,
@@ -413,11 +417,28 @@ class _QuestionViewState extends State<QuestionView> {
                           dense: true,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
-                          tileColor: Colors.white,
+                          tileColor: isSpecial
+                              ? (isDontKnow
+                                  ? Colors.orange.shade100
+                                  : Colors.red.shade100)
+                              : Colors.white,
                         ),
                       ),
-                    ),
-                  ),
+                    );
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: isSpecial
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: 0.5,
+                                child: radioTile,
+                              ),
+                            )
+                          : radioTile,
+                    );
+                  },
                 )
                 .toList(),
           ),
@@ -467,24 +488,32 @@ class _QuestionViewState extends State<QuestionView> {
             final checked = _checkboxSelection.contains(opt.value);
             debugPrint(
                 '  Option ${opt.value} (${opt.label}): checked=$checked');
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: CheckboxListTile(
-                value: checked,
-                dense: true,
-                title: Text(
-                  opt.label,
-                  style: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.black87
-                        : null,
-                  ),
+
+            // Check if this is a special response option
+            final isDontKnow = dontKnowValue != null && opt.value == dontKnowValue;
+            final isRefuse = refuseValue != null && opt.value == refuseValue;
+            final isSpecial = isDontKnow || isRefuse;
+
+            final checkboxTile = CheckboxListTile(
+              value: checked,
+              dense: true,
+              title: Text(
+                opt.label,
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.black87
+                      : null,
                 ),
-                controlAffinity: ListTileControlAffinity.leading,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                tileColor: Colors.white,
-                onChanged: (val) {
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              tileColor: isSpecial
+                  ? (isDontKnow
+                      ? Colors.orange.shade100
+                      : Colors.red.shade100)
+                  : Colors.white,
+              onChanged: (val) {
                   setState(() {
                     // Check if this is a special option (don't know, refuse, not in list)
                     final isSpecial = opt.value == dontKnowValue ||
@@ -514,7 +543,19 @@ class _QuestionViewState extends State<QuestionView> {
                   });
                   widget.onAnswerChanged?.call();
                 },
-              ),
+              );
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: isSpecial
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: 0.5,
+                        child: checkboxTile,
+                      ),
+                    )
+                  : checkboxTile,
             );
           }).toList(),
         ),

@@ -1233,8 +1233,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
     if (!mounted) return;
 
     if (saveSuccessful) {
-      // Check if we should start auto-repeat for child surveys
-      await _checkAndStartAutoRepeat(context);
+      // Check if we should start auto-repeat for child surveys (only for new records, not modifications)
+      if (widget.uniqueId == null) {
+        await _checkAndStartAutoRepeat(context);
+      } else {
+        // Modifying an existing record - just show success and close
+        _showSaveSuccessDialog(context);
+      }
     } else {
       // Error dialog
       _showSaveErrorDialog(context, errorMessage);

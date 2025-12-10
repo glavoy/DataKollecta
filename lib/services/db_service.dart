@@ -590,12 +590,19 @@ class DbService {
       if (!await _tableExists(db, tableName)) return 1;
 
       final results = await db.rawQuery(
-        'SELECT MAX($incrementField) as maxValue FROM $tableName WHERE $primaryKeyField = ?',
+        'SELECT MAX(CAST($incrementField AS INTEGER)) as maxValue FROM $tableName WHERE $primaryKeyField = ?',
         [primaryKeyValue],
       );
 
       if (results.isEmpty || results.first['maxValue'] == null) return 1;
-      return (results.first['maxValue'] as int) + 1;
+      final maxValue = results.first['maxValue'];
+      // Handle both int and string results
+      if (maxValue is int) {
+        return maxValue + 1;
+      } else if (maxValue is String) {
+        return (int.tryParse(maxValue) ?? 0) + 1;
+      }
+      return 1;
     } catch (e) {
       return 1;
     }

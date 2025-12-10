@@ -79,28 +79,28 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
 
       // 3. Households with children between 2 and 10
       final childrenStatsResult = await db.rawQuery('''
-        SELECT 
+        SELECT
           sub.mrcname,
           COUNT(sub.hhid) AS num_households
-         FROM 
+         FROM
            (
           SELECT DISTINCT mrcvillage.mrcname, hh_members.hhid
-          FROM 
-              hh_members 
-          INNER JOIN 
-              mrcvillage 
+          FROM
+              hh_members
+          INNER JOIN
+              mrcvillage
               ON CAST(hh_members.mrccode AS TEXT) = CAST(mrcvillage.mrccode AS TEXT)
-          WHERE 
+          WHERE
               hh_members.hhid IN (
                   SELECT hhid
                   FROM hh_members
                   GROUP BY hhid
-                  HAVING 
-                      SUM(CASE WHEN consent = 1 THEN 1 ELSE 0 END) > 0      
-                      AND 
-                      SUM(CASE WHEN age BETWEEN 2 AND 10 THEN 1 ELSE 0 END) > 0)
+                  HAVING
+                      SUM(CASE WHEN CAST(consent AS INTEGER) = 1 THEN 1 ELSE 0 END) > 0
+                      AND
+                      SUM(CASE WHEN CAST(age AS INTEGER) BETWEEN 2 AND 10 THEN 1 ELSE 0 END) > 0)
            ) AS sub
-      GROUP BY 
+      GROUP BY
           sub.mrcname
       ''');
       // Note: Added CAST for join on mrccode just in case types differ (text vs int)
