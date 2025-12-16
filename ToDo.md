@@ -1,6 +1,5 @@
 ### To Do
-- when uploading a survey, it should use teh credentials that were used to download the survey - it measn storing multiple sets of credentials that are linked to the survey
-Kollect, the name of the app
+- Kollect, the name of the app - or GiSTKollect
 - Add 'time' question type
 - examine "idconfig" - have option of entering the subjid manually
 - subjid and hhid - these should be normal automatic variables - check these

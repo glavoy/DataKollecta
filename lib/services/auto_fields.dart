@@ -56,29 +56,25 @@ class AutoFields {
           '[AutoFields] computing $key. isEditMode=$isEditMode, existing=$existing (${existing.runtimeType})');
     }
 
-    // In edit mode, preserve existing values for certain fields
-    // Fix: check for null or empty string, but allow DateTime objects (which are not strings)
+    // In edit mode, preserve existing values ONLY for special system fields
+    // that should never change (uniqueid, starttime, stoptime)
+    // All other fields (including calculations) should be recalculated
     bool hasValue = existing != null;
     if (existing is String) hasValue = existing.isNotEmpty;
 
     if (isEditMode && hasValue) {
-      // Always preserve these fields in edit mode
+      // Preserve these special system fields in edit mode
       if (key == 'uniqueid' || key == 'starttime' || key == 'stoptime') {
         if (existing is DateTime) return existing.toIso8601String();
         return existing.toString();
       }
-      // Fields that should update in edit mode: lastmod, swver, survey_id
-      if (key != 'lastmod' && key != 'swver' && key != 'survey_id') {
-        return existing;
-      }
+      // All other fields fall through to be recalculated below
+      // (including lastmod, swver, survey_id, and any calculation-based fields)
     }
 
-    // For new records, return existing if present
-    if (!isEditMode && existing is String && existing.isNotEmpty) {
-      return existing;
-    }
-
-    // Check for XML configuration
+    // Check for XML configuration first (before checking existing value)
+    // This ensures calculation-based fields are always recalculated
+    // when their dependencies might have changed
     if (q.calculation != null) {
       // Check preserve flag
       if (isEditMode &&
@@ -91,6 +87,12 @@ class AutoFields {
       final val = await _executeCalculation(q.calculation!, answers, surveyId);
       answers[key] = val;
       return val;
+    }
+
+    // For new records with registry-based fields, return existing if present
+    // (but not for calculation-based fields, which are handled above)
+    if (!isEditMode && existing is String && existing.isNotEmpty) {
+      return existing;
     }
 
     final fn = _registry[key];
@@ -263,12 +265,139 @@ class AutoFields {
           }
           return '';
 
+        case 'age_from_date':
+          return _calculateAgeFromDate(config, answers);
+
+        case 'age_at_date':
+          return _calculateAgeAtDate(config, answers);
+
         default:
           return '';
       }
     } catch (e) {
       print('Error executing calculation: $e');
       return '';
+    }
+  }
+
+  /// Calculate age from a date field to today
+  /// Returns age in specified unit (years, months, or days)
+  static String _calculateAgeFromDate(
+      CalculationConfig config, AnswerMap answers) {
+    try {
+      final dateField = _sanitizeField(config.field);
+      if (dateField == null) return '';
+
+      final dateValue = answers[dateField];
+      if (dateValue == null) return '';
+
+      DateTime birthDate;
+      if (dateValue is DateTime) {
+        birthDate = dateValue;
+      } else if (dateValue is String) {
+        try {
+          birthDate = DateTime.parse(dateValue);
+        } catch (e) {
+          debugPrint('[AutoFields] Error parsing date from $dateField: $e');
+          return '';
+        }
+      } else {
+        return '';
+      }
+
+      final now = DateTime.now();
+      final unit = config.value?.toLowerCase() ?? 'years';
+
+      return _calculateAgeDifference(birthDate, now, unit);
+    } catch (e) {
+      debugPrint('[AutoFields] Error in age_from_date calculation: $e');
+      return '';
+    }
+  }
+
+  /// Calculate age from a date field to a specific target date
+  /// Returns age in specified unit (years, months, or days)
+  static String _calculateAgeAtDate(
+      CalculationConfig config, AnswerMap answers) {
+    try {
+      final dateField = _sanitizeField(config.field);
+      if (dateField == null) return '';
+
+      final dateValue = answers[dateField];
+      if (dateValue == null) return '';
+
+      DateTime birthDate;
+      if (dateValue is DateTime) {
+        birthDate = dateValue;
+      } else if (dateValue is String) {
+        try {
+          birthDate = DateTime.parse(dateValue);
+        } catch (e) {
+          debugPrint('[AutoFields] Error parsing date from $dateField: $e');
+          return '';
+        }
+      } else {
+        return '';
+      }
+
+      // Parse target date from separator attribute
+      if (config.separator == null || config.separator!.isEmpty) {
+        debugPrint(
+            '[AutoFields] age_at_date requires separator attribute with target date');
+        return '';
+      }
+
+      DateTime targetDate;
+      try {
+        targetDate = DateTime.parse(config.separator!);
+      } catch (e) {
+        debugPrint('[AutoFields] Error parsing target date: $e');
+        return '';
+      }
+
+      final unit = config.value?.toLowerCase() ?? 'years';
+
+      return _calculateAgeDifference(birthDate, targetDate, unit);
+    } catch (e) {
+      debugPrint('[AutoFields] Error in age_at_date calculation: $e');
+      return '';
+    }
+  }
+
+  /// Helper to calculate age difference between two dates
+  static String _calculateAgeDifference(
+      DateTime fromDate, DateTime toDate, String unit) {
+    switch (unit) {
+      case 'years':
+        int years = toDate.year - fromDate.year;
+        // Adjust if birthday hasn't occurred yet this year
+        if (toDate.month < fromDate.month ||
+            (toDate.month == fromDate.month && toDate.day < fromDate.day)) {
+          years--;
+        }
+        return years.toString();
+
+      case 'months':
+        int months = (toDate.year - fromDate.year) * 12 +
+            (toDate.month - fromDate.month);
+        // Adjust if day hasn't occurred yet this month
+        if (toDate.day < fromDate.day) {
+          months--;
+        }
+        return months.toString();
+
+      case 'days':
+        final difference = toDate.difference(fromDate);
+        return difference.inDays.toString();
+
+      default:
+        debugPrint('[AutoFields] Unknown age unit: $unit. Using years.');
+        int years = toDate.year - fromDate.year;
+        if (toDate.month < fromDate.month ||
+            (toDate.month == fromDate.month && toDate.day < fromDate.day)) {
+          years--;
+        }
+        return years.toString();
     }
   }
 

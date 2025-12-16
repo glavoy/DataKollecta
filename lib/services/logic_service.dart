@@ -137,8 +137,10 @@ class LogicService {
       // Numeric comparison
       switch (operator) {
         case '=':
+        case '==':
           return num1 == num2;
         case '<>':
+        case '!=':
           return num1 != num2;
         case '>':
           return num1 > num2;
@@ -151,16 +153,44 @@ class LogicService {
         default:
           return false;
       }
-    } else {
-      // String comparison
+    }
+
+    // Try date comparison for ISO date strings
+    final date1 = DateTime.tryParse(val1);
+    final date2 = DateTime.tryParse(val2);
+
+    if (date1 != null && date2 != null) {
+      // Date comparison
       switch (operator) {
         case '=':
-          return val1 == val2;
+        case '==':
+          return date1.isAtSameMomentAs(date2);
         case '<>':
-          return val1 != val2;
+        case '!=':
+          return !date1.isAtSameMomentAs(date2);
+        case '>':
+          return date1.isAfter(date2);
+        case '<':
+          return date1.isBefore(date2);
+        case '>=':
+          return date1.isAfter(date2) || date1.isAtSameMomentAs(date2);
+        case '<=':
+          return date1.isBefore(date2) || date1.isAtSameMomentAs(date2);
         default:
           return false;
       }
+    }
+
+    // Fall back to string comparison for equality only
+    switch (operator) {
+      case '=':
+      case '==':
+        return val1 == val2;
+      case '<>':
+      case '!=':
+        return val1 != val2;
+      default:
+        return false;
     }
   }
 }

@@ -750,9 +750,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // But we can also do it here for automatic questions we skip over
 
     // Check if this is a primary key field that needs ID generation
-    final isIdField = !AutoFields.getRegistry().containsKey(q.fieldName);
+    // Fields are considered ID fields if they are NOT in the AutoFields registry
+    // AND do not have a calculation configuration
+    final isIdField = !AutoFields.getRegistry().containsKey(q.fieldName) &&
+        q.calculation == null;
 
-    debugPrint('[ProcessingAuto] ${q.fieldName} isIdField=$isIdField');
+    debugPrint('[ProcessingAuto] ${q.fieldName} isIdField=$isIdField hasCalculation=${q.calculation != null}');
     if (q.fieldName == 'hhid') {
       debugPrint(
           '[ProcessingAuto] hhid components: vcode=${_answers['vcode']}, mrccode=${_answers['mrccode']}, hhnum=${_answers['hhnum']}');
