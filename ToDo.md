@@ -1,5 +1,8 @@
 ### To Do
 - Kollect, the name of the app - or GiSTKollect
+- add text backup files when writing to the database
+- add an 'i' for additional information - help the end-user - might need an additional column in the spreadsheet
+- set up data management website per project - create an app that listens for new data and uploads to the server
 - Add 'time' question type
 - examine "idconfig" - have option of entering the subjid manually
 - subjid and hhid - these should be normal automatic variables - check these

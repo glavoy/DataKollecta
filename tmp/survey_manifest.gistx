@@ -1,0 +1,24 @@
+{
+  "surveyName": "R21 Test Negative 2025-12-19",
+  "surveyId": "r21_test_negative_2025_12_19",
+  "databaseName": "r21_test_negative_2025_12_19.sqlite",
+  "xmlFiles": [
+    "enrollee.xml"
+  ],
+  "crfs": [
+    {
+      "display_order": 10,
+      "tablename": "enrollee",
+      "displayname": "Enrollee",
+      "isbase": 1,
+      "primarykey": "subjid",
+      "linkingfield": "subjid",
+      "idconfig": {
+        "prefix": "",
+        "fields": [{"name":"district","length":3},{"name":"intnum","length":2}],
+        "incrementLength": 3
+      },
+      "display_fields": "participantsname"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 import '../models/question.dart';
-import '../config/app_config.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// This is the ONLY file a programmer edits for automatic variables.
 /// Add/edit entries in [_registry] to support new automatic fields.
@@ -21,6 +21,9 @@ typedef AutoFieldFn = String Function(
     AnswerMap answers, Question q, bool isEditMode, String? surveyId);
 
 class AutoFields {
+  /// Cached software version from pubspec.yaml
+  static String? _cachedVersion;
+
   /// Public getter for the registry
   static Map<String, AutoFieldFn> getRegistry() => _registry;
 
@@ -42,6 +45,17 @@ class AutoFields {
   /// In edit mode, preserves certain fields like uniqueid, starttime, stoptime
   static Future<String> compute(AnswerMap answers, Question q,
       {bool isEditMode = false, String? surveyId}) async {
+    // Load version from pubspec.yaml once and cache it
+    if (_cachedVersion == null) {
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        _cachedVersion = 'GiSTX ${packageInfo.version}';
+      } catch (e) {
+        debugPrint('[AutoFields] Error loading version from pubspec.yaml: $e');
+        _cachedVersion = 'GiSTX unknown';
+      }
+    }
+
     final key = q.fieldName;
     final existing = answers[key];
 
@@ -424,7 +438,9 @@ class AutoFields {
 
   static String _computeSoftwareVersion(
       AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
-    return AppConfig.softwareVersion;
+    // Return cached version if available, otherwise return a placeholder
+    // The cache is populated by the compute() method
+    return _cachedVersion ?? 'unknown';
   }
 
   static String _computeSurveyId(

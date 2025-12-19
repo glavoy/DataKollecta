@@ -190,4 +190,89 @@ class IdGenerator {
       return [];
     }
   }
+
+  /// Extracts the base ID (without increment part) from a complete ID
+  /// For example: "18122001" with incrementLength=3 returns "18122"
+  static String extractBaseId({
+    required String completeId,
+    required String idConfigJson,
+  }) {
+    try {
+      final config = IdConfig.fromJson(json.decode(idConfigJson));
+
+      if (config.incrementLength == 0) {
+        return completeId;
+      }
+
+      // The base is everything except the last incrementLength characters
+      if (completeId.length > config.incrementLength) {
+        return completeId.substring(0, completeId.length - config.incrementLength);
+      }
+
+      return completeId;
+    } catch (e) {
+      debugPrint('Error extracting base ID: $e');
+      return completeId;
+    }
+  }
+
+  /// Builds the expected base ID from current answers
+  /// Returns the base part without the increment suffix
+  static String buildBaseId({
+    required String idConfigJson,
+    required Map<String, dynamic> answers,
+  }) {
+    try {
+      final config = IdConfig.fromJson(json.decode(idConfigJson));
+      final StringBuffer baseId = StringBuffer(config.prefix);
+
+      for (final field in config.fields) {
+        final value = answers[field.name];
+        if (value == null) {
+          throw Exception(
+              'Required field "${field.name}" not found in answers for ID generation');
+        }
+
+        final stringValue = value.toString();
+        final paddedValue = stringValue.padLeft(field.length, '0');
+
+        if (paddedValue.length > field.length) {
+          baseId
+              .write(paddedValue.substring(paddedValue.length - field.length));
+        } else {
+          baseId.write(paddedValue);
+        }
+      }
+
+      return baseId.toString();
+    } catch (e) {
+      debugPrint('Error building base ID: $e');
+      rethrow;
+    }
+  }
+
+  /// Checks if the base ID components have changed compared to an existing ID
+  /// Returns true if the base parts match (meaning component fields haven't changed)
+  static bool hasBaseIdChanged({
+    required String existingId,
+    required String idConfigJson,
+    required Map<String, dynamic> answers,
+  }) {
+    try {
+      final existingBase = extractBaseId(
+        completeId: existingId,
+        idConfigJson: idConfigJson,
+      );
+      final currentBase = buildBaseId(
+        idConfigJson: idConfigJson,
+        answers: answers,
+      );
+
+      debugPrint('[IdGenerator] Comparing bases: existing="$existingBase" current="$currentBase"');
+      return existingBase != currentBase;
+    } catch (e) {
+      debugPrint('Error checking base ID change: $e');
+      return true; // Assume changed if we can't determine
+    }
+  }
 }

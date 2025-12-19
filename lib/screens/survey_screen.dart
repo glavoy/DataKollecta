@@ -762,11 +762,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
       debugPrint('[ProcessingAuto] idConfig: ${widget.idConfig}');
     }
 
-    // For primary key fields, ALWAYS regenerate (don't use cached value)
-    // This ensures that if user goes back and changes dependent fields, the ID updates
+    // For primary key fields, check if we need to regenerate or preserve existing value
     if (isIdField && widget.idConfig != null && widget.idConfig!.isNotEmpty) {
       // This is a primary key field (hhid, subjid, etc.)
-      // Generate it using IdGenerator
       try {
         final tableName =
             widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
@@ -778,6 +776,30 @@ class _SurveyScreenState extends State<SurveyScreen> {
             idConfigJson: widget.idConfig!,
             answers: _answers,
           )) {
+            // In edit mode, preserve existing ID if component fields haven't changed
+            final existingId = _answers[q.fieldName]?.toString();
+            final isEditMode = widget.uniqueId != null;
+
+            if (isEditMode && existingId != null && existingId.isNotEmpty && existingId != '-9') {
+              // Check if the base ID components have changed
+              final hasChanged = IdGenerator.hasBaseIdChanged(
+                existingId: existingId,
+                idConfigJson: widget.idConfig!,
+                answers: _answers,
+              );
+
+              if (!hasChanged) {
+                // Component fields haven't changed - preserve existing ID including increment
+                debugPrint(
+                    'Preserving existing ID "$existingId" for field "${q.fieldName}" (no component changes)');
+                return;
+              } else {
+                debugPrint(
+                    'Component fields changed for "${q.fieldName}" - regenerating ID');
+              }
+            }
+
+            // Generate new ID (either new mode or component fields changed)
             final generatedId = await IdGenerator.generateId(
               surveyId: surveyId,
               tableName: tableName,

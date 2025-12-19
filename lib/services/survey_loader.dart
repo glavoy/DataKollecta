@@ -160,10 +160,10 @@ class SurveyLoader {
       final preSkips = _parseSkips(q.getElement('preskip'));
       final postSkips = _parseSkips(q.getElement('postskip'));
 
-      // Parse logic check string
-      final logicCheckNode = q.getElement('logic_check');
-      LogicCheck? logicCheck;
-      if (logicCheckNode != null) {
+      // Parse logic checks - support multiple <logic_check> elements
+      final logicChecks = <LogicCheck>[];
+      final logicCheckNodes = q.findElements('logic_check');
+      for (final logicCheckNode in logicCheckNodes) {
         var msg = logicCheckNode.getAttribute('message');
         var condition = logicCheckNode.innerText.trim();
 
@@ -182,7 +182,7 @@ class SurveyLoader {
         msg ??= 'Invalid value';
 
         if (condition.isNotEmpty) {
-          logicCheck = LogicCheck(message: msg, condition: condition);
+          logicChecks.add(LogicCheck(message: msg, condition: condition));
         }
       }
 
@@ -250,7 +250,7 @@ class SurveyLoader {
           responseConfig: responseConfig,
           preSkips: preSkips,
           postSkips: postSkips,
-          logicCheck: logicCheck,
+          logicChecks: logicChecks,
           dontKnow: dontKnow,
           refuse: refuse,
           minDate: minDate,

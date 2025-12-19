@@ -2,7 +2,7 @@
 ; This script creates a Windows installer for the GiSTX application
 
 #define MyAppName "GiSTX"
-#define MyAppVersion "0.0.5"
+#define MyAppVersion "0.0.6"
 #define MyAppPublisher "Geoff Lavoy"
 #define MyAppURL "https://www.geofflavoy.com"
 #define MyAppExeName "gistx.exe"

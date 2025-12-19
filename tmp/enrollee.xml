@@ -71,7 +71,7 @@ If the exact day of month is unknown put 15th.
 
 If the exact month is unknown put the first month of the season of the year when they were born</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 	</question>
@@ -116,11 +116,18 @@ Enter 0 if child is under 1 year old</text>
 
 
 	<question type = 'radio' fieldname = 'age_eligible' fieldtype = 'integer'>
-		<text>Individual is between 6 months and 5 years of age at time of enrolment</text>
+		<text>Individual is between 9 months and 21 months of age at time of enrollment (if current date is on or before Jan. 31st, 2026)
+
+OR
+
+Individual is between 9 months and 22 months of age at time of enrollment (if current date is on or after Feb. 1st, 2026)</text>
 		<logic_check>
-			(age_eligible = 1 and agemonths_calculated &lt; 6) or
-			(age_eligible = 1 and agemonths_calculated &gt; 60) or
-			(age_eligible = 0 and agemonths_calculated &gt;= 6 and agemonths_calculated &lt;= 60);
+			(((age_eligible = 1 and agemonths_calculated &lt; 9) or
+			(age_eligible = 1 and agemonths_calculated &gt; 21) or
+			(age_eligible = 0 and agemonths_calculated &gt;= 9 and agemonths_calculated &lt;= 21)) and starttime &lt;= '2026-01-31') or
+			(((age_eligible = 1 and agemonths_calculated &lt; 9) or
+			(age_eligible = 1 and agemonths_calculated &gt; 22) or
+			(age_eligible = 0 and agemonths_calculated &gt;= 9 and agemonths_calculated &lt;= 22)) and starttime &gt;= '2026-02-01');
 			'Age eligibility selection does not match the age criteria!'
 		</logic_check>
 		<responses>
@@ -228,10 +235,10 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'radio' fieldname = 'vx_any_no' fieldtype = 'integer'>
 		<text>Why have you not received the malaria vaccine?</text>
 		<responses>
-			<response value = '0'>Parent reports child ineligible</response>
-			<response value = '1'>Vaccine not available</response>
-			<response value = '2'>Could not travel to clinic</response>
-			<response value = '3'>Refused/Did not want</response>
+			<response value = '1'>Parent reports child ineligible</response>
+			<response value = '2'>Vaccine not available</response>
+			<response value = '3'>Could not travel to clinic</response>
+			<response value = '4'>Refused/Did not want</response>
 			<response value = '96'>Other</response>
 		</responses>
 		<preskip>
@@ -254,6 +261,9 @@ Enter 0 if child is under 1 year old</text>
 
 	<question type = 'radio' fieldname = 'vx_doses_received_ver' fieldtype = 'integer'>
 		<text># doses, method of verification (Select one):</text>
+		<logic_check>
+			vx_card = 0 and vx_doses_received_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -293,14 +303,20 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'vx_dose1_date' fieldtype = 'date'>
 		<text>On what date was dose 1 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
+		<logic_check>
+			vx_dose1_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
+		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'vx_dose1_date_ver' fieldtype = 'integer'>
 		<text>date dose 1, method of verification</text>
+		<logic_check>
+			vx_card = 0 and vx_dose1_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -343,17 +359,23 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'vx_dose2_date' fieldtype = 'date'>
 		<text>On what date was dose 2 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose2_date &lt; vx_dose1_date; 'Date of dose 2 cannot be before date of dose 1'
+		</logic_check>
+		<logic_check>
+			vx_dose2_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
 		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'vx_dose2_date_ver' fieldtype = 'integer'>
 		<text>date dose 2, method of verification</text>
+		<logic_check>
+			vx_card = 0 and vx_dose2_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -396,17 +418,23 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'vx_dose3_date' fieldtype = 'date'>
 		<text>On what date was dose 3 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose3_date &lt; vx_dose2_date; 'Date of dose 3 cannot be before date of dose 2'
+		</logic_check>
+		<logic_check>
+			vx_dose3_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
 		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'vx_dose3_date_ver' fieldtype = 'integer'>
 		<text>date dose 3, method of verification</text>
+		<logic_check>
+			vx_card = 0 and vx_dose3_date_ver; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -449,17 +477,23 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'vx_dose4_date' fieldtype = 'date'>
 		<text>On what date was dose 4 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose4_date &lt; vx_dose3_date; 'Date of dose 4 cannot be before date of dose 3'
+		</logic_check>
+		<logic_check>
+			vx_dose4_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
 		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'vx_dose4_date_ver' fieldtype = 'integer'>
 		<text>date dose 4, method of verification</text>
+		<logic_check>
+			vx_card = 0 and vx_dose4_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -490,7 +524,7 @@ Enter 0 if child is under 1 year old</text>
 
 
 	<question type = 'radio' fieldname = 'vx_doses_miss_reas' fieldtype = 'integer'>
-		<text>What is the reason (select all that apply)?</text>
+		<text>What was the reason the doses were missed?</text>
 		<responses>
 			<response value = '1'>Vaccine not available</response>
 			<response value = '2'>Could not travel to clinic</response>
@@ -500,6 +534,12 @@ Enter 0 if child is under 1 year old</text>
 		<postskip>
 			<skip fieldname='vx_doses_miss_reas' condition = '&lt;&gt;' response='96' response_type='fixed' skiptofieldname ='vx_dose_off_sched'></skip>
 		</postskip>
+	</question>
+
+
+	<question type = 'text' fieldname = 'vx_doses_miss_reas_oth' fieldtype = 'text'>
+		<text>Specify other:</text>
+		<maxCharacters>80</maxCharacters>
 	</question>
 
 
@@ -516,7 +556,7 @@ Enter 0 if child is under 1 year old</text>
 
 
 	<question type = 'radio' fieldname = 'vx_doses_offsched_reas' fieldtype = 'integer'>
-		<text>What is the reason (select all that apply)?</text>
+		<text>What was the reason for off-schedule doses?</text>
 		<responses>
 			<response value = '1'>Vaccine not available</response>
 			<response value = '2'>Could not travel to clinic</response>
@@ -558,6 +598,9 @@ Enter 0 if child is under 1 year old</text>
 
 	<question type = 'radio' fieldname = 'hib_doses_received_ver' fieldtype = 'integer'>
 		<text># doses, method of verification (Select one):</text>
+		<logic_check>
+			vx_card = 0 and hib_doses_received_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -597,14 +640,20 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'hib_dose1_date' fieldtype = 'date'>
 		<text>On what date was dose 1 of Hib received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
+		<logic_check>
+			hib_dose1_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
+		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'hib_dose1_date_ver' fieldtype = 'integer'>
 		<text>date dose 1, method of verification</text>
+		<logic_check>
+			vx_card = 0 and hib_dose1_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -650,17 +699,23 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'hib_dose2_date' fieldtype = 'date'>
 		<text>On what date was dose 2 of Hib received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			hib_dose2_date &lt; hib_dose1_date; 'Date of dose 2 cannot be before date of dose 1'
+		</logic_check>
+		<logic_check>
+			hib_dose2_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
 		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'hib_dose2_date_ver' fieldtype = 'integer'>
 		<text>date dose 2, method of verification</text>
+		<logic_check>
+			vx_card = 0 and hib_dose2_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -706,17 +761,23 @@ Enter 0 if child is under 1 year old</text>
 	<question type = 'date' fieldname = 'hib_dose3_date' fieldtype = 'date'>
 		<text>On what date was dose 3 of Hib received?</text>
 		<date_range>
-			<min_date>-6y</min_date>
+			<min_date>-2y</min_date>
 			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			hib_dose3_date &lt; hib_dose2_date; 'Date of dose 3 cannot be before date of dose 2'
+		</logic_check>
+		<logic_check>
+			hib_dose3_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
 		</logic_check>
 	</question>
 
 
 	<question type = 'radio' fieldname = 'hib_dose3_date_ver' fieldtype = 'integer'>
 		<text>date dose 3, method of verification</text>
+		<logic_check>
+			vx_card = 0 and hib_dose3_date_ver = 2; 'You previously indicated that the guardian does not have a vaccine card!'
+		</logic_check>
 		<responses>
 			<response value = '1'>Guardian report</response>
 			<response value = '2'>Vaccine card</response>
@@ -793,6 +854,9 @@ Enter 0 if child is under 1 year old</text>
 			<response value = '2'>More than 30 days ago but within last 6 months</response>
 			<response value = '3'>More than 6 months ago</response>
 		</responses>
+		<preskip>
+			<skip fieldname='prevdiag' condition = '=' response='0' response_type='fixed' skiptofieldname ='consent'></skip>
+		</preskip>
 	</question>
 
 
@@ -867,14 +931,26 @@ Enter 0 if child is under 1 year old</text>
 
 
 	<question type = 'text' fieldname = 'uid' fieldtype = 'text'>
-		<text>UID on register</text>
-		<maxCharacters>80</maxCharacters>
+		<text>Enter the UID from the barcode on  the register (5 digits)</text>
+		<maxCharacters>=5</maxCharacters>
+		<unique_check>
+			<message>This UID as already been used!</message>
+		</unique_check>
+	</question>
+
+
+	<question type = 'text' fieldname = 'uid2' fieldtype = 'text'>
+		<text>Please re-nter the UID from the barcode on  the register (5 digits)</text>
+		<maxCharacters>=5</maxCharacters>
+		<logic_check>
+			uid2 &lt;&gt; uid; 'This does not match your previous entry of the UID!'
+		</logic_check>
 	</question>
 
 
 	<question type = 'text' fieldname = 'fpbarcode1_r21' fieldtype = 'text'>
 		<text>Barcode for R21</text>
-		<maxCharacters>8</maxCharacters>
+		<maxCharacters>=12</maxCharacters>
 		<unique_check>
 			<message>This barcode has already been used!</message>
 		</unique_check>
@@ -883,9 +959,9 @@ Enter 0 if child is under 1 year old</text>
 
 	<question type = 'text' fieldname = 'fpbarcode2_r21' fieldtype = 'text'>
 		<text>Re-enter Barcode for R21</text>
-		<maxCharacters>8</maxCharacters>
+		<maxCharacters>=12</maxCharacters>
 		<logic_check>
-			fpbarcode2_r21 &lt;&gt; fpbarcode1_r21; 'This does not match your previous entry of of the barcode!'
+			fpbarcode2_r21 &lt;&gt; fpbarcode1_r21; 'This does not match your previous entry of the barcode!'
 		</logic_check>
 	</question>
 
@@ -901,7 +977,7 @@ Enter 0 if child is under 1 year old</text>
 
 	<question type = 'text' fieldname = 'fpbarcode1_immrse' fieldtype = 'text'>
 		<text>Barcode for IMMRSE</text>
-		<maxCharacters>8</maxCharacters>
+		<maxCharacters>=14</maxCharacters>
 		<unique_check>
 			<message>This barcode has already been used!</message>
 		</unique_check>
@@ -913,9 +989,9 @@ Enter 0 if child is under 1 year old</text>
 
 	<question type = 'text' fieldname = 'fpbarcode2_immrse' fieldtype = 'text'>
 		<text>Re-enter Barcode for IMMRSE</text>
-		<maxCharacters>8</maxCharacters>
+		<maxCharacters>=14</maxCharacters>
 		<logic_check>
-			fpbarcode2_immrse &lt;&gt; fpbarcode1_immrse; 'This does not match your previous entry of of the barcode!'
+			fpbarcode2_immrse &lt;&gt; fpbarcode1_immrse; 'This does not match your previous entry of the barcode!'
 		</logic_check>
 	</question>
 

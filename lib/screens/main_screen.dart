@@ -69,6 +69,17 @@ class _MainScreenState extends State<MainScreen> {
         });
       }
       debugPrint('Found ${surveys.length} surveys: $surveys');
+
+      // Auto-select if only one survey is available
+      if (surveys.length == 1) {
+        final currentSurvey = await _settingsService.activeSurvey;
+        // Only auto-select if no survey is currently selected or the current one is invalid
+        if (currentSurvey == null || currentSurvey.isEmpty || !surveys.contains(currentSurvey)) {
+          debugPrint('Auto-selecting single available survey: ${surveys[0]}');
+          await _settingsService.setActiveSurvey(surveys[0]);
+          await _loadSurveyName();
+        }
+      }
     } catch (e) {
       debugPrint('Error scanning for surveys: $e');
     }

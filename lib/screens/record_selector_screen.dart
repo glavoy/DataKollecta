@@ -125,7 +125,8 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
 
   /// Build display text for a dropdown item
   /// Format: "value - displayField1, displayField2" or just "value" if no display fields
-  /// Only applies display fields to non-first primary key fields (e.g., linenum, not hhid)
+  /// For composite keys (2+ fields): Only show display fields on non-first fields (e.g., linenum, not hhid)
+  /// For single-field keys: Always show display fields if configured
   String _buildDisplayText({
     required String value,
     required String fieldName,
@@ -133,12 +134,18 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
     required List<String> displayFields,
     required List<String> primaryKeyFields,
   }) {
-    // Only show display fields for non-first primary key fields
+    if (displayFields.isEmpty) {
+      return value;
+    }
+
+    // For composite primary keys (2+ fields), only show display fields on non-first fields
     // e.g., show name for linenum (2nd field), but not for hhid (1st field)
+    // For single-field primary keys, always show display fields
     final isFirstPrimaryKey =
         primaryKeyFields.isNotEmpty && fieldName == primaryKeyFields.first;
+    final hasMultiplePrimaryKeys = primaryKeyFields.length > 1;
 
-    if (displayFields.isEmpty || isFirstPrimaryKey) {
+    if (isFirstPrimaryKey && hasMultiplePrimaryKeys) {
       return value;
     }
 

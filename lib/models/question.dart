@@ -157,7 +157,7 @@ class Question {
   final ResponseConfig? responseConfig; // New: for dynamic responses
   final List<SkipCondition> preSkips; // Evaluated before showing the question
   final List<SkipCondition> postSkips; // Evaluated after user answers
-  final LogicCheck? logicCheck;
+  final List<LogicCheck> logicChecks; // Multiple logic checks evaluated in order
   final String? dontKnow;
   final String? refuse;
   final DateTime? minDate;
@@ -178,7 +178,7 @@ class Question {
     this.responseConfig,
     this.preSkips = const [],
     this.postSkips = const [],
-    this.logicCheck,
+    this.logicChecks = const [],
     this.dontKnow,
     this.refuse,
     this.minDate,
