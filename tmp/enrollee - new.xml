@@ -71,8 +71,8 @@ If the exact day of month is unknown put 15th.
 
 If the exact month is unknown put the first month of the season of the year when they were born</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 	</question>
 
@@ -95,13 +95,13 @@ If the exact month is unknown put the first month of the season of the year when
 	<question type = 'automatic' fieldname = 'age_in_range' fieldtype = 'integer'>
 		<calculation type='case'>
 			<when field='agemonths_calculated' operator='&lt;' value='8'>
-				<result type='constant' value='0' />
+				<result type='constant' value='0'/>
 			</when>
 			<when field='age_at_may2025' operator='&gt;' value='14'>
-				<result type='constant' value='0' />
+				<result type='constant' value='0'/>
 			</when>
 			<else>
-				<result type='constant' value='1' />
+				<result type='constant' value='1'/>
 			</else>
 		</calculation>
 	</question>
@@ -136,12 +136,7 @@ Enter 0 if child is under 1 year old</text>
 
 
 	<question type = 'radio' fieldname = 'age_eligible' fieldtype = 'integer'>
-		<text>Age eligibility:
-
-Individual is 8 months or older at time of enrollment AND must have been no older than 14 months on May 31st, 2025 (eligible age cohort)</text>
-		<logic_check>
-			age_in_range = 1 and age_eligible = 0; 'Participant is within the age range and must be marked as age eligible!'
-		</logic_check>
+		<text>Individual is 8 months or older at time of enrollment AND must have been no older than 14 months on May 31st, 2025 (eligible age cohort)</text>
 		<responses>
 			<response value = '1'>Yes - continue to next criterium</response>
 			<response value = '0'>No - exclude</response>
@@ -155,7 +150,7 @@ Individual is 8 months or older at time of enrollment AND must have been no olde
 Do you want to proceed with enrollment anyway?</text>
 		<responses>
 			<response value = '1'>Yes - proceed anyway</response>
-			<response value = '0'>No - exclude</response>
+			<response value = '0'>No - go back/exclude</response>
 		</responses>
 		<preskip>
 			<skip fieldname='age_eligible' condition = '=' response='0' response_type='fixed' skiptofieldname ='mal_test_eligible'></skip>
@@ -164,12 +159,6 @@ Do you want to proceed with enrollment anyway?</text>
 		<postskip>
 			<skip fieldname='age_warning' condition = '=' response='0' response_type='fixed' skiptofieldname ='comments'></skip>
 		</postskip>
-	</question>
-
-
-	<question type = 'text' fieldname = 'age_warning_reason' fieldtype = 'text'>
-		<text>Please provide a reason for enrolling this participant outside the protocol age range.</text>
-		<maxCharacters>80</maxCharacters>
 	</question>
 
 
@@ -339,8 +328,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'vx_dose1_date' fieldtype = 'date'>
 		<text>On what date was dose 1 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose1_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
@@ -395,8 +384,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'vx_dose2_date' fieldtype = 'date'>
 		<text>On what date was dose 2 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose2_date &lt; vx_dose1_date; 'Date of dose 2 cannot be before date of dose 1'
@@ -454,8 +443,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'vx_dose3_date' fieldtype = 'date'>
 		<text>On what date was dose 3 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose3_date &lt; vx_dose2_date; 'Date of dose 3 cannot be before date of dose 2'
@@ -513,8 +502,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'vx_dose4_date' fieldtype = 'date'>
 		<text>On what date was dose 4 of the malaria vaccine received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			vx_dose4_date &lt; vx_dose3_date; 'Date of dose 4 cannot be before date of dose 3'
@@ -676,8 +665,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'hib_dose1_date' fieldtype = 'date'>
 		<text>On what date was dose 1 of Hib received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			hib_dose1_date &lt; dob; 'Date of vaccination cannot be before date of birth!'
@@ -735,8 +724,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'hib_dose2_date' fieldtype = 'date'>
 		<text>On what date was dose 2 of Hib received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			hib_dose2_date &lt; hib_dose1_date; 'Date of dose 2 cannot be before date of dose 1'
@@ -797,8 +786,8 @@ Do you want to proceed with enrollment anyway?</text>
 	<question type = 'date' fieldname = 'hib_dose3_date' fieldtype = 'date'>
 		<text>On what date was dose 3 of Hib received?</text>
 		<date_range>
-			<min_date>-3y</min_date>
-			<max_date>-4m</max_date>
+			<min_date>-2y</min_date>
+			<max_date>0</max_date>
 		</date_range>
 		<logic_check>
 			hib_dose3_date &lt; hib_dose2_date; 'Date of dose 3 cannot be before date of dose 2'
