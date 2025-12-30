@@ -12,6 +12,7 @@ import '../services/id_generator.dart';
 import '../services/logic_service.dart';
 import '../services/survey_config_service.dart';
 import '../services/csv_data_service.dart';
+import '../services/change_summary_service.dart';
 
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
@@ -1284,27 +1285,52 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // when the automatic question is processed, not here at save time
 
     // Check if there are any changes (for edit mode only)
-    if (widget.uniqueId != null && !_hasChanges()) {
-      // No changes made, show dialog and return
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text('No Changes'),
-          content: const Text('No changes were made to this record.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                // Pop until we reach main screen (pop survey + record selector)
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('OK'),
-            )
-          ],
-        ),
+    if (widget.uniqueId != null) {
+      if (!_hasChanges()) {
+        // No changes made, show dialog and return
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text('No Changes'),
+            content: const Text('No changes were made to this record.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  // Pop until we reach main screen (pop survey + record selector)
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+                child: const Text('OK'),
+              )
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Show review summary before saving
+      final summary = await ChangeSummaryService.getSummary(
+        originalAnswers: _originalAnswers!,
+        currentAnswers: _answers,
+        questions: questions,
+        csvService: _csvDataService,
+        surveyId: _activeSurveyId ?? '',
       );
-      return;
+
+      if (summary.isNotEmpty) {
+        final result = await _showReviewChangesDialog(context, summary);
+        if (result == 'discard') {
+          // Exit without saving
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+          return;
+        } else if (result != 'save') {
+          // 'back' or null (dialog dismissed/canceled)
+          return;
+        }
+      }
     }
 
     setState(() {
@@ -1939,5 +1965,118 @@ class _SurveyScreenState extends State<SurveyScreen> {
         ),
       );
     }
+  }
+
+  /// Show review changes dialog for edit mode
+  Future<String?> _showReviewChangesDialog(
+      BuildContext context, List<ChangeSummaryItem> summary) async {
+    return await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.rate_review_outlined, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Review Changes'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: summary.isEmpty
+              ? const Text('No logical changes detected.')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: summary.length,
+                  separatorBuilder: (context, index) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final item = summary[index];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.questionText,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.oldLabel,
+                                style: TextStyle(
+                                    color: Colors.grey.shade600, fontSize: 12),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward,
+                                size: 14, color: Colors.grey),
+                            Expanded(
+                              child: Text(
+                                item.newLabel,
+                                style: const TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 12),
+                                textAlign: TextAlign.end,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Discard Changes?'),
+                      content: const Text(
+                          'Are you sure you want to discard all changes and exit? This cannot be undone.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Discard & Exit',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    Navigator.pop(context, 'discard');
+                  }
+                },
+                child: const Text('Discard & Exit',
+                    style: TextStyle(color: Colors.red)),
+              ),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'back'),
+                    child: const Text('Back to Edit'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, 'save'),
+                    child: const Text('Save Changes'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

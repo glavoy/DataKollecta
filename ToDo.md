@@ -55,7 +55,7 @@
 - Added a 'regex' style formatting to the barcodes - user does not have to type in 'R21-' and subsequent '-'
 - When viewing dropdown of completed surveys (when viewing/modifying a survey) it now shows subid + date enrolled + name
 - When you exit a survey that you are modiying, changed the text to: "Are you sure you want to cancel. All edits/modifications will be lost!" 
-- When changing the district, e.g. BUSIA to MAYUGE, it clears the subcounty, parish, and village. This cascades - if the subcounty is changed, the parish is also cleared, etc.
+- When changing the district, e.g. BUSIA to MAYUGE, it clears the subcounty, parish, and village. This cascades - if only the subcounty is changed, the parish is also cleared, etc.
 
 
 

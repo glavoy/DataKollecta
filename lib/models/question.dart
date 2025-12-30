@@ -208,12 +208,7 @@ class Question {
       return true;
     }
 
-    // 3. Check logic checks
-    for (final lc in logicChecks) {
-      if (lc.condition.contains(fieldName)) return true;
-    }
-
-    // 4. Check skips (if we ever want to clear based on skip dependency)
+    // 3. Check skips (if we ever want to clear based on skip dependency)
     // For now, we mainly care about data dependencies
 
     return false;
