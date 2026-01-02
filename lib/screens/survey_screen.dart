@@ -424,6 +424,42 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
   }
 
+  /// Clear answers for questions in a specific range (used when skip logic jumps forward)
+  /// This clears data for questions that are being skipped over during forward navigation
+  /// Example: User changes hib_doses_received from 3 to 2, then navigates forward
+  /// Questions for dose 3 should be cleared immediately
+  void _clearAnswersInRange(List<Question> questions, int startIndex, int endIndex) {
+    final primaryKeys =
+        widget.primaryKeyFields?.map((f) => f.toLowerCase()).toSet() ?? {};
+
+    final clearedFields = <String>[];
+
+    for (int i = startIndex; i < endIndex && i < questions.length; i++) {
+      final q = questions[i];
+
+      // Skip automatic and information questions
+      if (q.type == QuestionType.automatic || q.type == QuestionType.information) {
+        continue;
+      }
+
+      // Don't clear primary key fields
+      if (primaryKeys.contains(q.fieldName.toLowerCase())) {
+        continue;
+      }
+
+      // Clear the answer if it exists
+      if (_answers.containsKey(q.fieldName) && _answers[q.fieldName] != null) {
+        debugPrint('Clearing skipped question: ${q.fieldName}');
+        _answers[q.fieldName] = null;
+        clearedFields.add(q.fieldName);
+      }
+    }
+
+    if (clearedFields.isNotEmpty) {
+      debugPrint('Cleared ${clearedFields.length} answers for skipped questions: ${clearedFields.join(", ")}');
+    }
+  }
+
   /// Called whenever an answer changes
   void _onAnswerChanged(String fieldName, dynamic oldValue, dynamic newValue) {
     if (_loadedQuestions == null || !mounted) return;
@@ -595,6 +631,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
     }
 
+    // Store the current question index before moving forward
+    final previousQuestionIndex = _currentQuestion;
+
     // Push current displayed question to history (skip automatic)
     if (qs[_currentQuestion].type != QuestionType.automatic) {
       _history.add(_currentQuestion);
@@ -620,6 +659,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     // Skip automatic questions and evaluate preskips
     nextIndex = await _findNextDisplayedQuestion(qs, nextIndex);
+
+    // CRITICAL FIX: Clear answers for any questions between previous and next that will be skipped
+    // This handles cases where changing an answer causes skip logic to bypass previously answered questions
+    // Example: changing hib_doses_received from 3 to 2 should clear hib_dose3_date
+    if (nextIndex > previousQuestionIndex + 1) {
+      _clearAnswersInRange(qs, previousQuestionIndex + 1, nextIndex);
+    }
 
     setState(() {
       _currentQuestion = nextIndex;
