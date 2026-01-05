@@ -1,5 +1,7 @@
 # GiSTX
 
+This bracnch is for the R21 Negative study
+
 ## Overview
 
 GiSTX is a cross-platform offline survey and data collection application built with Flutter. It enables researchers and data collectors to administer XML-based questionnaires in field settings without requiring internet connectivity.
