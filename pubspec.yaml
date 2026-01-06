@@ -18,7 +18,8 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   csv: ^6.0.0
   archive: ^3.6.1
-  ftpconnect: ^1.0.0
+  ftpconnect: ^1.0.0  # Keep for upload functionality
+  http: ^1.2.0  # For HTTP-based survey downloads
   package_info_plus: ^8.0.0
   shared_preferences: ^2.3.2
 

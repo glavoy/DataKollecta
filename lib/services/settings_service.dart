@@ -23,6 +23,12 @@ class SettingsService {
   static const String _keyFtpPassword = 'ftp_password';
   static const String _keyActiveSurvey = 'active_survey';
 
+  // New HTTP/API keys
+  static const String _keyProjectCode = 'project_code';
+  static const String _keyApiUsername = 'api_username';
+  static const String _keyApiPassword = 'api_password';
+  static const String _keyAuthToken = 'auth_token';
+
   // Getters for settings
   Future<String?> get surveyorId async {
     return await _storage.read(key: _keysurveyorId);
@@ -42,6 +48,23 @@ class SettingsService {
 
   Future<String?> get activeSurvey async {
     return await _storage.read(key: _keyActiveSurvey);
+  }
+
+  // New API getters
+  Future<String?> get projectCode async {
+    return await _storage.read(key: _keyProjectCode);
+  }
+
+  Future<String?> get apiUsername async {
+    return await _storage.read(key: _keyApiUsername);
+  }
+
+  Future<String?> get apiPassword async {
+    return await _storage.read(key: _keyApiPassword);
+  }
+
+  Future<String?> get authToken async {
+    return await _storage.read(key: _keyAuthToken);
   }
 
   // Setters for settings
@@ -65,7 +88,24 @@ class SettingsService {
     await _storage.write(key: _keyActiveSurvey, value: value);
   }
 
-  // Bulk save all settings
+  // New API setters
+  Future<void> setProjectCode(String value) async {
+    await _storage.write(key: _keyProjectCode, value: value);
+  }
+
+  Future<void> setApiUsername(String value) async {
+    await _storage.write(key: _keyApiUsername, value: value);
+  }
+
+  Future<void> setApiPassword(String value) async {
+    await _storage.write(key: _keyApiPassword, value: value);
+  }
+
+  Future<void> setAuthToken(String value) async {
+    await _storage.write(key: _keyAuthToken, value: value);
+  }
+
+  // Bulk save all settings (legacy - for FTP upload only now)
   Future<void> saveAllSettings({
     required String surveyorId,
     required String ftpHost,
@@ -77,6 +117,23 @@ class SettingsService {
     await setFtpHost(ftpHost);
     await setFtpUsername(ftpUsername);
     await setFtpPassword(ftpPassword);
+    if (activeSurvey != null) {
+      await setActiveSurvey(activeSurvey);
+    }
+  }
+
+  // Bulk save API settings
+  Future<void> saveApiSettings({
+    required String surveyorId,
+    required String projectCode,
+    required String apiUsername,
+    required String apiPassword,
+    String? activeSurvey,
+  }) async {
+    await setSurveyorId(surveyorId);
+    await setProjectCode(projectCode);
+    await setApiUsername(apiUsername);
+    await setApiPassword(apiPassword);
     if (activeSurvey != null) {
       await setActiveSurvey(activeSurvey);
     }
@@ -108,6 +165,7 @@ class SettingsService {
   }
 
   /// Get credentials for a survey - returns survey-specific if available, otherwise falls back to global
+  /// NOTE: This is now only used for FTP uploads. Downloads use getApiCredentials()
   Future<Map<String, String>?> getCredentialsForSurvey(String surveyId) async {
     // Try survey-specific first
     final surveyUsername = await getSurveyUsername(surveyId);
@@ -117,12 +175,29 @@ class SettingsService {
       return {'username': surveyUsername, 'password': surveyPassword};
     }
 
-    // Fall back to global credentials
+    // Fall back to FTP credentials (for upload)
     final globalUsername = await ftpUsername;
     final globalPassword = await ftpPassword;
 
     if (globalUsername != null && globalPassword != null) {
       return {'username': globalUsername, 'password': globalPassword};
+    }
+
+    return null;
+  }
+
+  /// Get API credentials for download operations
+  Future<Map<String, String>?> getApiCredentials() async {
+    final username = await apiUsername;
+    final password = await apiPassword;
+    final projCode = await projectCode;
+
+    if (username != null && password != null && projCode != null) {
+      return {
+        'username': username,
+        'password': password,
+        'projectCode': projCode,
+      };
     }
 
     return null;

@@ -20,6 +20,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Controllers for text fields
   final _surveyorIdController = TextEditingController();
+  final _projectCodeController = TextEditingController();
+  final _apiUsernameController = TextEditingController();
+  final _apiPasswordController = TextEditingController();
   final _ftpUsernameController = TextEditingController();
   final _ftpPasswordController = TextEditingController();
 
@@ -56,6 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _surveyorIdController.dispose();
+    _projectCodeController.dispose();
+    _apiUsernameController.dispose();
+    _apiPasswordController.dispose();
     _ftpUsernameController.dispose();
     _ftpPasswordController.dispose();
     _themeService.removeListener(_onThemeChanged);
@@ -64,13 +70,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final surveyorId = await _settingsService.surveyorId;
-    // ftpHost is no longer used in UI
+    final projectCode = await _settingsService.projectCode;
+    final apiUsername = await _settingsService.apiUsername;
+    final apiPassword = await _settingsService.apiPassword;
     final ftpUsername = await _settingsService.ftpUsername;
     final ftpPassword = await _settingsService.ftpPassword;
 
     if (mounted) {
       setState(() {
         _surveyorIdController.text = surveyorId ?? '';
+        _projectCodeController.text = projectCode ?? '';
+        _apiUsernameController.text = apiUsername ?? '';
+        _apiPasswordController.text = apiPassword ?? '';
         _ftpUsernameController.text = ftpUsername ?? '';
         _ftpPasswordController.text = ftpPassword ?? '';
 
@@ -82,12 +93,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       try {
-        await _settingsService.saveAllSettings(
+        // Save API settings for downloads
+        await _settingsService.saveApiSettings(
           surveyorId: _surveyorIdController.text.trim(),
-          ftpHost: '', // Host is hidden/hardcoded, passing empty for now
-          ftpUsername: _ftpUsernameController.text.trim(),
-          ftpPassword: _ftpPasswordController.text,
+          projectCode: _projectCodeController.text.trim(),
+          apiUsername: _apiUsernameController.text.trim(),
+          apiPassword: _apiPasswordController.text,
         );
+
+        // Save FTP settings for uploads (if provided)
+        if (_ftpUsernameController.text.trim().isNotEmpty &&
+            _ftpPasswordController.text.isNotEmpty) {
+          await _settingsService.saveAllSettings(
+            surveyorId: _surveyorIdController.text.trim(),
+            ftpHost: '', // Host is hidden/hardcoded, passing empty for now
+            ftpUsername: _ftpUsernameController.text.trim(),
+            ftpPassword: _ftpPasswordController.text,
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -211,14 +234,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(),
                     const SizedBox(height: 12),
                     Text(
-                      'Server Credentials',
+                      'API Credentials (for Survey Downloads)',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Enter your credentials to access the survey server.',
+                      'Enter your API endpoint and credentials to download surveys.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _projectCodeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Project Code',
+                        hintText: 'Enter your project code',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.code),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Project code is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _apiUsernameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Username',
+                        hintText: 'Enter username',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.account_circle),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Username is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _apiPasswordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        hintText: 'Enter password',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.lock),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Password is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 12),
+                    Text(
+                      'FTP Credentials (for Data Uploads - Optional)',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Upload functionality still uses FTP. Leave blank if not uploading.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
@@ -227,8 +327,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     TextFormField(
                       controller: _ftpUsernameController,
                       decoration: const InputDecoration(
-                        labelText: 'Username',
-                        hintText: 'Enter username',
+                        labelText: 'FTP Username',
+                        hintText: 'Enter FTP username',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.account_circle),
                       ),
@@ -238,8 +338,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _ftpPasswordController,
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter password',
+                        labelText: 'FTP Password',
+                        hintText: 'Enter FTP password',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(

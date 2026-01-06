@@ -107,15 +107,13 @@ class SurveyConfigService {
         return;
       }
 
-      // Get current global credentials
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
-
-      if (username != null && password != null) {
+      // Get current global API credentials (for downloads)
+      final apiCreds = await _settingsService.getApiCredentials();
+      if (apiCreds != null) {
         await _settingsService.setSurveyCredentials(
-            surveyId, username, password);
+            surveyId, apiCreds['username']!, apiCreds['password']!);
         debugPrint(
-            '[SurveyConfig] Associated current credentials with survey: $surveyId');
+            '[SurveyConfig] Associated current API credentials with survey: $surveyId');
       }
     } catch (e) {
       debugPrint('[SurveyConfig] Error associating credentials: $e');

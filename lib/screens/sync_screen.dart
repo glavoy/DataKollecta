@@ -5,6 +5,7 @@ import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 import 'package:intl/intl.dart';
 import '../services/ftp_service.dart';
+import '../services/http_service.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
 
@@ -16,14 +17,15 @@ class SyncScreen extends StatefulWidget {
 }
 
 class _SyncScreenState extends State<SyncScreen> {
-  final _ftpService = FtpService();
+  final _ftpService = FtpService(); // Used for uploads only
+  final _httpService = HttpService(); // Used for downloads
   final _settingsService = SettingsService();
   final _surveyConfig = SurveyConfigService();
 
   bool _isConnecting = false;
   bool _isUploading = false;
-  List<String> _remoteFiles = [];
-  String? _downloadingFile;
+  List<SurveyMetadata> _remoteSurveys = []; // Changed from List<String>
+  String? _downloadingSurvey;
   String? _statusMessage;
   String? _activeSurveyName;
 
@@ -92,22 +94,19 @@ class _SyncScreenState extends State<SyncScreen> {
     setState(() {
       _isConnecting = true;
       _statusMessage = 'Connecting to server...';
-      _remoteFiles = [];
+      _remoteSurveys = [];
     });
 
     try {
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
+      // Get API credentials
+      final apiCreds = await _settingsService.getApiCredentials();
 
-      if (username == null ||
-          username.isEmpty ||
-          password == null ||
-          password.isEmpty) {
+      if (apiCreds == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content:
-                  Text('Please configure FTP credentials in Settings first.'),
+                  Text('Please configure API credentials in Settings first.'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -115,57 +114,53 @@ class _SyncScreenState extends State<SyncScreen> {
         return;
       }
 
-      final connected = await _ftpService.connect(username, password);
-      if (!connected) {
-        throw Exception('Failed to connect to FTP server.');
-      }
+      final username = apiCreds['username']!;
+      final password = apiCreds['password']!;
+      final projectCode = apiCreds['projectCode']!;
 
-      setState(() => _statusMessage = 'Listing files...');
-      final files = await _ftpService.listSurveyZips();
+      setState(() => _statusMessage = 'Authenticating...');
+
+      // Authenticate and get survey list
+      final result = await _httpService.authenticate(username, password, projectCode);
+
+      // Save the auth token
+      await _settingsService.setAuthToken(result.token);
 
       setState(() {
-        _remoteFiles = files;
-        _statusMessage = files.isEmpty
-            ? 'No survey zip files found in /survey/ folder.'
-            : 'Found ${files.length} surveys.';
+        _remoteSurveys = result.surveys;
+        _statusMessage = result.surveys.isEmpty
+            ? 'No surveys available.'
+            : 'Found ${result.surveys.length} surveys.';
       });
     } catch (e) {
       setState(() => _statusMessage = 'Error: $e');
     } finally {
-      await _ftpService.disconnect();
       if (mounted) {
         setState(() => _isConnecting = false);
       }
     }
   }
 
-  Future<void> _downloadSurvey(String filename) async {
+  Future<void> _downloadSurvey(SurveyMetadata survey) async {
     setState(() {
-      _downloadingFile = filename;
+      _downloadingSurvey = survey.name;
     });
 
     try {
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
-
-      if (username == null || password == null) return;
-
-      final connected = await _ftpService.connect(username, password);
-      if (!connected) throw Exception('Connection lost.');
-
-      final file = await _ftpService.downloadSurveyZip(filename);
+      // Download using the signed URL
+      final file = await _httpService.downloadSurveyZip(
+        survey.downloadUrl,
+        survey.name,
+      );
 
       if (file != null) {
-        // Extract surveyId from the downloaded zip to save credentials
-        // The zip file name should be something like "surveyname.zip"
-        // After extraction, we need to read the manifest to get the surveyId
-        await _associateCredentialsWithDownloadedSurvey(
-            filename, username, password);
+        // Extract the survey and associate credentials
+        await _associateCredentialsWithDownloadedSurvey(survey.name);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Downloaded $filename successfully!'),
+              content: Text('Downloaded ${survey.name} successfully!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -177,39 +172,37 @@ class _SyncScreenState extends State<SyncScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error downloading $filename: $e'),
+            content: Text('Error downloading ${survey.name}: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
     } finally {
-      await _ftpService.disconnect();
       if (mounted) {
         setState(() {
-          _downloadingFile = null;
+          _downloadingSurvey = null;
         });
       }
     }
   }
 
   Future<void> _associateCredentialsWithDownloadedSurvey(
-      String filename, String username, String password) async {
+      String surveyName) async {
     try {
       // Extract zip first (it's in the zips folder)
       await _surveyConfig.initializeSurveys();
-
-      // The survey name is the filename without .zip extension
-      final surveyName =
-          filename.replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
 
       // Get the surveyId for this survey
       final surveyId = await _surveyConfig.getSurveyId(surveyName);
 
       if (surveyId != null) {
-        // Save the credentials that were used to download this survey
-        await _settingsService.setSurveyCredentials(
-            surveyId, username, password);
-        debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
+        // Get API credentials to associate with this survey
+        final apiCreds = await _settingsService.getApiCredentials();
+        if (apiCreds != null) {
+          await _settingsService.setSurveyCredentials(
+              surveyId, apiCreds['username']!, apiCreds['password']!);
+          debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
+        }
       }
     } catch (e) {
       debugPrint('[SyncScreen] Error associating credentials: $e');
@@ -415,20 +408,19 @@ class _SyncScreenState extends State<SyncScreen> {
                 textAlign: TextAlign.center,
               ),
             ],
-            if (_remoteFiles.isNotEmpty) ...[
+            if (_remoteSurveys.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Divider(),
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _remoteFiles.length,
+                itemCount: _remoteSurveys.length,
                 itemBuilder: (context, index) {
-                  final filename = _remoteFiles[index];
-                  final isDownloading = _downloadingFile == filename;
+                  final survey = _remoteSurveys[index];
+                  final isDownloading = _downloadingSurvey == survey.name;
                   return ListTile(
                     leading: const Icon(Icons.folder_zip_outlined),
-                    title: Text(filename.replaceAll(
-                        RegExp(r'\.zip$', caseSensitive: false), '')),
+                    title: Text(survey.name),
                     trailing: isDownloading
                         ? const SizedBox(
                             width: 24,
@@ -437,9 +429,9 @@ class _SyncScreenState extends State<SyncScreen> {
                           )
                         : IconButton(
                             icon: const Icon(Icons.download),
-                            onPressed: _downloadingFile != null
+                            onPressed: _downloadingSurvey != null
                                 ? null
-                                : () => _downloadSurvey(filename),
+                                : () => _downloadSurvey(survey),
                           ),
                   );
                 },
