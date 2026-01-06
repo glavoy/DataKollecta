@@ -37,12 +37,12 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundColor: const Color.fromARGB(255, 214, 231, 244),
       body: Center(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Image.asset(
-            'assets/branding/gistx.png',
+            'assets/branding/datakollecta.png',
             width: 200,
             height: 200,
           ),

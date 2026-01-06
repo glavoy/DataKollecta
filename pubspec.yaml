@@ -1,6 +1,6 @@
-name: GiSTX
+name: DataKollecta
 description: Cross-platform Questionnaire software
-version: 0.0.8
+version: 0.1.0
 environment:
   sdk: '>=3.2.0 <4.0.0'
 
@@ -29,14 +29,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/gistx.png
+    - assets/branding/datakollecta.png
 
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
-  image_path: "assets/branding/gistx.png"
+  ios: false
+  image_path: "assets/branding/datakollecta.png"
   min_sdk_android: 21
   windows:
     generate: true
     icon_size: 256
-    icon_file: "assets/branding/gistx.png"
+    icon_file: "assets/branding/datakollecta.png"

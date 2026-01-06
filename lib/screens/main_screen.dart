@@ -74,7 +74,9 @@ class _MainScreenState extends State<MainScreen> {
       if (surveys.length == 1) {
         final currentSurvey = await _settingsService.activeSurvey;
         // Only auto-select if no survey is currently selected or the current one is invalid
-        if (currentSurvey == null || currentSurvey.isEmpty || !surveys.contains(currentSurvey)) {
+        if (currentSurvey == null ||
+            currentSurvey.isEmpty ||
+            !surveys.contains(currentSurvey)) {
           debugPrint('Auto-selecting single available survey: ${surveys[0]}');
           await _settingsService.setActiveSurvey(surveys[0]);
           await _loadSurveyName();
@@ -194,7 +196,7 @@ class _MainScreenState extends State<MainScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
-                        'assets/branding/gistx.png',
+                        'assets/branding/datakollecta.png',
                         width: 120,
                         height: 120,
                       ),

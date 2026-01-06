@@ -142,7 +142,7 @@ AppImage creates a single executable file that runs on most Linux distributions.
 3. Copy files:
    ```bash
    cp -r build/linux/x64/release/bundle/* GiSTX.AppDir/usr/bin/
-   cp assets/branding/gistx.png GiSTX.AppDir/usr/share/icons/hicolor/256x256/apps/gistx.png
+   cp assets/branding/datakollecta.png GiSTX.AppDir/usr/share/icons/hicolor/256x256/apps/datakollecta.png
    ```
 
 4. Create desktop entry (`GiSTX.AppDir/usr/share/applications/gistx.desktop`):
@@ -192,7 +192,7 @@ For Debian/Ubuntu-based distributions:
 2. Copy files:
    ```bash
    cp -r build/linux/x64/release/bundle/* gistx-deb/opt/gistx/
-   cp assets/branding/gistx.png gistx-deb/usr/share/icons/hicolor/256x256/apps/
+   cp assets/branding/datakollecta.png gistx-deb/usr/share/icons/hicolor/256x256/apps/
    ```
 
 3. Create control file (`gistx-deb/DEBIAN/control`):

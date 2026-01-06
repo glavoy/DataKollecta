@@ -31,7 +31,7 @@ SolidCompression=yes
 ; Modern look
 WizardStyle=modern
 ; Icon for the installer (uses your app icon)
-; SetupIconFile=assets\branding\gistx.ico
+; SetupIconFile=assets\branding\datakollecta.ico
 ; Uninstall icon
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Architecture
