@@ -133,8 +133,6 @@ class DbService {
       }
 
       // 2. Determine DB path
-      // Windows: Documents/GiSTX/databases/
-      // Android: External Files Dir (accessible)
 
       Directory baseDbDir;
       if (Platform.isAndroid) {
@@ -159,7 +157,8 @@ class DbService {
         baseDbDir = await getApplicationSupportDirectory();
       }
 
-      final dbDir = Directory(p.join(baseDbDir.path, 'GiSTX', 'databases'));
+      final dbDir =
+          Directory(p.join(baseDbDir.path, 'DataKollecta', 'databases'));
       if (!await dbDir.exists()) {
         await dbDir.create(recursive: true);
       }
@@ -906,7 +905,7 @@ class DbService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'backups'));
+    return Directory(p.join(baseDir.path, 'DataKollecta', 'backups'));
   }
 
   static Future<Directory> _getSurveysDirectory() async {
@@ -926,7 +925,7 @@ class DbService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
+    return Directory(p.join(baseDir.path, 'DataKollecta', 'surveys'));
   }
 
   static void _log(String message) {

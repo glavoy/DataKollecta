@@ -1,6 +1,6 @@
 {
-    "name": "gistx",
-    "short_name": "gistx",
+    "name": "datakollecta",
+    "short_name": "datakollecta",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

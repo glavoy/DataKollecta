@@ -35,7 +35,7 @@ class _SurveyAppState extends State<SurveyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GiSTX',
+      title: 'DataKollecta',
       debugShowCheckedModeBanner: false,
       themeMode: _themeService.themeMode,
       theme: ThemeData(

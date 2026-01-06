@@ -12,8 +12,8 @@ flutter build windows
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build successful!"
     $buildDir = "build\windows\runner\Release"
-    if (Test-Path "$buildDir\gistx.exe") {
-        Write-Host "Executable located at: $buildDir\gistx.exe"
+    if (Test-Path "$buildDir\datakollecta.exe") {
+        Write-Host "Executable located at: $buildDir\datakollecta.exe"
     }
 }
 else {

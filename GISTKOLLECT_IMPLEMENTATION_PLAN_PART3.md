@@ -111,7 +111,7 @@ Update all references from GiSTX to GiSTKollect.
 
 ### Step 11.6: Update App Text
 
-Search the codebase for "GiSTX" or "gistx" and replace with "GiSTKollect" or "gistkollect":
+Search the codebase for "GiSTX" or "datakollecta" and replace with "GiSTKollect" or "gistkollect":
 
 ```powershell
 # Find all occurrences (use your IDE's search feature)

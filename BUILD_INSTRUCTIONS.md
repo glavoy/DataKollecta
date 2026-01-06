@@ -49,13 +49,13 @@ Output: `build/app/outputs/bundle/release/app-release.aab`
 ```bash
 flutter build windows --release
 ```
-Output: `build\windows\x64\runner\Release\gistx.exe`
+Output: `build\windows\x64\runner\Release\datakollecta.exe`
 
 **Important:** The executable requires all DLL files and the `data` folder to run. The entire `Release` folder must be distributed together.
 
 ### Contents to Distribute
 When distributing the Windows executable, include all files from `build\windows\x64\runner\Release\`:
-- `gistx.exe` - Main executable
+- `datakollecta.exe` - Main executable
 - `flutter_windows.dll` - Flutter engine
 - `flutter_secure_storage_windows_plugin.dll` - Plugin DLL
 - `data\` folder - Contains all app assets and resources
@@ -116,7 +116,7 @@ Output: `build/linux/x64/release/bundle/`
 
 ### Contents to Distribute
 The entire `bundle` folder contains:
-- `gistx` - Main executable
+- `datakollecta` - Main executable
 - `lib/` - Required shared libraries
 - `data/` - App assets and resources
 
@@ -145,13 +145,13 @@ AppImage creates a single executable file that runs on most Linux distributions.
    cp assets/branding/datakollecta.png GiSTX.AppDir/usr/share/icons/hicolor/256x256/apps/datakollecta.png
    ```
 
-4. Create desktop entry (`GiSTX.AppDir/usr/share/applications/gistx.desktop`):
+4. Create desktop entry (`GiSTX.AppDir/usr/share/applications/datakollecta.desktop`):
    ```ini
    [Desktop Entry]
    Type=Application
    Name=GiSTX
-   Exec=gistx
-   Icon=gistx
+   Exec=datakollecta
+   Icon=datakollecta
    Categories=Utility;
    ```
 
@@ -183,21 +183,21 @@ For Debian/Ubuntu-based distributions:
 
 1. Create package structure:
    ```bash
-   mkdir -p gistx-deb/DEBIAN
-   mkdir -p gistx-deb/opt/gistx
-   mkdir -p gistx-deb/usr/share/applications
-   mkdir -p gistx-deb/usr/share/icons/hicolor/256x256/apps
+   mkdir -p datakollecta-deb/DEBIAN
+   mkdir -p datakollecta-deb/opt/datakollecta
+   mkdir -p datakollecta-deb/usr/share/applications
+   mkdir -p datakollecta-deb/usr/share/icons/hicolor/256x256/apps
    ```
 
 2. Copy files:
    ```bash
-   cp -r build/linux/x64/release/bundle/* gistx-deb/opt/gistx/
-   cp assets/branding/datakollecta.png gistx-deb/usr/share/icons/hicolor/256x256/apps/
+   cp -r build/linux/x64/release/bundle/* datakollecta-deb/opt/datakollecta/
+   cp assets/branding/datakollecta.png datakollecta-deb/usr/share/icons/hicolor/256x256/apps/
    ```
 
-3. Create control file (`gistx-deb/DEBIAN/control`):
+3. Create control file (`datakollecta-deb/DEBIAN/control`):
    ```
-   Package: gistx
+   Package: datakollecta
    Version: 1.0.0
    Section: utils
    Priority: optional
@@ -207,36 +207,36 @@ For Debian/Ubuntu-based distributions:
     GiSTX is a cross-platform questionnaire application built with Flutter.
    ```
 
-4. Create desktop entry (`gistx-deb/usr/share/applications/gistx.desktop`):
+4. Create desktop entry (`datakollecta-deb/usr/share/applications/datakollecta.desktop`):
    ```ini
    [Desktop Entry]
    Type=Application
    Name=GiSTX
-   Exec=/opt/gistx/gistx
-   Icon=gistx
+   Exec=/opt/datakollecta/datakollecta
+   Icon=datakollecta
    Categories=Utility;
    Terminal=false
    ```
 
 5. Build the package:
    ```bash
-   dpkg-deb --build gistx-deb
+   dpkg-deb --build datakollecta-deb
    ```
 
-Output: `gistx-deb.deb`
+Output: `datakollecta-deb.deb`
 
 #### Option 3: Simple Tarball
 For manual installation:
 ```bash
 cd build/linux/x64/release
-tar -czf gistx-linux-x64.tar.gz bundle/
+tar -czf datakollecta-linux-x64.tar.gz bundle/
 ```
 
 Users can extract and run:
 ```bash
-tar -xzf gistx-linux-x64.tar.gz
+tar -xzf datakollecta-linux-x64.tar.gz
 cd bundle
-./gistx
+./datakollecta
 ```
 
 ---
@@ -247,9 +247,9 @@ cd bundle
 |----------|---------|----------------|
 | Android APK | `flutter build apk --release` | `build/app/outputs/flutter-apk/app-release.apk` |
 | Android Bundle | `flutter build appbundle --release` | `build/app/outputs/bundle/release/app-release.aab` |
-| Windows EXE | `flutter build windows --release` | `build\windows\x64\runner\Release\gistx.exe` |
+| Windows EXE | `flutter build windows --release` | `build\windows\x64\runner\Release\datakollecta.exe` |
 | Windows Installer | `ISCC.exe installer.iss` | `installer_output\GiSTX-Setup-1.0.0.exe` |
-| Linux Binary | `flutter build linux --release` | `build/linux/x64/release/bundle/gistx` |
+| Linux Binary | `flutter build linux --release` | `build/linux/x64/release/bundle/datakollecta` |
 
 ---
 

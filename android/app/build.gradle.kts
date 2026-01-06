@@ -1,4 +1,4 @@
-setProperty("archivesBaseName", "gistx")
+setProperty("archivesBaseName", "datakollecta")
 
 plugins {
     id("com.android.application")
@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.gistx.gistx"
+    namespace = "com.datakollecta.datakollecta"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.gistx.gistx"
+        applicationId = "com.datakollecta.datakollecta"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

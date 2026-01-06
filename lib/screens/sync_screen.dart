@@ -159,7 +159,8 @@ class _SyncScreenState extends State<SyncScreen> {
         // Extract surveyId from the downloaded zip to save credentials
         // The zip file name should be something like "surveyname.zip"
         // After extraction, we need to read the manifest to get the surveyId
-        await _associateCredentialsWithDownloadedSurvey(filename, username, password);
+        await _associateCredentialsWithDownloadedSurvey(
+            filename, username, password);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -198,14 +199,16 @@ class _SyncScreenState extends State<SyncScreen> {
       await _surveyConfig.initializeSurveys();
 
       // The survey name is the filename without .zip extension
-      final surveyName = filename.replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
+      final surveyName =
+          filename.replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
 
       // Get the surveyId for this survey
       final surveyId = await _surveyConfig.getSurveyId(surveyName);
 
       if (surveyId != null) {
         // Save the credentials that were used to download this survey
-        await _settingsService.setSurveyCredentials(surveyId, username, password);
+        await _settingsService.setSurveyCredentials(
+            surveyId, username, password);
         debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
       }
     } catch (e) {
@@ -232,7 +235,8 @@ class _SyncScreenState extends State<SyncScreen> {
         throw Exception('Could not find ID for survey: $surveyName');
 
       // 2. Get credentials for THIS survey (survey-specific or falls back to global)
-      final credentials = await _settingsService.getCredentialsForSurvey(surveyId);
+      final credentials =
+          await _settingsService.getCredentialsForSurvey(surveyId);
       if (credentials == null) {
         throw Exception('No credentials available for this survey.');
       }
@@ -242,7 +246,7 @@ class _SyncScreenState extends State<SyncScreen> {
 
       // 3. Get DB Path
       final baseDir = await _surveyConfig.getSurveysDirectory();
-      // Go up one level from surveys to get to GiSTX root, then into databases
+      // Go up one level from surveys to get to DataKollecta root, then into databases
       final gistxDir = baseDir.parent;
       final dbPath = p.join(gistxDir.path, 'databases', '$surveyId.sqlite');
       final dbFile = File(dbPath);

@@ -1,4 +1,4 @@
-package com.gistx.gistx
+package com.datakollecta.datakollecta
 
 import io.flutter.embedding.android.FlutterActivity
 

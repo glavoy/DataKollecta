@@ -50,10 +50,10 @@ class AutoFields {
     if (_cachedVersion == null) {
       try {
         final packageInfo = await PackageInfo.fromPlatform();
-        _cachedVersion = 'GiSTX ${packageInfo.version}';
+        _cachedVersion = 'DataKollecta ${packageInfo.version}';
       } catch (e) {
         debugPrint('[AutoFields] Error loading version from pubspec.yaml: $e');
-        _cachedVersion = 'GiSTX unknown';
+        _cachedVersion = 'DataKollecta unknown';
       }
     }
 

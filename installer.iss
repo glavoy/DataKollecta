@@ -1,11 +1,11 @@
-; GiSTX Inno Setup Installation Script
-; This script creates a Windows installer for the GiSTX application
+; DataKollecta Inno Setup Installation Script
+; This script creates a Windows installer for the DataKollecta application
 
-#define MyAppName "GiSTX"
+#define MyAppName "DataKollecta"
 #define MyAppVersion "0.0.6"
 #define MyAppPublisher "Geoff Lavoy"
-#define MyAppURL "https://www.geofflavoy.com"
-#define MyAppExeName "gistx.exe"
+#define MyAppURL "https://www.datakollecta.com"
+#define MyAppExeName "datakollecta.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -24,7 +24,7 @@ DefaultGroupName={#MyAppName}
 ;LicenseFile=LICENSE.txt
 ; Output directory and filename
 OutputDir=installer_output
-OutputBaseFilename=GiSTX-Setup-{#MyAppVersion}
+OutputBaseFilename=DataKollecta-Setup-{#MyAppVersion}
 ; Compression settings
 Compression=lzma2
 SolidCompression=yes

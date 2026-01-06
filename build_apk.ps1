@@ -8,9 +8,9 @@ Write-Host "Building APK..."
 flutter build apk
 
 if ($?) {
-    Write-Host "Build successful. Renaming to gistx.apk..."
+    Write-Host "Build successful. Renaming to datakollecta.apk..."
     $source = "build\app\outputs\flutter-apk\app-release.apk"
-    $dest = "build\app\outputs\flutter-apk\gistx.apk"
+    $dest = "build\app\outputs\flutter-apk\datakollecta.apk"
     
     if (Test-Path $source) {
         Copy-Item -Path $source -Destination $dest -Force

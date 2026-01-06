@@ -60,7 +60,7 @@ class FtpService {
         // Linux/Mac
         baseDir = await getApplicationSupportDirectory();
       }
-      final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
+      final zipsDir = Directory(p.join(baseDir.path, 'DataKollecta', 'zips'));
       if (!await zipsDir.exists()) {
         await zipsDir.create(recursive: true);
       }

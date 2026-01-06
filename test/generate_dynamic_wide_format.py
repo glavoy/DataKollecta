@@ -127,12 +127,12 @@ def generate_wide_format_sql(db_path, survey_id='assets/surveys/survey.xml'):
 
 
 if __name__ == "__main__":
-    db_path = sys.argv[1] if len(sys.argv) > 1 else '/mnt/user-data/uploads/gistx.sqlite'
+    db_path = sys.argv[1] if len(sys.argv) > 1 else '/mnt/user-data/uploads/datakollecta.sqlite'
     
     sql = generate_wide_format_sql(db_path)
     
     print("-- " + "="*76)
-    print("-- GiSTX Survey Data - Dynamically Generated Wide Format Query")
+    print("-- DataKollecta Survey Data - Dynamically Generated Wide Format Query")
     print("-- Generated from questions table - no hardcoded field names")
     print("-- " + "="*76)
     print()

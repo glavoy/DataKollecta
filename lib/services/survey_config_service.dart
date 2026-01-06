@@ -29,8 +29,9 @@ class SurveyConfigService {
   Future<void> initializeSurveys() async {
     try {
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
-      final surveysDir = Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
+      final zipsDir = Directory(p.join(baseDir.path, 'DataKollecta', 'zips'));
+      final surveysDir =
+          Directory(p.join(baseDir.path, 'DataKollecta', 'surveys'));
 
       if (!await zipsDir.exists()) {
         await zipsDir.create(recursive: true);
@@ -111,8 +112,10 @@ class SurveyConfigService {
       final password = await _settingsService.ftpPassword;
 
       if (username != null && password != null) {
-        await _settingsService.setSurveyCredentials(surveyId, username, password);
-        debugPrint('[SurveyConfig] Associated current credentials with survey: $surveyId');
+        await _settingsService.setSurveyCredentials(
+            surveyId, username, password);
+        debugPrint(
+            '[SurveyConfig] Associated current credentials with survey: $surveyId');
       }
     } catch (e) {
       debugPrint('[SurveyConfig] Error associating credentials: $e');
@@ -124,7 +127,7 @@ class SurveyConfigService {
     try {
       final surveysDir = await getSurveysDirectory();
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
+      final zipsDir = Directory(p.join(baseDir.path, 'DataKollecta', 'zips'));
 
       // Find the survey folder by name
       final entities = await surveysDir.list().toList();
@@ -213,7 +216,7 @@ class SurveyConfigService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
+    return Directory(p.join(baseDir.path, 'DataKollecta', 'surveys'));
   }
 
   /// Get the local directory where outbox files are stored
@@ -234,7 +237,7 @@ class SurveyConfigService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'outbox'));
+    return Directory(p.join(baseDir.path, 'DataKollecta', 'outbox'));
   }
 
   /// Get the survey ID from the survey name stored in settings

@@ -23,12 +23,12 @@ static const String softwareVersion = '0.0.3';
 static const String? customDatabasePath = null;
 ```
 - Uses the system's application support directory
-- Windows: `C:\Users\<username>\AppData\Roaming\com.example\GiSTX\gistx.sqlite`
+- Windows: `C:\Users\<username>\AppData\Roaming\com.example\GiSTX\datakollecta.sqlite`
 - Automatically manages path based on platform
 
 #### Option 2: Custom Path (Recommended for Production)
 ```dart
-static const String? customDatabasePath = 'C:\\Data\\GiSTX\\gistx.sqlite';
+static const String? customDatabasePath = 'C:\\Data\\GiSTX\\datakollecta.sqlite';
 ```
 - Use this for fixed database locations across different machines
 - Useful for network drives or standardized deployment paths
@@ -36,7 +36,7 @@ static const String? customDatabasePath = 'C:\\Data\\GiSTX\\gistx.sqlite';
 
 ### Database Filename
 ```dart
-static const String databaseFilename = 'gistx.sqlite';
+static const String databaseFilename = 'datakollecta.sqlite';
 ```
 - Only used when `customDatabasePath` is null
 - Can be changed if you want a different database name
@@ -62,7 +62,7 @@ static const bool enableErrorDialogs = true;
 
 ### Database File
 - Must exist at the configured path **before** running the survey
-- Database name: `gistx.sqlite`
+- Database name: `datakollecta.sqlite`
 - Created by your external application
 
 ### Table Requirements
@@ -100,14 +100,14 @@ CREATE TABLE survey (
 ### For Development
 1. Keep default settings in `app_config.dart`
 2. Create database using your external tool
-3. Place `gistx.sqlite` in the default app directory
+3. Place `datakollecta.sqlite` in the default app directory
 4. Run the application
 
 ### For Production Deployment
 1. Edit `lib/config/app_config.dart`
 2. Set `customDatabasePath` to your fixed path:
    ```dart
-   static const String? customDatabasePath = 'C:\\GiSTX\\Data\\gistx.sqlite';
+   static const String? customDatabasePath = 'C:\\GiSTX\\Data\\datakollecta.sqlite';
    ```
 3. Ensure the database exists at that path on all machines
 4. Build and deploy the application
@@ -148,11 +148,11 @@ When `enableErrorDialogs = true`, users will see a detailed error dialog showing
 ### Check Database Path
 The application logs the database path on startup:
 ```
-[DbService] Using custom database path: C:\GiSTX\Data\gistx.sqlite
+[DbService] Using custom database path: C:\GiSTX\Data\datakollecta.sqlite
 ```
 or
 ```
-[DbService] Using default database path: C:\Users\...\gistx.sqlite
+[DbService] Using default database path: C:\Users\...\datakollecta.sqlite
 ```
 
 ### Verify Table Exists
@@ -179,12 +179,12 @@ static const String? customDatabasePath = null;
 
 ### Multi-Machine Lab Environment
 ```dart
-static const String? customDatabasePath = 'C:\\LabData\\Surveys\\gistx.sqlite';
+static const String? customDatabasePath = 'C:\\LabData\\Surveys\\datakollecta.sqlite';
 ```
 
 ### Network Drive
 ```dart
-static const String? customDatabasePath = '\\\\ServerName\\SharedFolder\\gistx.sqlite';
+static const String? customDatabasePath = '\\\\ServerName\\SharedFolder\\datakollecta.sqlite';
 ```
 
 ## Notes
