@@ -100,7 +100,7 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
               Text(
                 _resolvedSurveyId!,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer.withOpacity(0.7),
+                  color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
                 ),
               ),
           ],
@@ -156,13 +156,13 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
                       Icon(
                         Icons.analytics_outlined,
                         size: 64,
-                        color: theme.colorScheme.secondary.withOpacity(0.3),
+                        color: theme.colorScheme.secondary.withValues(alpha: 0.3),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No surveys found in this configuration.',
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.secondary.withOpacity(0.7),
+                          color: theme.colorScheme.secondary.withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -182,7 +182,7 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
                       borderRadius: BorderRadius.circular(12),
                       side: BorderSide(
                         color:
-                            theme.colorScheme.outlineVariant.withOpacity(0.5),
+                            theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                       ),
                     ),
                     child: Padding(
@@ -252,7 +252,7 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
+          color: color.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(

@@ -247,8 +247,9 @@ class _SyncScreenState extends State<SyncScreen> {
       // 3. Get DB Path
       final baseDir = await _surveyConfig.getSurveysDirectory();
       // Go up one level from surveys to get to DataKollecta root, then into databases
-      final gistxDir = baseDir.parent;
-      final dbPath = p.join(gistxDir.path, 'databases', '$surveyId.sqlite');
+      final datakollectDir = baseDir.parent;
+      final dbPath =
+          p.join(datakollectDir.path, 'databases', '$surveyId.sqlite');
       final dbFile = File(dbPath);
 
       if (!await dbFile.exists()) {
@@ -262,7 +263,7 @@ class _SyncScreenState extends State<SyncScreen> {
       final encoder = ZipFileEncoder();
 
       // Use 'outbox' folder instead of temp
-      final outboxDir = Directory(p.join(gistxDir.path, 'outbox'));
+      final outboxDir = Directory(p.join(datakollectDir.path, 'outbox'));
       if (!await outboxDir.exists()) {
         await outboxDir.create(recursive: true);
       }
@@ -272,7 +273,8 @@ class _SyncScreenState extends State<SyncScreen> {
       encoder.addFile(dbFile);
 
       // Add backups folder if exists
-      final backupsDir = Directory(p.join(gistxDir.path, 'backups', surveyId));
+      final backupsDir =
+          Directory(p.join(datakollectDir.path, 'backups', surveyId));
       if (await backupsDir.exists()) {
         await encoder.addDirectory(backupsDir);
       }

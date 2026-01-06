@@ -573,63 +573,65 @@ class _QuestionViewState extends State<QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Radio buttons
-        Column(
-          children: options.map(
-            (opt) {
-              // Check if this is a special response option
-              final isDontKnow = q.dontKnow != null && opt.value == q.dontKnow;
-              final isRefuse = q.refuse != null && opt.value == q.refuse;
-              final isSpecial = isDontKnow || isRefuse;
+        RadioGroup<String>(
+          groupValue: _radioSelection,
+          onChanged: (val) {
+            if (val == null) return;
+            final old = widget.answers[q.fieldName];
+            if (old == val) return;
+            setState(() {
+              _radioSelection = val;
+              widget.answers[q.fieldName] = val;
+            });
+            widget.onAnswerChanged?.call(q.fieldName, old, val);
+          },
+          child: Column(
+            children: options.map(
+              (opt) {
+                // Check if this is a special response option
+                final isDontKnow = q.dontKnow != null && opt.value == q.dontKnow;
+                final isRefuse = q.refuse != null && opt.value == q.refuse;
+                final isSpecial = isDontKnow || isRefuse;
 
-              final radioTile = AppRadioTheme(
-                child: Builder(
-                  builder: (context) => RadioListTile<String>(
-                    value: opt.value,
-                    groupValue: _radioSelection,
-                    onChanged: (val) {
-                      if (val == null) return;
-                      final old = widget.answers[q.fieldName];
-                      if (old == val) return;
-                      setState(() {
-                        _radioSelection = val;
-                        widget.answers[q.fieldName] = val;
-                      });
-                      widget.onAnswerChanged?.call(q.fieldName, old, val);
-                    },
-                    title: Text(
-                      opt.label,
-                      style: TextStyle(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.black87
-                            : null,
-                      ),
-                    ),
-                    dense: true,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    tileColor: isSpecial
-                        ? (isDontKnow
-                            ? Colors.orange.shade100
-                            : Colors.red.shade100)
-                        : Colors.white,
-                  ),
-                ),
-              );
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: isSpecial
-                    ? Align(
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: 0.5,
-                          child: radioTile,
+                final radioTile = AppRadioTheme(
+                  child: Builder(
+                    builder: (context) => RadioListTile<String>(
+                      value: opt.value,
+                      title: Text(
+                        opt.label,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.black87
+                              : null,
                         ),
-                      )
-                    : radioTile,
-              );
-            },
-          ).toList(),
+                      ),
+                      dense: true,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      tileColor: isSpecial
+                          ? (isDontKnow
+                              ? Colors.orange.shade100
+                              : Colors.red.shade100)
+                          : Colors.white,
+                    ),
+                  ),
+                );
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: isSpecial
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.5,
+                            child: radioTile,
+                          ),
+                        )
+                      : radioTile,
+                );
+              },
+            ).toList(),
+          ),
         ),
       ],
     );
