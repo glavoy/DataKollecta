@@ -428,8 +428,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   /// This clears data for questions that are being skipped over during forward navigation
   /// Example: User changes hib_doses_received from 3 to 2, then navigates forward
   /// Questions for dose 3 should be cleared immediately
-  void _clearAnswersInRange(
-      List<Question> questions, int startIndex, int endIndex) {
+  void _clearAnswersInRange(List<Question> questions, int startIndex, int endIndex) {
     final primaryKeys =
         widget.primaryKeyFields?.map((f) => f.toLowerCase()).toSet() ?? {};
 
@@ -439,8 +438,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final q = questions[i];
 
       // Skip automatic and information questions
-      if (q.type == QuestionType.automatic ||
-          q.type == QuestionType.information) {
+      if (q.type == QuestionType.automatic || q.type == QuestionType.information) {
         continue;
       }
 
@@ -458,8 +456,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
 
     if (clearedFields.isNotEmpty) {
-      debugPrint(
-          'Cleared ${clearedFields.length} answers for skipped questions: ${clearedFields.join(", ")}');
+      debugPrint('Cleared ${clearedFields.length} answers for skipped questions: ${clearedFields.join(", ")}');
     }
   }
 
@@ -1449,6 +1446,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
       errorMessage = e.toString();
       debugPrint('Save failed: $e');
     }
+
+    // Reset saving flag so user can retry if save failed
+    setState(() {
+      _isSaving = false;
+    });
 
     if (!mounted) return;
 

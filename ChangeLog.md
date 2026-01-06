@@ -1,4 +1,5 @@
-
+## [0.0.9] - not released yet
+- the _isSaving flag is now reset after the try/catch block completes, regardless of success or failure. This ensures users can retry saving if an error occurs.
 
 ## [0.0.8] - 2026-01-02
 
