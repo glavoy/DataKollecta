@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:archive/archive_io.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:intl/intl.dart';
@@ -90,6 +91,24 @@ class _SyncScreenState extends State<SyncScreen> {
     }
   }
 
+  Future<({String deviceId, String deviceInfo})> _getDeviceInfo() async {
+    final deviceInfoPlugin = DeviceInfoPlugin();
+
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfoPlugin.androidInfo;
+      final deviceId = androidInfo.id;
+      final deviceInfo = 'Brand: ${androidInfo.brand}, Model: ${androidInfo.model}';
+      return (deviceId: deviceId, deviceInfo: deviceInfo);
+    } else if (Platform.isWindows) {
+      final windowsInfo = await deviceInfoPlugin.windowsInfo;
+      final deviceId = windowsInfo.deviceId;
+      final deviceInfo = 'Windows: ${windowsInfo.productName}, ${windowsInfo.computerName}, Cores: ${windowsInfo.numberOfCores}';
+      return (deviceId: deviceId, deviceInfo: deviceInfo);
+    } else {
+      return (deviceId: 'unknown', deviceInfo: 'Unknown Platform');
+    }
+  }
+
   Future<void> _checkForUpdates() async {
     setState(() {
       _isConnecting = true;
@@ -118,10 +137,21 @@ class _SyncScreenState extends State<SyncScreen> {
       final password = apiCreds['password']!;
       final projectCode = apiCreds['projectCode']!;
 
+      setState(() => _statusMessage = 'Gathering device info...');
+
+      // Get device information
+      final deviceData = await _getDeviceInfo();
+
       setState(() => _statusMessage = 'Authenticating...');
 
       // Authenticate and get survey list
-      final result = await _httpService.authenticate(username, password, projectCode);
+      final result = await _httpService.authenticate(
+        username,
+        password,
+        projectCode,
+        deviceId: deviceData.deviceId,
+        deviceInfo: deviceData.deviceInfo,
+      );
 
       // Save the auth token
       await _settingsService.setAuthToken(result.token);

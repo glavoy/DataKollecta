@@ -37,13 +37,20 @@ class HttpService {
   /// Authenticate with the API and get survey list
   /// Returns the auth token and list of available surveys
   Future<({String token, List<SurveyMetadata> surveys})> authenticate(
-      String username, String password, String projectCode) async {
+      String username,
+      String password,
+      String projectCode, {
+      required String deviceId,
+      required String deviceInfo,
+      }) async {
     try {
       // Make authentication request
       final requestBody = {
         'project_code': projectCode,
         'username': username,
         'password': password,
+        'device_id': deviceId,
+        'device_info': deviceInfo,
       };
 
       debugPrint('[HttpService] Sending request to: $_apiEndpoint');
