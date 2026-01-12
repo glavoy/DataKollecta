@@ -17,7 +17,7 @@ import '../services/change_summary_service.dart';
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
   final Map<String, dynamic>? existingAnswers;
-  final String? uniqueId;
+  final String? uuid;
   final List<String>? primaryKeyFields;
   final Map<String, dynamic>? prepopulatedAnswers;
   final String? idConfig;
@@ -33,7 +33,7 @@ class SurveyScreen extends StatefulWidget {
     super.key,
     required this.questionnaireFilename,
     this.existingAnswers,
-    this.uniqueId,
+    this.uuid,
     this.primaryKeyFields,
     this.prepopulatedAnswers,
     this.idConfig,
@@ -387,9 +387,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
   /// This ensures data consistency when skip logic bypasses questions
   /// For example: if sex changes from Female to Male, pregnancy questions should be cleared
   void _clearSkippedAnswers(List<Question> questions) {
-    // Get all question field names that should collect data (not automatic/information)
+    // Get all question field names that should collect data (not calculation/information)
     final dataQuestions = questions
         .where((q) =>
+            q.type != QuestionType.calculation &&
             q.type != QuestionType.automatic &&
             q.type != QuestionType.information)
         .map((q) => q.fieldName)
@@ -437,8 +438,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
     for (int i = startIndex; i < endIndex && i < questions.length; i++) {
       final q = questions[i];
 
-      // Skip automatic and information questions
-      if (q.type == QuestionType.automatic || q.type == QuestionType.information) {
+      // Skip calculation and information questions
+      if (q.type == QuestionType.calculation ||
+          q.type == QuestionType.automatic ||
+          q.type == QuestionType.information) {
         continue;
       }
 
@@ -634,8 +637,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Store the current question index before moving forward
     final previousQuestionIndex = _currentQuestion;
 
-    // Push current displayed question to history (skip automatic)
-    if (qs[_currentQuestion].type != QuestionType.automatic) {
+    // Push current displayed question to history (skip calculation fields)
+    if (qs[_currentQuestion].type != QuestionType.calculation &&
+        qs[_currentQuestion].type != QuestionType.automatic) {
       _history.add(_currentQuestion);
       // history keeps track of previous questions implicitly
     }
@@ -698,15 +702,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
     while (index < qs.length) {
       final q = qs[index];
 
-      // Process and skip automatic questions
-      if (q.type == QuestionType.automatic) {
+      // Process and skip calculation questions
+      if (q.type == QuestionType.calculation || q.type == QuestionType.automatic) {
         await _processAutomaticQuestion(q);
         index++;
         continue;
       }
 
       // Skip primary key questions in edit mode
-      if (widget.uniqueId != null && _isPrimaryKeyField(q.fieldName)) {
+      if (widget.uuid != null && _isPrimaryKeyField(q.fieldName)) {
         // CRITICAL FIX: Even if we skip DISPLAYING the primary key in edit mode,
         // we MUST recalculate it because the user might have changed the fields that compose it
         // (e.g. changing vcode should update hhid, so hhid_verif validation works)
@@ -807,6 +811,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       case QuestionType.datetime:
         return val != null && val.toString().isNotEmpty;
       case QuestionType.information:
+      case QuestionType.calculation:
       case QuestionType.automatic:
         return true; // not applicable
     }
@@ -883,7 +888,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           )) {
             // In edit mode, preserve existing ID if component fields haven't changed
             final existingId = _answers[q.fieldName]?.toString();
-            final isEditMode = widget.uniqueId != null;
+            final isEditMode = widget.uuid != null;
 
             if (isEditMode &&
                 existingId != null &&
@@ -927,7 +932,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       // Fallback if generation fails
       _answers[q.fieldName] = '-9';
     } else {
-      // Regular automatic field (starttime, uniqueid, etc.)
+      // Regular automatic field (starttime, uuid, etc.)
 
       // Force re-calculation even if value exists (unless preserve is handled by AutoFields)
       // This ensures dependent fields update when their dependencies change.
@@ -935,7 +940,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final value = await AutoFields.compute(
         _answers,
         q,
-        isEditMode: widget.uniqueId != null,
+        isEditMode: widget.uuid != null,
         surveyId: _activeSurveyId,
       );
       _answers[q.fieldName] = value;
@@ -944,21 +949,51 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   /// Skip to the first question that should be displayed
   Future<void> _skipToFirstDisplayedQuestion(List<Question> questions) async {
+    // Compute starttime and startdate at the very beginning (only for new surveys)
+    if (widget.uuid == null) {
+      // New survey - capture start time
+      final startQuestion = Question(
+        fieldName: 'starttime',
+        type: QuestionType.automatic,
+        fieldType: 'text',
+      );
+      _answers['starttime'] = await AutoFields.compute(
+        _answers,
+        startQuestion,
+        isEditMode: false,
+        surveyId: _activeSurveyId,
+      );
+
+      final startDateQuestion = Question(
+        fieldName: 'startdate',
+        type: QuestionType.automatic,
+        fieldType: 'text',
+      );
+      _answers['startdate'] = await AutoFields.compute(
+        _answers,
+        startDateQuestion,
+        isEditMode: false,
+        surveyId: _activeSurveyId,
+      );
+
+      debugPrint('[SurveyScreen] Computed starttime: ${_answers['starttime']}');
+    }
+
     int index = 0;
 
     // Find the first displayable question
     while (index < questions.length) {
       final q = questions[index];
 
-      // Process and skip automatic questions
-      if (q.type == QuestionType.automatic) {
+      // Process and skip calculation questions
+      if (q.type == QuestionType.calculation || q.type == QuestionType.automatic) {
         await _processAutomaticQuestion(q);
         index++;
         continue;
       }
 
       // Skip primary key questions in edit mode
-      if (widget.uniqueId != null && _isPrimaryKeyField(q.fieldName)) {
+      if (widget.uuid != null && _isPrimaryKeyField(q.fieldName)) {
         debugPrint('Skipping primary key question on load: ${q.fieldName}');
         // CRITICAL FIX: Recalculate PK even if hidden
         await _processAutomaticQuestion(q);
@@ -991,11 +1026,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
     for (int i = fromIndex + 1; i < questions.length; i++) {
       final q = questions[i];
 
-      // Skip automatic questions
-      if (q.type == QuestionType.automatic) continue;
+      // Skip calculation questions
+      if (q.type == QuestionType.calculation || q.type == QuestionType.automatic) continue;
 
       // Skip primary key questions in edit mode
-      if (widget.uniqueId != null && _isPrimaryKeyField(q.fieldName)) continue;
+      if (widget.uuid != null && _isPrimaryKeyField(q.fieldName)) continue;
 
       // Found a displayable question
       return true;
@@ -1031,8 +1066,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         final q = questions[_currentQuestion];
 
         // Track that this question was displayed/visited
-        // Skip tracking automatic questions as they're never displayed
-        if (q.type != QuestionType.automatic) {
+        // Skip tracking calculation questions as they're never displayed
+        if (q.type != QuestionType.calculation && q.type != QuestionType.automatic) {
           _visitedFields.add(q.fieldName);
         }
 
@@ -1045,13 +1080,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
         // final progress = (_currentQuestion + 1) / questions.length;
 
         return Scaffold(
-          backgroundColor: widget.uniqueId != null
+          backgroundColor: widget.uuid != null
               ? (Theme.of(context).brightness == Brightness.dark
                   ? Colors.blueGrey.shade800
                   : Colors.blueGrey.shade50)
               : null,
           appBar: AppBar(
-            backgroundColor: widget.uniqueId != null
+            backgroundColor: widget.uuid != null
                 ? (Theme.of(context).brightness == Brightness.dark
                     ? Colors.blueGrey.shade800
                     : Colors.blueGrey.shade50)
@@ -1255,7 +1290,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                             _onAnswerChanged(
                                                 fieldName, oldVal, newVal),
                                     onRequestNext: () => _next(questions),
-                                    isEditMode: widget.uniqueId != null,
+                                    isEditMode: widget.uuid != null,
                                     logicError: _logicError,
                                     csvDataService: _csvDataService,
                                     surveyId: _activeSurveyId ?? '',
@@ -1331,7 +1366,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // when the automatic question is processed, not here at save time
 
     // Check if there are any changes (for edit mode only)
-    if (widget.uniqueId != null) {
+    if (widget.uuid != null) {
       if (!_hasChanges()) {
         // No changes made, show dialog and return
         showDialog(
@@ -1383,8 +1418,32 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _isSaving = true;
     });
 
+    // Compute stoptime when survey is completed (only for new surveys on first save)
+    // For existing surveys being modified, preserve the original stoptime
+    if (widget.uuid == null || _answers['stoptime'] == null || _answers['stoptime'].toString().isEmpty) {
+      final stopQuestion = Question(
+        fieldName: 'stoptime',
+        type: QuestionType.automatic,
+        fieldType: 'text',
+      );
+      _answers['stoptime'] = await AutoFields.compute(
+        _answers,
+        stopQuestion,
+        isEditMode: widget.uuid != null,
+        surveyId: _activeSurveyId,
+      );
+      debugPrint('[SurveyScreen] Computed stoptime: ${_answers['stoptime']}');
+    }
+
     // Update lastmod timestamp only when actually saving
     AutoFields.touchLastMod(_answers);
+
+    // Clear synced_at when modifying an existing record
+    // This marks the record as "dirty" and needing re-sync
+    if (widget.uuid != null) {
+      _answers['synced_at'] = null;
+      debugPrint('[SurveyScreen] Cleared synced_at - record needs re-sync after modification');
+    }
 
     // Create a deep copy for saving
     // Values are saved as-is (padding preserved)
@@ -1422,14 +1481,46 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final surveyId = await SurveyConfigService().getActiveSurveyId();
       if (surveyId == null) throw Exception('No active survey found');
 
+      // Ensure remaining system fields are computed before saving
+      // Note: starttime/startdate computed at start, stoptime/lastmod computed earlier
+      // Only compute: uuid, swver, survey_id, synced_at
+      final fieldsToCompute = ['uuid', 'swver', 'survey_id', 'synced_at'];
+
+      for (final fieldName in fieldsToCompute) {
+        // Skip if already present (to preserve values computed earlier)
+        if (answersToSave.containsKey(fieldName) &&
+            answersToSave[fieldName] != null &&
+            answersToSave[fieldName].toString().isNotEmpty) {
+          continue;
+        }
+
+        // Create a Question object for this system field
+        final systemQuestion = Question(
+          fieldName: fieldName,
+          type: QuestionType.automatic,
+          fieldType: 'text',
+        );
+
+        // Compute the value using AutoFields
+        final value = await AutoFields.compute(
+          answersToSave,
+          systemQuestion,
+          isEditMode: widget.uuid != null,
+          surveyId: surveyId,
+        );
+
+        // Store in answers
+        answersToSave[fieldName] = value;
+      }
+
       // Determine if we're updating or inserting
-      if (widget.uniqueId != null) {
+      if (widget.uuid != null) {
         // Update existing record
         await DbService.updateInterview(
           surveyId: surveyId,
           surveyFilename: widget.questionnaireFilename,
           answers: answersToSave,
-          uniqueId: widget.uniqueId!,
+          uuid: widget.uuid!,
           originalAnswers: _originalAnswers,
         );
       } else {
@@ -1456,7 +1547,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     if (saveSuccessful) {
       // Check if we should start auto-repeat for child surveys (only for new records, not modifications)
-      if (widget.uniqueId == null) {
+      if (widget.uuid == null) {
         await _checkAndStartAutoRepeat(context);
       } else {
         // Modifying an existing record - just show success and close
@@ -1912,7 +2003,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   /// Show save success dialog
   void _showSaveSuccessDialog(BuildContext context) {
-    final isUpdate = widget.uniqueId != null;
+    final isUpdate = widget.uuid != null;
 
     // Check if we're in a repeat loop by seeing if we have prepopulated answers (indicates child survey)
     final isInRepeatLoop = widget.prepopulatedAnswers != null && !isUpdate;

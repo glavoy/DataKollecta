@@ -23,8 +23,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _projectCodeController = TextEditingController();
   final _apiUsernameController = TextEditingController();
   final _apiPasswordController = TextEditingController();
-  final _ftpUsernameController = TextEditingController();
-  final _ftpPasswordController = TextEditingController();
 
   bool _isLoading = true;
   bool _obscurePassword = true;
@@ -62,8 +60,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _projectCodeController.dispose();
     _apiUsernameController.dispose();
     _apiPasswordController.dispose();
-    _ftpUsernameController.dispose();
-    _ftpPasswordController.dispose();
     _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
@@ -73,8 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final projectCode = await _settingsService.projectCode;
     final apiUsername = await _settingsService.apiUsername;
     final apiPassword = await _settingsService.apiPassword;
-    final ftpUsername = await _settingsService.ftpUsername;
-    final ftpPassword = await _settingsService.ftpPassword;
 
     if (mounted) {
       setState(() {
@@ -82,8 +76,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _projectCodeController.text = projectCode ?? '';
         _apiUsernameController.text = apiUsername ?? '';
         _apiPasswordController.text = apiPassword ?? '';
-        _ftpUsernameController.text = ftpUsername ?? '';
-        _ftpPasswordController.text = ftpPassword ?? '';
 
         _isLoading = false;
       });
@@ -93,24 +85,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       try {
-        // Save API settings for downloads
+        // Save API settings
         await _settingsService.saveApiSettings(
           surveyorId: _surveyorIdController.text.trim(),
           projectCode: _projectCodeController.text.trim(),
           apiUsername: _apiUsernameController.text.trim(),
           apiPassword: _apiPasswordController.text,
         );
-
-        // Save FTP settings for uploads (if provided)
-        if (_ftpUsernameController.text.trim().isNotEmpty &&
-            _ftpPasswordController.text.isNotEmpty) {
-          await _settingsService.saveAllSettings(
-            surveyorId: _surveyorIdController.text.trim(),
-            ftpHost: '', // Host is hidden/hardcoded, passing empty for now
-            ftpUsername: _ftpUsernameController.text.trim(),
-            ftpPassword: _ftpPasswordController.text,
-          );
-        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -308,55 +289,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    Text(
-                      'FTP Credentials (for Data Uploads - Optional)',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Upload functionality still uses FTP. Leave blank if not uploading.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _ftpUsernameController,
-                      decoration: const InputDecoration(
-                        labelText: 'FTP Username',
-                        hintText: 'Enter FTP username',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.account_circle),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _ftpPasswordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: 'FTP Password',
-                        hintText: 'Enter FTP password',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
                     const Divider(),
                     const SizedBox(height: 12),
                     Text(

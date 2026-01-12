@@ -1,11 +1,8 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:archive/archive_io.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-import 'package:path/path.dart' as p;
-import 'package:intl/intl.dart';
-import '../services/ftp_service.dart';
 import '../services/http_service.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
@@ -18,77 +15,18 @@ class SyncScreen extends StatefulWidget {
 }
 
 class _SyncScreenState extends State<SyncScreen> {
-  final _ftpService = FtpService(); // Used for uploads only
-  final _httpService = HttpService(); // Used for downloads
+  final _httpService = HttpService();
   final _settingsService = SettingsService();
   final _surveyConfig = SurveyConfigService();
 
   bool _isConnecting = false;
-  bool _isUploading = false;
-  List<SurveyMetadata> _remoteSurveys = []; // Changed from List<String>
+  List<SurveyMetadata> _remoteSurveys = [];
   String? _downloadingSurvey;
   String? _statusMessage;
-  String? _activeSurveyName;
-
-  DateTime? _lastUploadTime;
 
   @override
   void initState() {
     super.initState();
-    _loadActiveSurvey();
-  }
-
-  Future<void> _loadActiveSurvey() async {
-    final name = await _settingsService.activeSurvey;
-    if (mounted) {
-      setState(() {
-        _activeSurveyName = name;
-      });
-      _loadLastUploadTime();
-    }
-  }
-
-  Future<void> _loadLastUploadTime() async {
-    if (_activeSurveyName == null) return;
-    final surveyId = await _surveyConfig.getSurveyId(_activeSurveyName!);
-    if (surveyId != null) {
-      try {
-        final outboxDir = await _surveyConfig.getOutboxDirectory();
-        if (!await outboxDir.exists()) {
-          if (mounted) setState(() => _lastUploadTime = null);
-          return;
-        }
-
-        final files = await outboxDir.list().toList();
-        final surveyFiles = files.where((f) {
-          final name = p.basename(f.path);
-          return f is File &&
-              name.startsWith(surveyId) &&
-              name.endsWith('.zip');
-        }).toList();
-
-        if (surveyFiles.isEmpty) {
-          if (mounted) setState(() => _lastUploadTime = null);
-          return;
-        }
-
-        // Sort by modification time (descending)
-        surveyFiles.sort((a, b) {
-          return b.statSync().modified.compareTo(a.statSync().modified);
-        });
-
-        final lastFile = surveyFiles.first;
-        final lastMod = lastFile.statSync().modified;
-
-        if (mounted) {
-          setState(() {
-            _lastUploadTime = lastMod;
-          });
-        }
-      } catch (e) {
-        debugPrint('Error loading last upload time: $e');
-      }
-    }
   }
 
   Future<({String deviceId, String deviceInfo})> _getDeviceInfo() async {
@@ -240,119 +178,14 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   Future<void> _uploadData() async {
-    setState(() {
-      _isUploading = true;
-    });
-
-    try {
-      final surveyorId = await _settingsService.surveyorId;
-      final surveyName = await _settingsService.activeSurvey;
-
-      if (surveyorId == null || surveyName == null) {
-        throw Exception('Missing settings (Surveyor ID or Active Survey).');
-      }
-
-      // 1. Get Survey ID and DB Path
-      final surveyId = await _surveyConfig.getSurveyId(surveyName);
-      if (surveyId == null)
-        throw Exception('Could not find ID for survey: $surveyName');
-
-      // 2. Get credentials for THIS survey (survey-specific or falls back to global)
-      final credentials =
-          await _settingsService.getCredentialsForSurvey(surveyId);
-      if (credentials == null) {
-        throw Exception('No credentials available for this survey.');
-      }
-
-      final username = credentials['username']!;
-      final password = credentials['password']!;
-
-      // 3. Get DB Path
-      final baseDir = await _surveyConfig.getSurveysDirectory();
-      // Go up one level from surveys to get to DataKollecta root, then into databases
-      final datakollectDir = baseDir.parent;
-      final dbPath =
-          p.join(datakollectDir.path, 'databases', '$surveyId.sqlite');
-      final dbFile = File(dbPath);
-
-      if (!await dbFile.exists()) {
-        throw Exception('Database file not found: $dbPath');
-      }
-
-      // 4. Create Zip
-      final timestamp = DateFormat('yyyy-MM-dd_HH_mm').format(DateTime.now());
-      final zipFilename = '${surveyId}_${surveyorId}_$timestamp.zip';
-
-      final encoder = ZipFileEncoder();
-
-      // Use 'outbox' folder instead of temp
-      final outboxDir = Directory(p.join(datakollectDir.path, 'outbox'));
-      if (!await outboxDir.exists()) {
-        await outboxDir.create(recursive: true);
-      }
-      final zipPath = p.join(outboxDir.path, zipFilename);
-
-      encoder.create(zipPath);
-      encoder.addFile(dbFile);
-
-      // Add backups folder if exists
-      final backupsDir =
-          Directory(p.join(datakollectDir.path, 'backups', surveyId));
-      if (await backupsDir.exists()) {
-        await encoder.addDirectory(backupsDir);
-      }
-
-      encoder.close();
-
-      final zipFile = File(zipPath);
-
-      // 5. Upload
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uploading data...')),
-        );
-      }
-
-      final connected = await _ftpService.connect(username, password);
-      if (!connected) throw Exception('Connection failed.');
-
-      final success = await _ftpService.uploadFile(zipFile, zipFilename);
-
-      if (success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Uploaded $zipFilename successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          // Update last upload time
-          _loadLastUploadTime();
-        }
-      } else {
-        throw Exception('Upload failed.');
-      }
-
-      // Cleanup - We keep the file in outbox now
-      // if (await zipFile.exists()) {
-      //   await zipFile.delete();
-      // }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error uploading: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      await _ftpService.disconnect();
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
+    // TODO: Implement new row-by-row sync upload mechanism
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Upload functionality will be implemented with row-by-row sync'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
@@ -481,31 +314,18 @@ class _SyncScreenState extends State<SyncScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Upload finalized records to the server.',
+              'Upload finalized records to the server (row-by-row sync).',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _isUploading ? null : _uploadData,
-              icon: _isUploading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.cloud_upload),
-              label: Text(_isUploading
-                  ? 'Uploading...'
-                  : 'Upload ${_activeSurveyName ?? "Data"}'),
+              onPressed: _uploadData,
+              icon: const Icon(Icons.cloud_upload),
+              label: const Text('Upload Data'),
             ),
             const SizedBox(height: 8),
             Text(
-              _lastUploadTime != null
-                  ? 'Last upload: ${DateFormat('MMM d, yyyy HH:mm').format(_lastUploadTime!)}'
-                  : 'No uploads yet',
+              'Row-by-row sync coming soon',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey[600],

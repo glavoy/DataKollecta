@@ -1,32 +1,39 @@
-# Automatic Variables Configuration Guide
+# Calculation Fields Configuration Guide
 
-This guide explains how to configure "Automatic Variables" in your survey XML files. These are fields that are calculated automatically by the app based on other answers, database records, or logic, rather than being entered by the user.
+This guide explains how to configure "Calculation Fields" in your survey XML files. These are fields that are calculated automatically by the app based on other answers, database records, or logic, rather than being entered by the user.
+
+## Field Types Overview
+
+### System Fields (Automatic - NOT in XML)
+The following system fields are **automatically added to every CRF table** and do **NOT** need to be defined in XML files:
+
+*   `starttime`: Timestamp when the survey started
+*   `startdate`: Date when the survey started (yyyy-mm-dd)
+*   `stoptime`: Timestamp when the survey finished
+*   `uuid`: Unique identifier for the record (primary key)
+*   `swver`: Software version used
+*   `survey_id`: Survey definition ID
+*   `lastmod`: Timestamp of last modification
+*   `synced_at`: Timestamp when record was last synced to server
+
+These fields are managed by the app's `AutoFields` service and should never appear in XML files.
+
+### Calculation Fields (In XML)
+For fields that need to be calculated from other data, use `type="calculation"` in your XML.
 
 ## Basic Structure
 
-Automatic variables are defined using the `<question>` tag with `type="automatic"`.
-
-### Built-in Types
-The following automatic variables are **built-in** and do **NOT** require a `<calculation>` element. The app handles them automatically if the `fieldname` matches:
-
-*   `starttime`: Records the timestamp when the survey started.
-*   `startdate`: Records the date when the survey started (yyyy-mm-dd).
-*   `stoptime`: Records the timestamp when the survey finished.
-*   `uniqueid`: The unique identifier for the record.
-*   `swver`: The version of the software used.
-*   `survey_id`: The ID of the survey definition.
-*   `lastmod`: The timestamp of the last modification.
-
-### Custom Calculations
-For any other automatic variable, you **MUST** provide a `<calculation>` element to define the logic.
+Calculation fields are defined using the `<question>` tag with `type="calculation"` (or `type="calc"` or `type="calculated"`).
 
 ```xml
-<question type="automatic" fieldname="my_variable">
+<question type="calculation" fieldname="my_calculated_field">
   <calculation type="...">
     <!-- Configuration specific to the calculation type -->
   </calculation>
 </question>
 ```
+
+**Note:** The old `type="calculation"` is still supported for backward compatibility but will be treated as `type="calculation"`.
 
 ### Common Attributes
 
@@ -46,7 +53,7 @@ Returns a fixed value.
 
 **Example:**
 ```xml
-<question type="automatic" fieldname="survey_version">
+<question type="calculation" fieldname="survey_version">
   <calculation type="constant" value="v1.0" />
 </question>
 ```
@@ -58,7 +65,7 @@ Returns the value of another field in the current survey.
 
 **Example:**
 ```xml
-<question type="automatic" fieldname="copy_of_age">
+<question type="calculation" fieldname="copy_of_age">
   <calculation type="lookup" field="age" />
 </question>
 ```
@@ -71,7 +78,7 @@ Performs arithmetic operations (`+`, `-`, `*`, `/`).
 
 **Example: Calculate Year of Birth**
 ```xml
-<question type="automatic" fieldname="yob">
+<question type="calculation" fieldname="yob">
   <calculation type="math" operator="-">
     <part type="constant" value="NOW_YEAR" />
     <part type="lookup" field="age" />
@@ -83,7 +90,7 @@ Performs arithmetic operations (`+`, `-`, `*`, `/`).
 Calculates BMI = Weight / (Height * Height). Note that height is often in cm, so we divide by 100 first.
 
 ```xml
-<question type="automatic" fieldname="bmi">
+<question type="calculation" fieldname="bmi">
   <calculation type="math" operator="/">
     <!-- Numerator: Weight (kg) -->
     <part type="lookup" field="weight" />
@@ -113,7 +120,7 @@ Joins multiple strings together.
 
 **Example: Generate Full Name**
 ```xml
-<question type="automatic" fieldname="fullname">
+<question type="calculation" fieldname="fullname">
   <calculation type="concat" separator=" ">
     <part type="lookup" field="firstname" />
     <part type="lookup" field="lastname" />
@@ -133,7 +140,7 @@ Implements "If / Else If / Else" logic.
 
 **Example: Age Category**
 ```xml
-<question type="automatic" fieldname="age_category">
+<question type="calculation" fieldname="age_category">
   <calculation type="case">
     <when field="age" operator="&lt;" value="18">
       <result type="constant" value="Minor" />
@@ -158,7 +165,7 @@ Executes a SQL query against the local database.
 
 **Example: Lookup MRC Code from another table**
 ```xml
-<question type="automatic" fieldname="mrccode">
+<question type="calculation" fieldname="mrccode">
   <calculation type="query">
     <sql>SELECT mrccode FROM schools WHERE school_id = @schoolId</sql>
     <parameter name="schoolId" field="school_name" />
@@ -176,7 +183,7 @@ Combines `constant`, `lookup`, and `query` to create an ID like `GL-01-005`.
 **Expected Output:** `GL-01-005` (where `GL` is fixed, `01` is community code, `005` is next sequence number)
 
 ```xml
-<question type="automatic" fieldname="generated_id">
+<question type="calculation" fieldname="generated_id">
   <calculation type="concat" separator="-">
     <!-- Prefix -->
     <part type="constant" value="GL" />
@@ -208,7 +215,7 @@ Since `case` evaluates sequentially, you can simulate "OR" logic by repeating th
 *   Fever=0, Temp=36.5 -> `Home`
 
 ```xml
-<question type="automatic" fieldname="action">
+<question type="calculation" fieldname="action">
   <calculation type="case">
     <!-- Condition 1: Fever is Yes -->
     <when field="fever" operator="=" value="1">
@@ -236,7 +243,7 @@ Determines if a participant is eligible based on Age AND Gender.
 *   Age=25, Gender=Male -> `Not Eligible`
 
 ```xml
-<question type="automatic" fieldname="eligibility_status">
+<question type="calculation" fieldname="eligibility_status">
   <calculation type="case">
     <!-- Check Age first -->
     <when field="age" operator="&gt;=" value="18">
@@ -272,7 +279,7 @@ Calculates a new date by adding or subtracting time from an existing date field.
 
 **Example:**
 ```xml
-<question type="automatic" fieldname="dose2_due_date" fieldtype="date">
+<question type="calculation" fieldname="dose2_due_date" fieldtype="date">
     <calculation type="date_offset" field="vx_dose1_date" value="+28d" />
 </question>
 ```
@@ -292,7 +299,7 @@ Calculates the difference between two dates.
 
 **Example:**
 ```xml
-<question type="automatic" fieldname="dose2_warning_time" fieldtype="integer">
+<question type="calculation" fieldname="dose2_warning_time" fieldtype="integer">
     <calculation type="date_diff" field="vx_dose1_date" value="vx_dose2_date" unit="w" />
 </question>
 ```

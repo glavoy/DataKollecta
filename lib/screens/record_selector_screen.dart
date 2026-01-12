@@ -239,11 +239,11 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
 
     // Exactly one record found - load it
     final record = filtered.first;
-    final uniqueId = record['uniqueid']?.toString();
+    final uuid = record['uuid']?.toString();
 
-    if (uniqueId == null) {
+    if (uuid == null) {
       setState(() {
-        _errorMessage = 'Record does not have a uniqueid field.';
+        _errorMessage = 'Record does not have a uuid field.';
       });
       return;
     }
@@ -257,7 +257,7 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
         builder: (context) => SurveyScreen(
           questionnaireFilename: widget.questionnaireFilename,
           existingAnswers: record,
-          uniqueId: uniqueId,
+          uuid: uuid,
           primaryKeyFields: data.primaryKeyFields,
           idConfig: data.idConfig,
         ),

@@ -2,7 +2,8 @@
 typedef AnswerMap = Map<String, dynamic>;
 
 enum QuestionType {
-  automatic,
+  automatic,   // Internal system fields only (uuid, starttime, etc.)
+  calculation, // XML fields computed from formulas, lookups, or queries
   text,
   checkbox,
   radio,

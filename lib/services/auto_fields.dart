@@ -27,10 +27,23 @@ class AutoFields {
   /// Public getter for the registry
   static Map<String, AutoFieldFn> getRegistry() => _registry;
 
+  /// System fields that are automatically added to every CRF table.
+  /// These don't need to be defined in XML files.
+  /// Order: starttime, startdate first; then uuid, swver, survey_id, lastmod, stoptime, synced_at at end
+  static const List<String> systemFieldsStart = ['starttime', 'startdate'];
+  static const List<String> systemFieldsEnd = [
+    'uuid',
+    'swver',
+    'survey_id',
+    'lastmod',
+    'stoptime',
+    'synced_at'
+  ];
+
   /// Per-survey registry of automatic fields: fieldName -> function
   /// Edit this map for your survey's automatic variables.
   static final Map<String, AutoFieldFn> _registry = {
-    'uniqueid': _computeUniqueId,
+    'uuid': _computeUuid,
     'starttime': _computeStartTime,
     'startdate': _computeStartDate,
     'stoptime': _computeStopTime,
@@ -43,8 +56,8 @@ class AutoFields {
 
   /// Public entry point: returns existing answer if present,
   /// otherwise computes once and stores it in `answers`.
-  /// In edit mode, preserves certain fields like uniqueid, starttime, stoptime
-  static Future<String> compute(AnswerMap answers, Question q,
+  /// In edit mode, preserves certain fields like uuid, starttime, stoptime
+  static Future<String?> compute(AnswerMap answers, Question q,
       {bool isEditMode = false, String? surveyId}) async {
     // Load version from pubspec.yaml once and cache it
     if (_cachedVersion == null) {
@@ -64,7 +77,7 @@ class AutoFields {
     if (key == 'starttime' ||
         key == 'startdate' ||
         key == 'stoptime' ||
-        key == 'uniqueid' ||
+        key == 'uuid' ||
         key == 'intnum' ||
         key == 'vcode' ||
         key == 'lastmod') {
@@ -73,14 +86,14 @@ class AutoFields {
     }
 
     // In edit mode, preserve existing values ONLY for special system fields
-    // that should never change (uniqueid, starttime, stoptime)
+    // that should never change (uuid, starttime, stoptime)
     // All other fields (including calculations) should be recalculated
     bool hasValue = existing != null;
     if (existing is String) hasValue = existing.isNotEmpty;
 
     if (isEditMode && hasValue) {
       // Preserve these special system fields in edit mode
-      if (key == 'uniqueid' ||
+      if (key == 'uuid' ||
           key == 'starttime' ||
           key == 'startdate' ||
           key == 'stoptime') {
@@ -514,12 +527,12 @@ class AutoFields {
     return surveyId ?? 'unknown';
   }
 
-  static String _computeUniqueId(
+  static String _computeUuid(
       AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
     // Generate once per record.
-    // In edit mode, preserve existing uniqueid (handled in compute method)
-    const uuid = Uuid();
-    return uuid.v4();
+    // In edit mode, preserve existing uuid (handled in compute method)
+    const uuidGen = Uuid();
+    return uuidGen.v4();
   }
 
   /// Update record-level last modified timestamp.
@@ -596,8 +609,13 @@ class AutoFields {
   }
 
   // ---------- Default/fallbacks ----------
+  static String? _defaultValueFor(Question q) {
+    // 1. Check for specific field names first
+    if (q.fieldName == 'synced_at') {
+      return null;
+    }
 
-  static String _defaultValueFor(Question q) {
+    // 2. Fall back to type-based defaults
     switch (q.fieldType.toLowerCase()) {
       case 'datetime':
         return DateTime.now().toIso8601String();

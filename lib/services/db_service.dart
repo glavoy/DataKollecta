@@ -5,12 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:path/path.dart' as p;
 
 import '../config/app_config.dart';
 import '../models/question.dart';
 import 'survey_loader.dart';
+import 'settings_service.dart';
 
 class DbService {
   // Map of surveyId -> Database
@@ -363,13 +365,15 @@ class DbService {
       _log('Creating formchanges table for $surveyId...');
       await db.execute('''
         CREATE TABLE formchanges (
-            changeid     INTEGER PRIMARY KEY AUTOINCREMENT,
-            tablename    TEXT NOT NULL,
-            fieldname    TEXT NOT NULL,
-            uniqueid     TEXT NOT NULL,
-            oldvalue     TEXT,
-            newvalue     TEXT,
-            changed_at   DATETIME DEFAULT (CURRENT_TIMESTAMP)
+            formchanges_uuid TEXT PRIMARY KEY,
+            record_uuid      TEXT NOT NULL,
+            tablename        TEXT NOT NULL,
+            fieldname        TEXT NOT NULL,
+            oldvalue         TEXT,
+            newvalue         TEXT,
+            surveyor_id      TEXT,
+            changed_at       DATETIME DEFAULT (CURRENT_TIMESTAMP),
+            synced_at        DATETIME
         )
       ''');
     }
@@ -406,25 +410,29 @@ class DbService {
         final buffer = StringBuffer();
         buffer.write('CREATE TABLE $tableName (');
 
-        // Add uniqueid as a standard field if not present in questions?
-        // The previous implementation didn't explicitly add it, implying it might be in the XML or handled otherwise.
-        // However, `updateInterview` uses `uniqueid`. Let's assume it's part of the schema or needs to be added.
-        // Checking previous code: it didn't add `uniqueid` explicitly in `onCreate`.
-        // But `updateInterview` queries `where: 'uniqueid = ?'`.
-        // This implies `uniqueid` MUST be a column.
-        // I will add it as a standard column if it's not in the questions.
-
         final colDefs = <String>[];
-        bool hasUniqueId = false;
 
+        // System fields at the START of the table
+        // starttime, startdate
+        colDefs.add('starttime TEXT');
+        colDefs.add('startdate TEXT');
+
+        // Add all question fields from XML (excluding system fields that we add automatically)
+        final systemFields = {'starttime', 'startdate', 'uuid', 'swver', 'survey_id', 'lastmod', 'stoptime', 'synced_at'};
         for (final q in dataQuestions) {
-          colDefs.add('${q.fieldName} TEXT');
-          if (q.fieldName.toLowerCase() == 'uniqueid') hasUniqueId = true;
+          if (!systemFields.contains(q.fieldName.toLowerCase())) {
+            colDefs.add('${q.fieldName} TEXT');
+          }
         }
 
-        if (!hasUniqueId) {
-          colDefs.add('uniqueid TEXT PRIMARY KEY');
-        }
+        // System fields at the END of the table
+        // uuid, swver, survey_id, lastmod, stoptime, synced_at
+        colDefs.add('uuid TEXT PRIMARY KEY');
+        colDefs.add('swver TEXT');
+        colDefs.add('survey_id TEXT');
+        colDefs.add('lastmod TEXT');
+        colDefs.add('stoptime TEXT');
+        colDefs.add('synced_at DATETIME');
 
         buffer.write(colDefs.join(', '));
         buffer.write(')');
@@ -433,14 +441,42 @@ class DbService {
       } else {
         // Alter table logic
         final existingColumns = await _getTableColumns(db, tableName);
+
+        // Add question fields from XML
+        final systemFields = {'starttime', 'startdate', 'uuid', 'swver', 'survey_id', 'lastmod', 'stoptime', 'synced_at'};
         for (final q in dataQuestions) {
-          if (!existingColumns.contains(q.fieldName.toLowerCase())) {
+          if (!systemFields.contains(q.fieldName.toLowerCase()) &&
+              !existingColumns.contains(q.fieldName.toLowerCase())) {
             try {
               await db.execute(
                   'ALTER TABLE $tableName ADD COLUMN ${q.fieldName} TEXT');
               _log('Added column ${q.fieldName} to $tableName');
             } catch (e) {
               _logError('Failed to add column ${q.fieldName}: $e');
+            }
+          }
+        }
+
+        // Add system fields if they don't exist
+        final systemFieldDefs = {
+          'starttime': 'TEXT',
+          'startdate': 'TEXT',
+          'uuid': 'TEXT',
+          'swver': 'TEXT',
+          'survey_id': 'TEXT',
+          'lastmod': 'TEXT',
+          'stoptime': 'TEXT',
+          'synced_at': 'DATETIME',
+        };
+
+        for (final entry in systemFieldDefs.entries) {
+          if (!existingColumns.contains(entry.key)) {
+            try {
+              await db.execute(
+                  'ALTER TABLE $tableName ADD COLUMN ${entry.key} ${entry.value}');
+              _log('Added ${entry.key} column to $tableName');
+            } catch (e) {
+              _logError('Failed to add ${entry.key} column: $e');
             }
           }
         }
@@ -561,12 +597,12 @@ class DbService {
     }
   }
 
-  static Future<Map<String, dynamic>?> getRecordByUniqueId(
-      String surveyId, String tableName, String uniqueId) async {
+  static Future<Map<String, dynamic>?> getRecordByUuid(
+      String surveyId, String tableName, String uuid) async {
     try {
       final db = await _getDbOrThrow(surveyId);
       final results = await db
-          .query(tableName, where: 'uniqueid = ?', whereArgs: [uniqueId]);
+          .query(tableName, where: 'uuid = ?', whereArgs: [uuid]);
 
       if (results.isEmpty) return null;
 
@@ -613,7 +649,7 @@ class DbService {
     required String surveyId,
     required String surveyFilename,
     required AnswerMap answers,
-    required String uniqueId,
+    required String uuid,
     required Map<String, dynamic>? originalAnswers,
   }) async {
     final db = await _getDbOrThrow(surveyId);
@@ -648,7 +684,7 @@ class DbService {
         await _recordChanges(
           db: db,
           tableName: tableName,
-          uniqueId: uniqueId,
+          recordUuid: uuid,
           originalAnswers: originalAnswers,
           newAnswers: answers,
           existingColumns: existingColumns,
@@ -656,7 +692,7 @@ class DbService {
       }
 
       await db.update(tableName, rowData,
-          where: 'uniqueid = ?', whereArgs: [uniqueId]);
+          where: 'uuid = ?', whereArgs: [uuid]);
 
       // Backup: Log UPDATE statement
       try {
@@ -664,7 +700,7 @@ class DbService {
             .map((e) => '${e.key} = ${_escapeSqlValue(e.value)}')
             .join(', ');
         final sql =
-            "UPDATE $tableName SET $setClause WHERE uniqueid = '${_escapeSqlString(uniqueId)}';";
+            "UPDATE $tableName SET $setClause WHERE uuid = '${_escapeSqlString(uuid)}';";
         await _writeBackup(surveyId, tableName, sql);
       } catch (e) {
         _logError('Failed to write backup for UPDATE: $e');
@@ -677,13 +713,19 @@ class DbService {
   static Future<void> _recordChanges({
     required Database db,
     required String tableName,
-    required String uniqueId,
+    required String recordUuid,
     required Map<String, dynamic> originalAnswers,
     required AnswerMap newAnswers,
     required List<String> existingColumns,
   }) async {
     try {
       if (!await _tableExists(db, 'formchanges')) return;
+
+      // Get surveyor_id from settings
+      final settingsService = SettingsService();
+      final surveyorId = await settingsService.surveyorId;
+
+      const uuidGen = Uuid();
 
       for (final entry in newAnswers.entries) {
         final fieldName = entry.key;
@@ -705,12 +747,15 @@ class DbService {
           }
 
           await db.insert('formchanges', {
+            'formchanges_uuid': uuidGen.v4(),
+            'record_uuid': recordUuid,
             'tablename': tableName,
             'fieldname': fieldName,
-            'uniqueid': uniqueId,
             'oldvalue': oldValueStr,
             'newvalue': newValueStr,
+            'surveyor_id': surveyorId,
             'changed_at': DateTime.now().toIso8601String(),
+            'synced_at': null,
           });
         }
       }

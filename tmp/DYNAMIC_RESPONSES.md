@@ -223,11 +223,11 @@ Using checkboxes for multi-select with "Don't know" and "Not in this list" optio
 
 ```xml
 <!-- Automatic field: household ID -->
-<question type='automatic' fieldname='hhid' fieldtype='text'>
+<question type = 'calculation' fieldname='hhid' fieldtype='text'>
 </question>
 
 <!-- Automatic field: net number -->
-<question type='automatic' fieldname='netnum' fieldtype='integer'>
+<question type = 'calculation' fieldname='netnum' fieldtype='integer'>
 </question>
 
 <!-- Multi-select from household members -->
@@ -479,7 +479,7 @@ region,mrccode,mrcname,villagename,villagecode,vcode
 **XML Configuration:**
 ```xml
 <!-- Automatic field: household ID (from parent form) -->
-<question type='automatic' fieldname='hhid' fieldtype='text'>
+<question type = 'calculation' fieldname='hhid' fieldtype='text'>
 </question>
 
 <!-- Text input: Child's name -->

@@ -24,7 +24,7 @@ The `<question>` element is the building block of the survey. It requires specif
 
 | Attribute | Description | Required | Options |
 | :--- | :--- | :--- | :--- |
-| `type` | The control type used to display the question. | Yes | `text`, `radio` (single select), `checkbox` (multi-select), `combobox` (dropdown), `date`, `datetime`, `information` (read-only), `automatic` (hidden/calculated) |
+| `type` | The control type used to display the question. | Yes | `text`, `radio` (single select), `checkbox` (multi-select), `combobox` (dropdown), `date`, `datetime`, `information` (read-only), `calculation` (computed fields - also accepts `calc`, `calculated`, or legacy `automatic`) |
 | `fieldname` | A unique identifier for the question (variable name). This is used in logic, skips, and database columns. | Yes | Text string (no spaces, e.g., `dob`, `participant_name`) |
 | `fieldtype` | The data type for storage. | Yes | `text`, `integer`, `text_integer`, `date`, `datetime`, `n/a` (for information/label types) |
 
@@ -175,7 +175,7 @@ Controls logic flow (skipping questions).
 ```
 
 ### `<calculation>`
-Used for `automatic` questions to compute values.
+Used for `calculation` type questions to compute values from other fields, database lookups, or formulas.
 - **Attribute `type`:**
     - `age_from_date`: Calculates age from a date field.
         - `field`: Source date field.
@@ -195,14 +195,14 @@ Used for `automatic` questions to compute values.
 
 **Example: Age Calculation**
 ```xml
-<question type='automatic' fieldname='age_years' fieldtype='integer'>
+<question type='calculation' fieldname='age_years' fieldtype='integer'>
     <calculation type='age_from_date' field='dob' value='years'/>
 </question>
 ```
 
 **Example: Conditional Logic**
 ```xml
-<question type='automatic' fieldname='is_eligible' fieldtype='integer'>
+<question type='calculation' fieldname='is_eligible' fieldtype='integer'>
     <calculation type='case'>
         <when field='age' operator='&gt;=' value='18'>
             <result type='constant' value='1' />

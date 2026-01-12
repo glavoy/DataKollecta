@@ -44,17 +44,19 @@ class ChangeSummaryService {
         (q) => q.fieldName == fieldName,
         orElse: () => Question(
           fieldName: fieldName,
-          type: QuestionType.automatic,
+          type: QuestionType.calculation,
           fieldType: 'text',
         ),
       );
 
-      // Skip internal/automatic fields that aren't useful in a summary
-      if (question.type == QuestionType.automatic &&
+      // Skip internal system fields that aren't useful in a summary
+      // These are the hard-coded system fields, not calculation fields
+      if ((question.type == QuestionType.automatic ||
+              question.type == QuestionType.calculation) &&
           (fieldName == 'lastmod' ||
               fieldName == 'starttime' ||
               fieldName == 'stoptime' ||
-              fieldName == 'uniqueid')) {
+              fieldName == 'uuid')) {
         continue;
       }
 

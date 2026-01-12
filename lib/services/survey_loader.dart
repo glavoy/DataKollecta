@@ -497,7 +497,12 @@ QuestionType parseQuestionType(String type) {
     case 'datetime':
       return QuestionType.datetime;
     case 'automatic':
-      return QuestionType.automatic;
+      // Support legacy 'automatic' in XML, but treat as 'calculation'
+      return QuestionType.calculation;
+    case 'calculation':
+    case 'calc':
+    case 'calculated':
+      return QuestionType.calculation;
     default:
       return QuestionType.information;
   }

@@ -255,13 +255,11 @@ class _QuestionViewState extends State<QuestionView> {
       }
     }
 
-    // Centralized automatic variable calculation
-    // Only compute automatic fields, NOT date/datetime fields
-    // Centralized automatic variable calculation
-    // Only compute automatic fields, NOT date/datetime fields
+    // Centralized calculation field computation
+    // Only compute calculation fields, NOT date/datetime fields
     // Date/datetime fields should require explicit user selection
-    if (q.type == QuestionType.automatic || q.calculation != null) {
-      // Force calculation if it's automatic OR has a calculation defined
+    if (q.type == QuestionType.calculation || q.calculation != null) {
+      // Force calculation if it's a calculation type OR has a calculation defined
       // We do NOT check 'existing == null' here anymore, because we want updates
       // to propagate (AutoFields.compute handles 'preserve' flag if needed).
       _computeAutoValue();
@@ -290,8 +288,8 @@ class _QuestionViewState extends State<QuestionView> {
       final hasChanged = oldVal != newVal;
 
       setState(() {
-        if (widget.question.type == QuestionType.automatic) {
-          // For automatic, just update answers
+        if (widget.question.type == QuestionType.calculation) {
+          // For calculation fields, just update answers
         } else if (widget.question.type == QuestionType.datetime) {
           _selectedDateTime = DateTime.tryParse(val);
         } else if (widget.question.type == QuestionType.date) {
@@ -1075,13 +1073,34 @@ class _QuestionViewState extends State<QuestionView> {
     final q = widget.question;
 
     switch (q.type) {
-      case QuestionType.automatic:
+      case QuestionType.calculation:
         final val = widget.answers[q.fieldName]?.toString() ?? '';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionTitle(SurveyLoader.expandPlaceholders(
-                q.text ?? 'Automatic: ${q.fieldName}', widget.answers)),
+                q.text ?? 'Calculated: ${q.fieldName}', widget.answers)),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(14),
+              child: Text(val,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        );
+      case QuestionType.automatic:
+        // This should never be hit as automatic fields are not in XML
+        // Only internal system fields use automatic type
+        final val = widget.answers[q.fieldName]?.toString() ?? '';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle(SurveyLoader.expandPlaceholders(
+                q.text ?? 'System: ${q.fieldName}', widget.answers)),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
