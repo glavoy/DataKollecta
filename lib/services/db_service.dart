@@ -67,9 +67,9 @@ class DbService {
       _log('Found ${entities.length} entities in surveys directory');
       for (final entity in entities) {
         if (entity is Directory) {
-          final surveyId = p.basename(entity.path);
-          _log('Found survey directory: $surveyId');
-          await _initDatabaseForSurvey(surveyId);
+          final folderName = p.basename(entity.path);
+          _log('Found survey directory: $folderName');
+          await _initDatabaseForSurvey(folderName);
         }
       }
     } catch (e) {
@@ -77,113 +77,165 @@ class DbService {
     }
   }
 
-  /// Initialize the database for a specific survey
-  static Future<void> _initDatabaseForSurvey(String surveyId) async {
-    if (_initializedSurveys.contains(surveyId)) return;
+    /// Initialize the database for a specific survey folder
 
-    try {
-      _log('Initializing database for survey: $surveyId');
+    static Future<void> _initDatabaseForSurvey(String folderName) async {
 
-      // 1. Read manifest
-      // We need to find the manifest file. Since we moved to dynamic loading,
-      // we should ask SurveyConfigService for the path or scan for it.
-      // However, DbService shouldn't depend on SurveyConfigService if possible to avoid circular deps.
-      // But SurveyConfigService depends on SettingsService, not DbService.
-      // So we can use SurveyConfigService here if we want, or replicate the logic.
-      // Replicating logic for now to keep it self-contained but using the known path structure.
+      try {
 
-      // Replicating logic for now to keep it self-contained but using the known path structure.
+        _log('Initializing database from folder: $folderName');
 
-      final surveysDir = await _getSurveysDirectory();
+  
 
-      // We need to find the folder for this surveyId
-      File? manifestFile;
-      if (await surveysDir.exists()) {
-        final entities = await surveysDir.list().toList();
-        for (final entity in entities) {
-          if (entity is Directory) {
-            final mFile = File(p.join(entity.path, 'survey_manifest.gistx'));
-            if (await mFile.exists()) {
-              try {
-                final content = await mFile.readAsString();
-                final jsonMap = json.decode(content);
-                if (jsonMap['surveyId'] == surveyId) {
-                  manifestFile = mFile;
-                  break;
-                }
-              } catch (e) {
-                // ignore
-              }
-            }
-          }
+        final surveysDir = await _getSurveysDirectory();
+
+        
+
+        // The folderName is the name of the directory in 'surveys'
+
+        final manifestPath = p.join(surveysDir.path, folderName, 'survey_manifest.gistx');
+
+        final manifestFile = File(manifestPath);
+
+  
+
+        if (!await manifestFile.exists()) {
+
+          _logError('Manifest not found at $manifestPath');
+
+          return;
+
         }
-      }
 
-      Map<String, dynamic> manifest;
-      if (manifestFile != null) {
+  
+
         final manifestJson = await manifestFile.readAsString();
-        manifest = json.decode(manifestJson) as Map<String, dynamic>;
-      } else {
-        _logError('Manifest not found for surveyId: $surveyId');
-        return;
-      }
 
-      final dbName = manifest['databaseName'] as String?;
-      if (dbName == null) {
-        _logError('No databaseName in manifest for $surveyId');
-        return;
-      }
+        final manifest = json.decode(manifestJson) as Map<String, dynamic>;
 
-      // 2. Determine DB path
+  
 
-      Directory baseDbDir;
-      if (Platform.isAndroid) {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir == null) {
-          // Fallback to internal if external not available
-          baseDbDir = await getApplicationSupportDirectory();
-        } else {
-          baseDbDir = extDir;
+        final surveyId = manifest['surveyId'] as String?;
+
+        if (surveyId == null) {
+
+          _logError('No surveyId in manifest at $manifestPath');
+
+          return;
+
         }
-      } else if (Platform.isWindows) {
-        // Windows: Use LOCALAPPDATA for AppData\Local
-        final localAppData = Platform.environment['LOCALAPPDATA'];
-        if (localAppData != null) {
-          baseDbDir = Directory(localAppData);
-        } else {
-          // Fallback if LOCALAPPDATA not set (unlikely)
-          baseDbDir = await getApplicationSupportDirectory();
+
+  
+
+        if (_initializedSurveys.contains(surveyId)) {
+
+          _log('Database for $surveyId already initialized.');
+
+          return;
+
         }
-      } else {
-        // Linux/Mac: Use standard application support directory
-        baseDbDir = await getApplicationSupportDirectory();
+
+  
+
+        final dbName = manifest['databaseName'] as String?;
+
+        if (dbName == null) {
+
+          _logError('No databaseName in manifest for $surveyId');
+
+          return;
+
+        }
+
+  
+
+        // 2. Determine DB path
+
+        Directory baseDbDir;
+
+        if (Platform.isAndroid) {
+
+          final extDir = await getExternalStorageDirectory();
+
+          if (extDir == null) {
+
+            baseDbDir = await getApplicationSupportDirectory();
+
+          } else {
+
+            baseDbDir = extDir;
+
+          }
+
+        } else if (Platform.isWindows) {
+
+          final localAppData = Platform.environment['LOCALAPPDATA'];
+
+          if (localAppData != null) {
+
+            baseDbDir = Directory(localAppData);
+
+          } else {
+
+            baseDbDir = await getApplicationSupportDirectory();
+
+          }
+
+        } else {
+
+          baseDbDir = await getApplicationSupportDirectory();
+
+        }
+
+  
+
+        final dbDir =
+
+            Directory(p.join(baseDbDir.path, 'DataKollecta', 'databases'));
+
+        if (!await dbDir.exists()) {
+
+          await dbDir.create(recursive: true);
+
+        }
+
+  
+
+        final dbPath = p.join(dbDir.path, dbName);
+
+        _log('Database path for $surveyId: $dbPath');
+
+  
+
+        // 3. Open Database
+
+        final db =
+
+            await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
+
+          _log('Creating new database for $surveyId');
+
+        });
+
+  
+
+        _databases[surveyId] = db;
+
+        _initializedSurveys.add(surveyId);
+
+  
+
+        // 4. Sync Schema (Create CRFS, Survey Tables)
+
+        await _syncDatabaseSchema(surveyId, db, manifest);
+
+      } catch (e) {
+
+        _logError('Failed to initialize database for folder $folderName: $e');
+
       }
 
-      final dbDir =
-          Directory(p.join(baseDbDir.path, 'DataKollecta', 'databases'));
-      if (!await dbDir.exists()) {
-        await dbDir.create(recursive: true);
-      }
-
-      final dbPath = p.join(dbDir.path, dbName);
-      _log('Database path for $surveyId: $dbPath');
-
-      // 3. Open Database
-      final db =
-          await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
-        _log('Creating new database for $surveyId');
-        // We will handle table creation in _syncDatabaseSchema, but we can do initial setup here if needed
-      });
-
-      _databases[surveyId] = db;
-      _initializedSurveys.add(surveyId);
-
-      // 4. Sync Schema (Create CRFS, Survey Tables)
-      await _syncDatabaseSchema(surveyId, db, manifest);
-    } catch (e) {
-      _logError('Failed to initialize database for $surveyId: $e');
     }
-  }
 
   static Future<void> _syncDatabaseSchema(
       String surveyId, Database db, Map<String, dynamic> manifest) async {
@@ -490,8 +542,9 @@ class DbService {
 
   static Future<Database> _getDbOrThrow(String surveyId) async {
     if (!_databases.containsKey(surveyId)) {
-      // Try to init if missing
-      await _initDatabaseForSurvey(surveyId);
+      _log('Survey ID $surveyId not initialized. Re-scanning surveys directory...');
+      // Re-scan all folders to find the one matching this surveyId
+      await _initializeSurveyDatabases();
     }
     final db = _databases[surveyId];
     if (db == null) {
@@ -974,13 +1027,11 @@ class DbService {
   }
 
   static void _log(String message) {
-    if (AppConfig.enableDebugLogging) {
-      debugPrint('[DbService] $message');
-    }
+    // Logging disabled
   }
 
   static void _logError(String message) {
-    debugPrint('[DbService ERROR] $message');
+    // Logging disabled
   }
 }
 

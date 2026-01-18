@@ -8,11 +8,9 @@
     - gps
     - voice recording
 
+ - what would happen if for some reason (very rare odds) that there were two surveys with the same surveyId in the survey_packages table - I wonder if there is a way to get the 'id' (uuid) from the survey_packages table when downloading the survey the first time and storing that value rather than looking it up based on the surveyID?
+- when checking for new surveys - if a current survey (already downloaded) exists, don't allow to download again
 
-
-
-- Kollect, the name of the app - or GiSTKollect
-- add text backup files when writing to the database
 - add an 'i' for additional information - help the end-user - might need an additional column in the spreadsheet
 - set up data management website per project - create an app that listens for new data and uploads to the server
 - Add 'time' question type

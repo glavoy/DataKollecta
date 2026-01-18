@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import '../services/http_service.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../services/sync_service.dart';
 
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
@@ -18,15 +19,38 @@ class _SyncScreenState extends State<SyncScreen> {
   final _httpService = HttpService();
   final _settingsService = SettingsService();
   final _surveyConfig = SurveyConfigService();
+  final _syncService = SyncService();
 
   bool _isConnecting = false;
+  bool _isUploading = false;
   List<SurveyMetadata> _remoteSurveys = [];
   String? _downloadingSurvey;
   String? _statusMessage;
+  String? _uploadStatusMessage;
+  Map<String, int> _unsyncedCounts = {};
+  int _totalUnsyncedCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _loadUnsyncedCounts();
+  }
+
+  Future<void> _loadUnsyncedCounts() async {
+    try {
+      final surveyId = await _surveyConfig.getActiveSurveyId();
+      if (surveyId == null) return;
+
+      final counts = await _syncService.getAllUnsyncedCounts(surveyId);
+      if (mounted) {
+        setState(() {
+          _unsyncedCounts = counts;
+          _totalUnsyncedCount = counts.values.fold(0, (sum, count) => sum + count);
+        });
+      }
+    } catch (e) {
+      debugPrint('[SyncScreen] Error loading unsynced counts: $e');
+    }
   }
 
   Future<({String deviceId, String deviceInfo})> _getDeviceInfo() async {
@@ -101,12 +125,35 @@ class _SyncScreenState extends State<SyncScreen> {
             : 'Found ${result.surveys.length} surveys.';
       });
     } catch (e) {
-      setState(() => _statusMessage = 'Error: $e');
+      setState(() => _statusMessage = _getUserFriendlyErrorMessage(e));
     } finally {
       if (mounted) {
         setState(() => _isConnecting = false);
       }
     }
+  }
+
+  String _getUserFriendlyErrorMessage(dynamic error) {
+    final message = error.toString();
+    
+    if (message.contains('Project not found') || message.contains('404')) {
+      return 'Project code not found. Please check your settings.';
+    }
+    
+    if (message.contains('Authentication failed') || message.contains('401') || message.contains('403')) {
+      return 'Authentication failed. Please check your username and password.';
+    }
+    
+    if (message.contains('SocketException') || message.contains('Network is unreachable') || message.contains('Connection refused')) {
+      return 'Network error. Please check your internet connection.';
+    }
+    
+    // Clean up standard exception prefixes if present
+    if (message.startsWith('Exception: ')) {
+      return message.substring(11);
+    }
+    
+    return message;
   }
 
   Future<void> _downloadSurvey(SurveyMetadata survey) async {
@@ -178,14 +225,129 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   Future<void> _uploadData() async {
-    // TODO: Implement new row-by-row sync upload mechanism
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Upload functionality will be implemented with row-by-row sync'),
-          backgroundColor: Colors.orange,
-        ),
+    if (_isUploading) return;
+
+    // Check if there's anything to upload
+    if (_totalUnsyncedCount == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No records to upload. All data is synced.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Get survey ID
+    final surveyId = await _surveyConfig.getActiveSurveyId();
+    if (surveyId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No survey selected. Please select a survey first.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Get device info
+    final deviceData = await _getDeviceInfo();
+
+    setState(() {
+      _isUploading = true;
+      _uploadStatusMessage = 'Starting upload...';
+    });
+
+    try {
+      final result = await _syncService.uploadAllData(
+        surveyId: surveyId,
+        deviceId: deviceData.deviceId,
+        onProgress: (tableName, current, total, status) {
+          if (mounted) {
+            setState(() {
+              if (tableName.isNotEmpty) {
+                _uploadStatusMessage = '$tableName: $status';
+              } else {
+                _uploadStatusMessage = status;
+              }
+            });
+          }
+        },
       );
+
+      // Refresh counts
+      await _loadUnsyncedCounts();
+
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadStatusMessage = null;
+        });
+
+        if (result.hasErrors) {
+          // Show error dialog
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Upload Completed with Errors'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Synced: ${result.syncedCount} records'),
+                  Text('Failed: ${result.failedCount} records'),
+                  const SizedBox(height: 8),
+                  const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ...result.errors.take(5).map((e) => Text(
+                        '- ${e.message}',
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      )),
+                  if (result.errors.length > 5)
+                    Text('... and ${result.errors.length - 5} more errors'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else if (result.syncedCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Successfully uploaded ${result.syncedCount} records!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No records were uploaded.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[SyncScreen] Upload error: $e');
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadStatusMessage = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_getUserFriendlyErrorMessage(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -314,24 +476,110 @@ class _SyncScreenState extends State<SyncScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Upload finalized records to the server (row-by-row sync).',
+              'Upload collected data to the server.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _uploadData,
-              icon: const Icon(Icons.cloud_upload),
-              label: const Text('Upload Data'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Row-by-row sync coming soon',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
+
+            // Show unsynced counts
+            if (_unsyncedCounts.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _totalUnsyncedCount > 0
+                      ? Colors.orange.shade50
+                      : Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _totalUnsyncedCount > 0
+                        ? Colors.orange.shade200
+                        : Colors.green.shade200,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          _totalUnsyncedCount > 0
+                              ? Icons.cloud_off
+                              : Icons.cloud_done,
+                          size: 20,
+                          color: _totalUnsyncedCount > 0
+                              ? Colors.orange.shade700
+                              : Colors.green.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _totalUnsyncedCount > 0
+                              ? '$_totalUnsyncedCount records pending upload'
+                              : 'All records synced',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _totalUnsyncedCount > 0
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_totalUnsyncedCount > 0) ...[
+                      const SizedBox(height: 8),
+                      ..._unsyncedCounts.entries
+                          .where((e) => e.value > 0)
+                          .map((e) => Padding(
+                                padding: const EdgeInsets.only(left: 28),
+                                child: Text(
+                                  '${e.key}: ${e.value}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              )),
+                    ],
+                  ],
+                ),
               ),
+              const SizedBox(height: 16),
+            ],
+
+            // Upload button
+            FilledButton.icon(
+              onPressed: _isUploading ? null : _uploadData,
+              icon: _isUploading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.cloud_upload),
+              label: Text(_isUploading ? 'Uploading...' : 'Upload Data'),
+            ),
+
+            // Upload status message
+            if (_uploadStatusMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _uploadStatusMessage!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+
+            // Refresh button
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _isUploading ? null : _loadUnsyncedCounts,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Refresh Counts'),
             ),
           ],
         ),

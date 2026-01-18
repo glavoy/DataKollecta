@@ -1483,8 +1483,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // Ensure remaining system fields are computed before saving
       // Note: starttime/startdate computed at start, stoptime/lastmod computed earlier
-      // Only compute: uuid, swver, survey_id, synced_at
-      final fieldsToCompute = ['uuid', 'swver', 'survey_id', 'synced_at'];
+      // synced_at is NOT computed - it stays NULL until record is synced to server
+      // Only compute: uuid, swver, survey_id
+      final fieldsToCompute = ['uuid', 'swver', 'survey_id'];
 
       for (final fieldName in fieldsToCompute) {
         // Skip if already present (to preserve values computed earlier)

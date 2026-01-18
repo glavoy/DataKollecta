@@ -102,8 +102,11 @@ class _QuestionnaireSelectorScreenState
 
       debugPrint('[QuestionnaireSelector] Available XML files: $xmlFiles');
 
-      // Convert to a set of filenames for quick lookup
-      final Set<String> availableXmlFiles = xmlFiles.cast<String>().toSet();
+      // Convert to a set of filenames for quick lookup (case-insensitive)
+      final Set<String> availableXmlFiles = xmlFiles
+          .cast<String>()
+          .map((s) => s.toLowerCase())
+          .toSet();
 
       // 4. Get questionnaires from the crfs table in the order they appear
       final crfsRecords = await DbService.getExistingRecords(surveyId, 'crfs');
@@ -117,8 +120,8 @@ class _QuestionnaireSelectorScreenState
           // Construct the expected filename from the table name
           final filename = '$tableName.xml';
 
-          // Only add if the XML file actually exists in the survey manifest
-          if (availableXmlFiles.contains(filename)) {
+          // Check case-insensitive
+          if (availableXmlFiles.contains(filename.toLowerCase())) {
             // Parse metadata from crfs record
             final requiresLink = (record['requireslink'] as int?) == 1;
             final linkingField = record['linkingfield']?.toString();
@@ -151,7 +154,11 @@ class _QuestionnaireSelectorScreenState
       // 5. If no questionnaires found, show error
       if (_availableQuestionnaires.isEmpty) {
         setState(() {
-          _errorMessage = 'No questionnaires found for survey: $surveyId';
+          _errorMessage = 
+              'No questionnaires found for survey: $surveyId\n'
+              'DB CRFs: ${crfsRecords.length}\n'
+              'Manifest XMLs: ${availableXmlFiles.length}\n'
+              '(Check table names vs XML filenames)';
           _isLoading = false;
         });
         return;

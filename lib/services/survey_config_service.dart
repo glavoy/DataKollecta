@@ -52,7 +52,7 @@ class SurveyConfigService {
 
         final zipPath = entity.path;
         final zipName = p.basename(zipPath);
-        final surveyFolderName = zipName.replaceAll('.zip', '');
+        final surveyFolderName = p.basenameWithoutExtension(zipPath);
         final targetDir = Directory(p.join(surveysDir.path, surveyFolderName));
 
         // Only extract if target directory doesn't exist

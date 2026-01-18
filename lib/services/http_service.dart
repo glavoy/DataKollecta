@@ -9,16 +9,19 @@ import 'package:path/path.dart' as p;
 class SurveyMetadata {
   final String name;
   final String downloadUrl;
+  final String surveyPackageId;
 
   SurveyMetadata({
     required this.name,
     required this.downloadUrl,
+    required this.surveyPackageId,
   });
 
   factory SurveyMetadata.fromJson(Map<String, dynamic> json) {
     return SurveyMetadata(
       name: json['name'] as String,
       downloadUrl: json['download_url'] as String,
+      surveyPackageId: json['id'] as String,
     );
   }
 }
@@ -140,8 +143,30 @@ class HttpService {
         await zipsDir.create(recursive: true);
       }
 
-      // Create filename from survey name
-      final filename = '$surveyName.zip';
+      // Extract original filename from URL and strip timestamp prefix
+      String filename;
+      try {
+        final uri = Uri.parse(downloadUrl);
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          filename = pathSegments.last;
+          
+          // Strip timestamp prefix (e.g., "1768751055830_survey.zip" -> "survey.zip")
+          final underscoreIndex = filename.indexOf('_');
+          if (underscoreIndex != -1) {
+            final prefix = filename.substring(0, underscoreIndex);
+            // Check if the prefix is likely a timestamp (numeric and long)
+            if (RegExp(r'^\d+$').hasMatch(prefix)) {
+              filename = filename.substring(underscoreIndex + 1);
+            }
+          }
+        } else {
+          filename = '$surveyName.zip';
+        }
+      } catch (e) {
+        filename = '$surveyName.zip';
+      }
+
       final localFile = File(p.join(zipsDir.path, filename));
 
       // Write the downloaded bytes to file
