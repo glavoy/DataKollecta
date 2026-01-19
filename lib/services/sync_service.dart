@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'db_service.dart';
 import 'settings_service.dart';
-import 'survey_config_service.dart';
 
 /// Result of a sync operation
 class SyncResult {
@@ -51,7 +50,6 @@ class SyncService {
   static const int _batchSize = 10;
 
   final _settingsService = SettingsService();
-  final _surveyConfig = SurveyConfigService();
 
   /// Get count of unsynced records for a table
   Future<int> getUnsyncedCount(String surveyId, String tableName) async {
@@ -161,7 +159,8 @@ class SyncService {
         'UPDATE $tableName SET synced_at = ? WHERE uuid IN ($placeholders)',
         [syncedAt, ...uuids],
       );
-      debugPrint('[SyncService] Marked ${uuids.length} records as synced in $tableName');
+      debugPrint(
+          '[SyncService] Marked ${uuids.length} records as synced in $tableName');
     } catch (e) {
       debugPrint('[SyncService] Error marking records as synced: $e');
     }
@@ -230,7 +229,8 @@ class SyncService {
         }).toList();
       }
 
-      debugPrint('[SyncService] Sending batch: ${submissions.length} submissions, ${formchanges.length} formchanges');
+      debugPrint(
+          '[SyncService] Sending batch: ${submissions.length} submissions, ${formchanges.length} formchanges');
       debugPrint('[SyncService] Payload: ${json.encode(payload)}');
 
       final response = await http.post(
@@ -250,7 +250,8 @@ class SyncService {
       }
 
       if (response.statusCode != 200) {
-        throw Exception('Upload failed: ${response.statusCode} - ${response.body}');
+        throw Exception(
+            'Upload failed: ${response.statusCode} - ${response.body}');
       }
 
       final responseData = json.decode(response.body) as Map<String, dynamic>;
@@ -308,7 +309,12 @@ class SyncService {
         failedCount: 0,
         syncedUuids: [],
         formchangesSyncedUuids: [],
-        errors: [SyncError(uuid: 'auth', message: 'No authentication token. Please connect to server first.')],
+        errors: [
+          SyncError(
+              uuid: 'auth',
+              message:
+                  'No authentication token. Please connect to server first.')
+        ],
       );
     }
 
@@ -324,11 +330,14 @@ class SyncService {
     try {
       // Get list of CRF tables
       final db = await DbService.getDatabaseForQueries(surveyId);
-      final crfsResult = await db.query('crfs', columns: ['tablename'], orderBy: 'display_order');
-      final tableNames = crfsResult.map((r) => r['tablename'] as String).toList();
+      final crfsResult = await db.query('crfs',
+          columns: ['tablename'], orderBy: 'display_order');
+      final tableNames =
+          crfsResult.map((r) => r['tablename'] as String).toList();
 
       // First, get all formchanges to include with first batch
-      var unsyncedFormchanges = await _getUnsyncedFormchanges(surveyId, _batchSize * 10);
+      var unsyncedFormchanges =
+          await _getUnsyncedFormchanges(surveyId, _batchSize * 10);
       var formchangesIncluded = false;
 
       // Process each table
@@ -340,14 +349,16 @@ class SyncService {
 
         while (hasMore) {
           // Get batch of unsynced records
-          final records = await _getUnsyncedRecords(surveyId, tableName, _batchSize);
+          final records =
+              await _getUnsyncedRecords(surveyId, tableName, _batchSize);
           if (records.isEmpty) {
             hasMore = false;
             continue;
           }
 
           batchNumber++;
-          onProgress?.call(tableName, batchNumber, -1, 'Uploading batch $batchNumber (${records.length} records)...');
+          onProgress?.call(tableName, batchNumber, -1,
+              'Uploading batch $batchNumber (${records.length} records)...');
 
           // Add table name to each record for the payload
           final recordsWithTable = records.map((r) {
@@ -355,7 +366,9 @@ class SyncService {
           }).toList();
 
           // Include formchanges with first batch only
-          final formchangesToSend = formchangesIncluded ? <Map<String, dynamic>>[] : unsyncedFormchanges;
+          final formchangesToSend = formchangesIncluded
+              ? <Map<String, dynamic>>[]
+              : unsyncedFormchanges;
           formchangesIncluded = true;
 
           // Upload batch
@@ -370,12 +383,14 @@ class SyncService {
           final syncedAt = DateTime.now().toIso8601String();
 
           if (result.syncedUuids.isNotEmpty) {
-            await _markAsSynced(surveyId, tableName, result.syncedUuids, syncedAt);
+            await _markAsSynced(
+                surveyId, tableName, result.syncedUuids, syncedAt);
             allSyncedUuids.addAll(result.syncedUuids);
           }
 
           if (result.formchangesSyncedUuids.isNotEmpty) {
-            await _markFormchangesAsSynced(surveyId, result.formchangesSyncedUuids, syncedAt);
+            await _markFormchangesAsSynced(
+                surveyId, result.formchangesSyncedUuids, syncedAt);
             allFormchangesSyncedUuids.addAll(result.formchangesSyncedUuids);
           }
 
@@ -408,7 +423,8 @@ class SyncService {
 
         final syncedAt = DateTime.now().toIso8601String();
         if (result.formchangesSyncedUuids.isNotEmpty) {
-          await _markFormchangesAsSynced(surveyId, result.formchangesSyncedUuids, syncedAt);
+          await _markFormchangesAsSynced(
+              surveyId, result.formchangesSyncedUuids, syncedAt);
           allFormchangesSyncedUuids.addAll(result.formchangesSyncedUuids);
         }
 
@@ -418,7 +434,6 @@ class SyncService {
       }
 
       onProgress?.call('', 0, 0, 'Upload complete');
-
     } catch (e) {
       debugPrint('[SyncService] Upload all data error: $e');
       allErrors.add(SyncError(uuid: 'general', message: e.toString()));

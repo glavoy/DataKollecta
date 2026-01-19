@@ -1,15 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:path/path.dart' as p;
-
-import '../config/app_config.dart';
 import '../models/question.dart';
 import 'survey_loader.dart';
 import 'settings_service.dart';
@@ -77,165 +73,106 @@ class DbService {
     }
   }
 
-    /// Initialize the database for a specific survey folder
+  /// Initialize the database for a specific survey folder
 
-    static Future<void> _initDatabaseForSurvey(String folderName) async {
+  static Future<void> _initDatabaseForSurvey(String folderName) async {
+    try {
+      _log('Initializing database from folder: $folderName');
 
-      try {
+      final surveysDir = await _getSurveysDirectory();
 
-        _log('Initializing database from folder: $folderName');
+      // The folderName is the name of the directory in 'surveys'
 
-  
+      final manifestPath =
+          p.join(surveysDir.path, folderName, 'survey_manifest.gistx');
 
-        final surveysDir = await _getSurveysDirectory();
+      final manifestFile = File(manifestPath);
 
-        
+      if (!await manifestFile.exists()) {
+        _logError('Manifest not found at $manifestPath');
 
-        // The folderName is the name of the directory in 'surveys'
-
-        final manifestPath = p.join(surveysDir.path, folderName, 'survey_manifest.gistx');
-
-        final manifestFile = File(manifestPath);
-
-  
-
-        if (!await manifestFile.exists()) {
-
-          _logError('Manifest not found at $manifestPath');
-
-          return;
-
-        }
-
-  
-
-        final manifestJson = await manifestFile.readAsString();
-
-        final manifest = json.decode(manifestJson) as Map<String, dynamic>;
-
-  
-
-        final surveyId = manifest['surveyId'] as String?;
-
-        if (surveyId == null) {
-
-          _logError('No surveyId in manifest at $manifestPath');
-
-          return;
-
-        }
-
-  
-
-        if (_initializedSurveys.contains(surveyId)) {
-
-          _log('Database for $surveyId already initialized.');
-
-          return;
-
-        }
-
-  
-
-        final dbName = manifest['databaseName'] as String?;
-
-        if (dbName == null) {
-
-          _logError('No databaseName in manifest for $surveyId');
-
-          return;
-
-        }
-
-  
-
-        // 2. Determine DB path
-
-        Directory baseDbDir;
-
-        if (Platform.isAndroid) {
-
-          final extDir = await getExternalStorageDirectory();
-
-          if (extDir == null) {
-
-            baseDbDir = await getApplicationSupportDirectory();
-
-          } else {
-
-            baseDbDir = extDir;
-
-          }
-
-        } else if (Platform.isWindows) {
-
-          final localAppData = Platform.environment['LOCALAPPDATA'];
-
-          if (localAppData != null) {
-
-            baseDbDir = Directory(localAppData);
-
-          } else {
-
-            baseDbDir = await getApplicationSupportDirectory();
-
-          }
-
-        } else {
-
-          baseDbDir = await getApplicationSupportDirectory();
-
-        }
-
-  
-
-        final dbDir =
-
-            Directory(p.join(baseDbDir.path, 'DataKollecta', 'databases'));
-
-        if (!await dbDir.exists()) {
-
-          await dbDir.create(recursive: true);
-
-        }
-
-  
-
-        final dbPath = p.join(dbDir.path, dbName);
-
-        _log('Database path for $surveyId: $dbPath');
-
-  
-
-        // 3. Open Database
-
-        final db =
-
-            await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
-
-          _log('Creating new database for $surveyId');
-
-        });
-
-  
-
-        _databases[surveyId] = db;
-
-        _initializedSurveys.add(surveyId);
-
-  
-
-        // 4. Sync Schema (Create CRFS, Survey Tables)
-
-        await _syncDatabaseSchema(surveyId, db, manifest);
-
-      } catch (e) {
-
-        _logError('Failed to initialize database for folder $folderName: $e');
-
+        return;
       }
 
+      final manifestJson = await manifestFile.readAsString();
+
+      final manifest = json.decode(manifestJson) as Map<String, dynamic>;
+
+      final surveyId = manifest['surveyId'] as String?;
+
+      if (surveyId == null) {
+        _logError('No surveyId in manifest at $manifestPath');
+
+        return;
+      }
+
+      if (_initializedSurveys.contains(surveyId)) {
+        _log('Database for $surveyId already initialized.');
+
+        return;
+      }
+
+      final dbName = manifest['databaseName'] as String?;
+
+      if (dbName == null) {
+        _logError('No databaseName in manifest for $surveyId');
+
+        return;
+      }
+
+      // 2. Determine DB path
+
+      Directory baseDbDir;
+
+      if (Platform.isAndroid) {
+        final extDir = await getExternalStorageDirectory();
+
+        if (extDir == null) {
+          baseDbDir = await getApplicationSupportDirectory();
+        } else {
+          baseDbDir = extDir;
+        }
+      } else if (Platform.isWindows) {
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+
+        if (localAppData != null) {
+          baseDbDir = Directory(localAppData);
+        } else {
+          baseDbDir = await getApplicationSupportDirectory();
+        }
+      } else {
+        baseDbDir = await getApplicationSupportDirectory();
+      }
+
+      final dbDir =
+          Directory(p.join(baseDbDir.path, 'DataKollecta', 'databases'));
+
+      if (!await dbDir.exists()) {
+        await dbDir.create(recursive: true);
+      }
+
+      final dbPath = p.join(dbDir.path, dbName);
+
+      _log('Database path for $surveyId: $dbPath');
+
+      // 3. Open Database
+
+      final db =
+          await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
+        _log('Creating new database for $surveyId');
+      });
+
+      _databases[surveyId] = db;
+
+      _initializedSurveys.add(surveyId);
+
+      // 4. Sync Schema (Create CRFS, Survey Tables)
+
+      await _syncDatabaseSchema(surveyId, db, manifest);
+    } catch (e) {
+      _logError('Failed to initialize database for folder $folderName: $e');
     }
+  }
 
   static Future<void> _syncDatabaseSchema(
       String surveyId, Database db, Map<String, dynamic> manifest) async {
@@ -470,7 +407,16 @@ class DbService {
         colDefs.add('startdate TEXT');
 
         // Add all question fields from XML (excluding system fields that we add automatically)
-        final systemFields = {'starttime', 'startdate', 'uuid', 'swver', 'survey_id', 'lastmod', 'stoptime', 'synced_at'};
+        final systemFields = {
+          'starttime',
+          'startdate',
+          'uuid',
+          'swver',
+          'survey_id',
+          'lastmod',
+          'stoptime',
+          'synced_at'
+        };
         for (final q in dataQuestions) {
           if (!systemFields.contains(q.fieldName.toLowerCase())) {
             colDefs.add('${q.fieldName} TEXT');
@@ -495,7 +441,16 @@ class DbService {
         final existingColumns = await _getTableColumns(db, tableName);
 
         // Add question fields from XML
-        final systemFields = {'starttime', 'startdate', 'uuid', 'swver', 'survey_id', 'lastmod', 'stoptime', 'synced_at'};
+        final systemFields = {
+          'starttime',
+          'startdate',
+          'uuid',
+          'swver',
+          'survey_id',
+          'lastmod',
+          'stoptime',
+          'synced_at'
+        };
         for (final q in dataQuestions) {
           if (!systemFields.contains(q.fieldName.toLowerCase()) &&
               !existingColumns.contains(q.fieldName.toLowerCase())) {
@@ -542,7 +497,8 @@ class DbService {
 
   static Future<Database> _getDbOrThrow(String surveyId) async {
     if (!_databases.containsKey(surveyId)) {
-      _log('Survey ID $surveyId not initialized. Re-scanning surveys directory...');
+      _log(
+          'Survey ID $surveyId not initialized. Re-scanning surveys directory...');
       // Re-scan all folders to find the one matching this surveyId
       await _initializeSurveyDatabases();
     }
@@ -654,8 +610,8 @@ class DbService {
       String surveyId, String tableName, String uuid) async {
     try {
       final db = await _getDbOrThrow(surveyId);
-      final results = await db
-          .query(tableName, where: 'uuid = ?', whereArgs: [uuid]);
+      final results =
+          await db.query(tableName, where: 'uuid = ?', whereArgs: [uuid]);
 
       if (results.isEmpty) return null;
 
@@ -744,8 +700,7 @@ class DbService {
         );
       }
 
-      await db.update(tableName, rowData,
-          where: 'uuid = ?', whereArgs: [uuid]);
+      await db.update(tableName, rowData, where: 'uuid = ?', whereArgs: [uuid]);
 
       // Backup: Log UPDATE statement
       try {
