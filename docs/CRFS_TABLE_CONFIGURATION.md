@@ -47,6 +47,7 @@ CREATE TABLE crfs (
 | `requireslink` | INTEGER | `1` if user must select a parent ID before starting, `0` otherwise | `0` (household), `1` (hh_members) |
 | `parenttable` | TEXT | Parent table to get linking IDs from (NULL for base forms) | NULL (household), `household` (hh_members) |
 | `linkingfield` | TEXT | Field name that links child records to parent | NULL (household), `hhid` (hh_members) |
+| `entry_condition` | TEXT | Condition in order administer the crf | `enrolled=1` |
 
 ### **ID Generation (Base Forms Only)**
 
@@ -60,7 +61,6 @@ CREATE TABLE crfs (
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `repeat_count_field` | TEXT | Field in parent table containing the repeat count | `num_people`, `num_nets` |
-| `repeat_count_source` | TEXT | Table to read the repeat count from | `household` |
 | `auto_start_repeat` | INTEGER | `0`=disabled, `1`=prompt user, `2`=force auto-start | `1` (prompt) |
 | `repeat_enforce_count` | INTEGER | `0`=flexible, `1`=warn on mismatch, `2`=force complete, `3`=auto-sync | `1` (warn) |
 
@@ -89,7 +89,7 @@ INSERT INTO crfs (
   idconfig,            -- '{"prefix":"HH","fields":[{"name":"village","length":3}],"incrementLength":3}'
   incrementfield,      -- NULL
   repeat_count_field,  -- NULL
-  repeat_count_source, -- NULL
+  entry_condition, -- NULL
   auto_start_repeat,   -- 0
   repeat_enforce_count,-- 0
   display_fields       -- NULL
@@ -127,7 +127,7 @@ INSERT INTO crfs (
   idconfig,            -- NULL
   incrementfield,      -- 'linenum'
   repeat_count_field,  -- 'num_people'
-  repeat_count_source, -- 'household'
+  entry_condition,    -- 'enrolled=1'
   auto_start_repeat,   -- 1 (prompt user)
   repeat_enforce_count,-- 1 (warn on mismatch)
   display_fields       -- 'participantsname'
@@ -165,7 +165,7 @@ INSERT INTO crfs (
   idconfig,            -- NULL
   incrementfield,      -- 'netnum'
   repeat_count_field,  -- 'num_nets'
-  repeat_count_source, -- 'household'
+  entry_condition, -- 'enrolled=1'
   auto_start_repeat,   -- 1
   repeat_enforce_count,-- 1
   display_fields       -- 'net_type,net_color'
@@ -298,12 +298,11 @@ For creating the CRFs table from a spreadsheet, use this column order:
 9. `incrementfield`
 10. `idconfig`
 11. `repeat_count_field`
-12. `repeat_count_source`
-13. `auto_start_repeat`
-14. `repeat_enforce_count`
-15. `display_fields`
+12. `auto_start_repeat`
+13. `repeat_enforce_count`
+14. `display_fields`
+15. `entry_condition`
 
-This order groups related fields together logically.
 
 ---
 
@@ -381,7 +380,6 @@ Before deploying, verify:
 
 ### **Auto-repeat not working:**
 1. Check `repeat_count_field` exists in parent table
-2. Verify `repeat_count_source` matches parent table name
 3. Ensure `auto_start_repeat` is 1 or 2
 4. Confirm parent form has the count question in XML
 

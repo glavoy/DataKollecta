@@ -1,5 +1,6 @@
 ﻿## To Do
 
+- how can we only use surveys that belong to the user - do not read from the 'zips' folder as there amy be other survyes tehre from a different user/project - should we store the downloaded projects in storage
 - remove automatic variables from the summary screen when modifying a survey
 - questions that are skipped due to skip pattern change (xxx -> NULL) do not appear in the list of changes at the end
 - in formchanges table, add the interviewer id to know who made the change

@@ -129,6 +129,14 @@ class AutoFields {
 
     final fn = _registry[key];
     if (fn == null) {
+      // If we have an existing value, we should preserve it.
+      // This supports "one-time calculated" fields like child table increment fields
+      // (e.g. structurenum) that are calculated at creation (via _calculateLineNum)
+      // but are marked as 'automatic'/'calculated' to be hidden.
+      if (hasValue) {
+        return existing.toString();
+      }
+
       // Fallback if no handler defined for this field
       final val = _defaultValueFor(q);
       answers[key] = val;

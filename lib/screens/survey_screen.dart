@@ -66,6 +66,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Set<String> _existingPrimaryKeys = {};
   List<String> _pkFields = [];
 
+  // Flag to prevent repeated calls to _skipToFirstDisplayedQuestion
+  bool _hasSkippedToFirst = false;
+
   @override
   void initState() {
     super.initState();
@@ -1056,8 +1059,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
         _loadedQuestions =
             questions; // Keep a reference to the loaded questions
 
-        // Skip automatic and information questions on initial load
-        if (_currentQuestion == 0) {
+        // Skip automatic and information questions on initial load (only once)
+        if (_currentQuestion == 0 && !_hasSkippedToFirst) {
+          _hasSkippedToFirst = true;
           WidgetsBinding.instance.addPostFrameCallback((_) async {
             await _skipToFirstDisplayedQuestion(questions);
           });
