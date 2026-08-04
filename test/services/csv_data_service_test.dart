@@ -88,4 +88,46 @@ void main() {
       expect(CsvDataService.parseCsv('mrccode,schoolname\n'), isEmpty);
     });
   });
+
+  group('quoting', () {
+    test('an embedded comma does not shift later columns', () {
+      final rows = CsvDataService.parseCsv(
+        'mrccode,schoolname,schoolcode\n'
+        '40,"St Mary\'s, Apac",21090008\n',
+      );
+
+      expect(rows.single['schoolname'], "St Mary's, Apac");
+      expect(rows.single['schoolcode'], '21090008');
+    });
+
+    test('escaped double quotes are unescaped', () {
+      // Real villages.csv contains: "BUSAMBEKO ""A"""
+      final rows = CsvDataService.parseCsv(
+        'villageid,village,mrc\n'
+        'v1,"BUSAMBEKO ""A""",Nawaikoke HCIII\n',
+      );
+
+      expect(rows.single['village'], 'BUSAMBEKO "A"');
+      expect(rows.single['mrc'], 'Nawaikoke HCIII');
+    });
+
+    test('numeric-looking values lose leading zeros', () {
+      // Long-standing behavior: the converter parses numbers, so a padded
+      // code such as '056' is read as 56. Filters compare numerically and
+      // IdGenerator re-pads, so this is documented rather than changed —
+      // altering it would make new records differ from those already
+      // collected.
+      final rows = CsvDataService.parseCsv('mrcid,villageid\n056,01\n');
+
+      expect(rows.single['mrcid'], '56');
+      expect(rows.single['villageid'], '1');
+    });
+
+    test('a short row still carries every header', () {
+      final rows = CsvDataService.parseCsv('a,b,c\n1,2\n');
+
+      expect(rows.single.keys.toList(), ['a', 'b', 'c']);
+      expect(rows.single['c'], '');
+    });
+  });
 }

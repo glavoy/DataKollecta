@@ -32,8 +32,13 @@ class CsvDataService {
   /// would remain, and every question backed by that file would silently show
   /// its empty message.
   ///
-  /// Public to allow parsing to be verified without touching the file system.
-  @visibleForTesting
+  /// Every row carries a key for every header, so callers can rely on the
+  /// column set without inspecting each row; a value missing from the end of a
+  /// short row reads as an empty string.
+  ///
+  /// This is the single CSV reader for the app: [DbService] uses it when
+  /// mirroring CSV files into SQLite, so a file behaves identically whether a
+  /// question reads it directly or through a database-backed response list.
   static List<Map<String, String>> parseCsv(String csvString) {
     final normalized =
         csvString.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -52,8 +57,8 @@ class CsvDataService {
       final row = rows[i];
       final rowMap = <String, String>{};
 
-      for (var j = 0; j < headers.length && j < row.length; j++) {
-        rowMap[headers[j]] = row[j].toString().trim();
+      for (var j = 0; j < headers.length; j++) {
+        rowMap[headers[j]] = j < row.length ? row[j].toString().trim() : '';
       }
 
       // A trailing newline yields a blank final row; it is not a real record.
