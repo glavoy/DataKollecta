@@ -21,11 +21,26 @@ class CsvDataService {
     }
 
     final csvString = await file.readAsString();
-    final rows = const CsvToListConverter().convert(csvString);
+    _csvCache[filename] = parseCsv(csvString);
+  }
+
+  /// Parses CSV text into one map per row, keyed by the header names.
+  ///
+  /// Line endings are normalized before parsing. `CsvToListConverter` does not
+  /// detect them on its own, so a file saved on Linux or macOS (LF only) would
+  /// otherwise be read as a single row; after the header was removed no data
+  /// would remain, and every question backed by that file would silently show
+  /// its empty message.
+  ///
+  /// Public to allow parsing to be verified without touching the file system.
+  @visibleForTesting
+  static List<Map<String, String>> parseCsv(String csvString) {
+    final normalized =
+        csvString.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final rows = const CsvToListConverter(eol: '\n').convert(normalized);
 
     if (rows.isEmpty) {
-      _csvCache[filename] = [];
-      return;
+      return [];
     }
 
     // First row is headers
@@ -41,10 +56,15 @@ class CsvDataService {
         rowMap[headers[j]] = row[j].toString().trim();
       }
 
+      // A trailing newline yields a blank final row; it is not a real record.
+      if (rowMap.values.every((value) => value.isEmpty)) {
+        continue;
+      }
+
       data.add(rowMap);
     }
 
-    _csvCache[filename] = data;
+    return data;
   }
 
   /// Load all CSV files referenced in questions
