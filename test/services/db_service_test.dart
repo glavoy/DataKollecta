@@ -95,4 +95,31 @@ void main() {
     expect(rows.length, 1);
     expect(rows.single['name'], 'New Village');
   });
+
+  test('CSV import preserves zero-padded codes', () async {
+    sqfliteFfiInit();
+    final database =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(database.close);
+
+    await DbService.importCsvContent(
+      database,
+      'villages',
+      'mrcid,villageid,village\n056,01,Namwiwa\n056,02,Kiganda\n',
+    );
+
+    final rows = await database.query('villages', orderBy: 'rowid');
+
+    expect(rows[0]['mrcid'], '056');
+    expect(rows[0]['villageid'], '01');
+    expect(rows[1]['villageid'], '02');
+
+    // A query written with the unpadded value still finds the row, because
+    // SQLite compares the two numerically once cast.
+    final matched = await database.rawQuery(
+      'SELECT village FROM villages WHERE CAST(mrcid AS INTEGER) = CAST(? AS INTEGER)',
+      ['56'],
+    );
+    expect(matched.length, 2);
+  });
 }

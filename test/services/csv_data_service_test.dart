@@ -111,16 +111,18 @@ void main() {
       expect(rows.single['mrc'], 'Nawaikoke HCIII');
     });
 
-    test('numeric-looking values lose leading zeros', () {
-      // Long-standing behavior: the converter parses numbers, so a padded
-      // code such as '056' is read as 56. Filters compare numerically and
-      // IdGenerator re-pads, so this is documented rather than changed —
-      // altering it would make new records differ from those already
-      // collected.
+    test('leading zeros on fixed-length codes are preserved', () {
       final rows = CsvDataService.parseCsv('mrcid,villageid\n056,01\n');
 
-      expect(rows.single['mrcid'], '56');
-      expect(rows.single['villageid'], '1');
+      expect(rows.single['mrcid'], '056');
+      expect(rows.single['villageid'], '01');
+    });
+
+    test('decimals and negatives are kept as written', () {
+      final rows = CsvDataService.parseCsv('lat,offset\n0.5,-7\n');
+
+      expect(rows.single['lat'], '0.5');
+      expect(rows.single['offset'], '-7');
     });
 
     test('a short row still carries every header', () {

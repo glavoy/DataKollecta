@@ -39,10 +39,16 @@ class CsvDataService {
   /// This is the single CSV reader for the app: [DbService] uses it when
   /// mirroring CSV files into SQLite, so a file behaves identically whether a
   /// question reads it directly or through a database-backed response list.
+  ///
+  /// Values are kept as written. Survey codes are fixed-length and often
+  /// zero-padded, so parsing them as numbers would turn `056` into `56` and
+  /// lose the padding. Filters still compare numerically where both sides look
+  /// like numbers, so padded and unpadded values continue to match.
   static List<Map<String, String>> parseCsv(String csvString) {
     final normalized =
         csvString.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    final rows = const CsvToListConverter(eol: '\n').convert(normalized);
+    final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
+        .convert(normalized);
 
     if (rows.isEmpty) {
       return [];
