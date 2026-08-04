@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 
 import '../config/app_config.dart';
 import '../models/question.dart';
+import 'csv_data_service.dart';
 import 'survey_loader.dart';
 
 class DbService {
@@ -232,72 +233,58 @@ class DbService {
   static Future<void> _importSingleCsv(Database db, File csvFile) async {
     try {
       final tableName = p.basenameWithoutExtension(csvFile.path).toLowerCase();
-      _log('Importing CSV: $tableName...');
-
       final content = await csvFile.readAsString();
-      if (content.trim().isEmpty) return;
-
-      final lines = const LineSplitter().convert(content);
-      if (lines.isEmpty) return;
-
-      // Parse header
-      final headerLine = lines.first;
-      // Split by comma, trim whitespace, and remove empty headers (handles trailing commas)
-      final headers = headerLine
-          .split(',')
-          .map((h) => _cleanCsvValue(h))
-          .where((h) => h.isNotEmpty)
-          .toList();
-
-      if (headers.isEmpty) return;
-
-      // 1. Create Table
-      // We'll treat all columns as TEXT for simplicity and flexibility
-      final buffer = StringBuffer();
-      buffer.write('CREATE TABLE IF NOT EXISTS $tableName (');
-      buffer.write(headers.map((h) => '$h TEXT').join(', '));
-      buffer.write(')');
-
-      await db.execute(buffer.toString());
-
-      // 2. Clear existing data (full refresh from CSV)
-      await db.delete(tableName);
-
-      // 3. Insert data
-      final batch = db.batch();
-
-      for (var i = 1; i < lines.length; i++) {
-        final line = lines[i];
-        if (line.trim().isEmpty) continue;
-
-        // Simple split
-        final rawValues = line.split(',');
-        final values = rawValues.map((v) => _cleanCsvValue(v)).toList();
-
-        final row = <String, dynamic>{};
-        for (var j = 0; j < headers.length; j++) {
-          if (j < values.length) {
-            row[headers[j]] = values[j];
-          } else {
-            row[headers[j]] = null;
-          }
-        }
-        batch.insert(tableName, row);
-      }
-
-      await batch.commit(noResult: true);
-      _log('Imported ${lines.length - 1} rows into $tableName');
+      await importCsvContent(db, tableName, content);
     } catch (e) {
       _logError('Failed to import CSV ${csvFile.path}: $e');
     }
   }
 
-  static String _cleanCsvValue(String value) {
-    var v = value.trim();
-    if (v.startsWith('"') && v.endsWith('"')) {
-      v = v.substring(1, v.length - 1);
+  /// Mirrors CSV content into [tableName], replacing whatever was there.
+  ///
+  /// Parsing is delegated to [CsvDataService.parseCsv] so that a file read
+  /// here behaves exactly as it does when a question reads it directly:
+  /// quoted values, embedded commas and any line ending are handled the same
+  /// way. Splitting on commas by hand would shift every column after a quoted
+  /// comma and leave escaped quotes in the stored value.
+  ///
+  /// Public to allow the import to be verified without the file system.
+  @visibleForTesting
+  static Future<void> importCsvContent(
+      Database db, String tableName, String content) async {
+    _log('Importing CSV: $tableName...');
+
+    if (content.trim().isEmpty) return;
+
+    final rows = CsvDataService.parseCsv(content);
+    if (rows.isEmpty) return;
+
+    // A trailing comma in the header line produces an unnamed column, which
+    // cannot become a SQL column; every row carries every header, so the
+    // first row is enough to establish the column set.
+    final headers = rows.first.keys.where((h) => h.isNotEmpty).toList();
+    if (headers.isEmpty) return;
+
+    // Treat all columns as TEXT for simplicity and flexibility
+    final buffer = StringBuffer();
+    buffer.write('CREATE TABLE IF NOT EXISTS $tableName (');
+    buffer.write(headers.map((h) => '$h TEXT').join(', '));
+    buffer.write(')');
+
+    await db.execute(buffer.toString());
+
+    // Clear existing data (full refresh from CSV)
+    await db.delete(tableName);
+
+    final batch = db.batch();
+    for (final row in rows) {
+      batch.insert(tableName, {
+        for (final header in headers) header: row[header] ?? '',
+      });
     }
-    return v.trim();
+
+    await batch.commit(noResult: true);
+    _log('Imported ${rows.length} rows into $tableName');
   }
 
   static Future<void> _syncCrfsTable(

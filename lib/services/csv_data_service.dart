@@ -21,11 +21,37 @@ class CsvDataService {
     }
 
     final csvString = await file.readAsString();
-    final rows = const CsvToListConverter().convert(csvString);
+    _csvCache[filename] = parseCsv(csvString);
+  }
+
+  /// Parses CSV text into one map per row, keyed by the header names.
+  ///
+  /// Line endings are normalized before parsing. `CsvToListConverter` does not
+  /// detect them on its own, so a file saved on Linux or macOS (LF only) would
+  /// otherwise be read as a single row; after the header was removed no data
+  /// would remain, and every question backed by that file would silently show
+  /// its empty message.
+  ///
+  /// Every row carries a key for every header, so callers can rely on the
+  /// column set without inspecting each row; a value missing from the end of a
+  /// short row reads as an empty string.
+  ///
+  /// This is the single CSV reader for the app: [DbService] uses it when
+  /// mirroring CSV files into SQLite, so a file behaves identically whether a
+  /// question reads it directly or through a database-backed response list.
+  ///
+  /// Values are kept as written. Survey codes are fixed-length and often
+  /// zero-padded, so parsing them as numbers would turn `056` into `56` and
+  /// lose the padding. Filters still compare numerically where both sides look
+  /// like numbers, so padded and unpadded values continue to match.
+  static List<Map<String, String>> parseCsv(String csvString) {
+    final normalized =
+        csvString.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
+        .convert(normalized);
 
     if (rows.isEmpty) {
-      _csvCache[filename] = [];
-      return;
+      return [];
     }
 
     // First row is headers
@@ -37,14 +63,19 @@ class CsvDataService {
       final row = rows[i];
       final rowMap = <String, String>{};
 
-      for (var j = 0; j < headers.length && j < row.length; j++) {
-        rowMap[headers[j]] = row[j].toString().trim();
+      for (var j = 0; j < headers.length; j++) {
+        rowMap[headers[j]] = j < row.length ? row[j].toString().trim() : '';
+      }
+
+      // A trailing newline yields a blank final row; it is not a real record.
+      if (rowMap.values.every((value) => value.isEmpty)) {
+        continue;
       }
 
       data.add(rowMap);
     }
 
-    _csvCache[filename] = data;
+    return data;
   }
 
   /// Load all CSV files referenced in questions
