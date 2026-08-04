@@ -625,9 +625,13 @@ class _QuestionViewState extends State<QuestionView> {
           child: Column(
             children: options.map(
               (opt) {
-                // Check if this is a special response option
+                // Check if this is a special response option. A CSV- or
+                // database-backed list can declare its own "Don't know" value,
+                // which takes precedence over the question-level one.
+                final dontKnowValue =
+                    q.responseConfig?.dontKnowValue ?? q.dontKnow;
                 final isDontKnow =
-                    q.dontKnow != null && opt.value == q.dontKnow;
+                    dontKnowValue != null && opt.value == dontKnowValue;
                 final isRefuse = q.refuse != null && opt.value == q.refuse;
                 final isSpecial = isDontKnow || isRefuse;
 
