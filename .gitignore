@@ -134,6 +134,9 @@ linux/flutter/ephemeral/
 
 # Geoff
 /installer_output/
+# Claude Code worktrees
+.claude/worktrees/
 
 /tmp
 tmp
+.claude/settings.local.json
