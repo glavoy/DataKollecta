@@ -1,3 +1,11 @@
+## [1.0.x+x] - 2026-08-xx
+
+### Fixed
+- **Subject ID counter accuracy:** The auto-increment portion of a generated ID (e.g. `subjid`) is now derived only from the ID field itself. Previously every column in the record was scanned, so an unrelated value that happened to share the ID's prefix and digit length could inflate the counter and cause IDs to be skipped.
+
+### Housekeeping
+- **ID generation test coverage:** Added unit tests for the subject-ID counter, covering prefix collisions with other fields, empty tables, and non-matching value formats.
+
 ## [1.0.6+5] - 2026-07-20
 
 ### Added

@@ -52,9 +52,13 @@ class IdGenerator {
   /// And answers has tabletnum = "57"
   ///
   /// This will generate: GX57001, GX57002, etc.
+  ///
+  /// [fieldName] is the field the generated ID is stored in (e.g. `subjid`).
+  /// The auto-increment counter is derived from that column alone.
   static Future<String> generateId({
     required String surveyId,
     required String tableName,
+    required String fieldName,
     required String idConfigJson,
     required Map<String, dynamic> answers,
   }) async {
@@ -98,6 +102,7 @@ class IdGenerator {
         final nextIncrement = await _getNextIncrement(
           surveyId: surveyId,
           tableName: tableName,
+          fieldName: fieldName,
           baseId: baseIdStr,
           incrementLength: config.incrementLength,
         );
@@ -115,7 +120,7 @@ class IdGenerator {
 
   /// Gets the next increment number for a given base ID
   ///
-  /// For example, if baseId = "GX57" and the database has:
+  /// For example, if fieldName = "subjid", baseId = "GX57" and the database has:
   /// - GX57001
   /// - GX57002
   ///
@@ -123,6 +128,7 @@ class IdGenerator {
   static Future<int> _getNextIncrement({
     required String surveyId,
     required String tableName,
+    required String fieldName,
     required String baseId,
     required int incrementLength,
   }) async {
@@ -130,33 +136,56 @@ class IdGenerator {
       // Get all records from the table
       final records = await DbService.getExistingRecords(surveyId, tableName);
 
-      // Find the maximum increment number for this base ID
-      int maxIncrement = 0;
-
-      for (final record in records) {
-        // Assuming the unique ID is stored in a field called 'subjid' or similar
-        // We need to check all fields to find the one that matches our pattern
-        for (final entry in record.entries) {
-          final value = entry.value?.toString();
-          if (value != null && value.startsWith(baseId)) {
-            // Extract the increment part
-            final incrementPart = value.substring(baseId.length);
-            if (incrementPart.length == incrementLength) {
-              final increment = int.tryParse(incrementPart);
-              if (increment != null && increment > maxIncrement) {
-                maxIncrement = increment;
-              }
-            }
-          }
-        }
-      }
-
-      return maxIncrement + 1;
+      return nextIncrementFrom(
+        records: records,
+        fieldName: fieldName,
+        baseId: baseId,
+        incrementLength: incrementLength,
+      );
     } catch (e) {
       debugPrint('Error getting next increment: $e');
       // If there's an error, start from 1
       return 1;
     }
+  }
+
+  /// Derives the next increment from [records] by scanning [fieldName] only.
+  ///
+  /// Only the ID column itself is scanned. Scanning every column would pick up
+  /// unrelated values that happen to share the base ID's prefix and suffix
+  /// length (e.g. a barcode or another coded field), inflating the counter and
+  /// skipping IDs.
+  ///
+  /// Public to allow counter behavior to be verified without initializing the
+  /// application's survey database registry.
+  @visibleForTesting
+  static int nextIncrementFrom({
+    required List<Map<String, dynamic>> records,
+    required String fieldName,
+    required String baseId,
+    required int incrementLength,
+  }) {
+    // getExistingRecords normalizes column names to lowercase
+    final column = fieldName.toLowerCase();
+
+    // Find the maximum increment number for this base ID
+    int maxIncrement = 0;
+
+    for (final record in records) {
+      final value = record[column]?.toString();
+      if (value != null && value.startsWith(baseId)) {
+        // Extract the increment part
+        final incrementPart = value.substring(baseId.length);
+        if (incrementPart.length == incrementLength) {
+          final increment = int.tryParse(incrementPart);
+          if (increment != null && increment > maxIncrement) {
+            maxIncrement = increment;
+          }
+        }
+      }
+    }
+
+    return maxIncrement + 1;
   }
 
   /// Validates that all required fields for ID generation are present in answers

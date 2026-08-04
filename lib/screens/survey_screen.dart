@@ -823,6 +823,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
             final generatedId = await IdGenerator.generateId(
               surveyId: surveyId,
               tableName: tableName,
+              fieldName: q.fieldName,
               idConfigJson: widget.idConfig!,
               answers: _answers,
             );
