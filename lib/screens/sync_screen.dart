@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../services/ftp_service.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../config/app_config.dart';
+import '../services/app_strings.dart';
 
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
@@ -26,6 +28,7 @@ class _SyncScreenState extends State<SyncScreen> {
   String? _downloadingFile;
   String? _statusMessage;
   String? _activeSurveyName;
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   DateTime? _lastUploadTime;
 
@@ -91,7 +94,7 @@ class _SyncScreenState extends State<SyncScreen> {
   Future<void> _checkForUpdates() async {
     setState(() {
       _isConnecting = true;
-      _statusMessage = 'Connecting to server...';
+      _statusMessage = _s.connectingToServer;
       _remoteFiles = [];
     });
 
@@ -105,9 +108,8 @@ class _SyncScreenState extends State<SyncScreen> {
           password.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content:
-                  Text('Please configure FTP credentials in Settings first.'),
+            SnackBar(
+              content: Text(_s.configureFtpFirst),
               backgroundColor: Colors.orange,
             ),
           );
@@ -117,20 +119,20 @@ class _SyncScreenState extends State<SyncScreen> {
 
       final connected = await _ftpService.connect(username, password);
       if (!connected) {
-        throw Exception('Failed to connect to FTP server.');
+        throw Exception(_s.failedToConnectFtp);
       }
 
-      setState(() => _statusMessage = 'Listing files...');
+      setState(() => _statusMessage = _s.connectingToServer);
       final files = await _ftpService.listSurveyZips();
 
       setState(() {
         _remoteFiles = files;
         _statusMessage = files.isEmpty
-            ? 'No survey zip files found in /survey/ folder.'
-            : 'Found ${files.length} surveys.';
+            ? _s.noSurveyZipsFound
+            : _s.foundSurveys(files.length);
       });
     } catch (e) {
-      setState(() => _statusMessage = 'Error: $e');
+      setState(() => _statusMessage = '${_s.error}: $e');
     } finally {
       await _ftpService.disconnect();
       if (mounted) {
@@ -151,7 +153,7 @@ class _SyncScreenState extends State<SyncScreen> {
       if (username == null || password == null) return;
 
       final connected = await _ftpService.connect(username, password);
-      if (!connected) throw Exception('Connection lost.');
+      if (!connected) throw Exception(_s.connectionLost);
 
       final file = await _ftpService.downloadSurveyZip(filename);
 
@@ -165,19 +167,19 @@ class _SyncScreenState extends State<SyncScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Downloaded $filename successfully!'),
+              content: Text(_s.downloadedSuccessfully(filename)),
               backgroundColor: Colors.green,
             ),
           );
         }
       } else {
-        throw Exception('Download failed.');
+        throw Exception(_s.downloadFailed);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error downloading $filename: $e'),
+            content: Text(_s.errorDownloading(filename, e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -226,19 +228,19 @@ class _SyncScreenState extends State<SyncScreen> {
       final surveyName = await _settingsService.activeSurvey;
 
       if (surveyorId == null || surveyName == null) {
-        throw Exception('Missing settings (Surveyor ID or Active Survey).');
+        throw Exception(_s.missingSettings);
       }
 
       // 1. Get Survey ID and DB Path
       final surveyId = await _surveyConfig.getSurveyId(surveyName);
       if (surveyId == null)
-        throw Exception('Could not find ID for survey: $surveyName');
+        throw Exception(_s.couldNotFindSurveyId(surveyName));
 
       // 2. Get credentials for THIS survey (survey-specific or falls back to global)
       final credentials =
           await _settingsService.getCredentialsForSurvey(surveyId);
       if (credentials == null) {
-        throw Exception('No credentials available for this survey.');
+        throw Exception(_s.noCredentialsForSurvey);
       }
 
       final username = credentials['username']!;
@@ -247,12 +249,12 @@ class _SyncScreenState extends State<SyncScreen> {
       // 3. Get DB Path from manifest
       final manifest = await _surveyConfig.getActiveSurveyManifest();
       if (manifest == null) {
-        throw Exception('Could not load survey manifest for: $surveyName');
+        throw Exception(_s.couldNotLoadManifest(surveyName));
       }
 
       final dbName = manifest['databaseName'] as String?;
       if (dbName == null) {
-        throw Exception('No databaseName found in manifest for: $surveyName');
+        throw Exception(_s.noDatabaseNameInManifest(surveyName));
       }
 
       final baseDir = await _surveyConfig.getSurveysDirectory();
@@ -262,7 +264,7 @@ class _SyncScreenState extends State<SyncScreen> {
       final dbFile = File(dbPath);
 
       if (!await dbFile.exists()) {
-        throw Exception('Database file not found: $dbPath');
+        throw Exception(_s.databaseFileNotFound(dbPath));
       }
 
       // 4. Create Zip
@@ -294,12 +296,12 @@ class _SyncScreenState extends State<SyncScreen> {
       // 5. Upload
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uploading data...')),
+          SnackBar(content: Text(_s.uploadingData)),
         );
       }
 
       final connected = await _ftpService.connect(username, password);
-      if (!connected) throw Exception('Connection failed.');
+      if (!connected) throw Exception(_s.connectionFailed);
 
       final uploadResult = await _ftpService.uploadFile(zipFile, zipFilename);
 
@@ -307,7 +309,7 @@ class _SyncScreenState extends State<SyncScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Uploaded $zipFilename successfully!'),
+              content: Text(_s.uploadedSuccessfully(zipFilename)),
               backgroundColor: Colors.green,
             ),
           );
@@ -326,7 +328,7 @@ class _SyncScreenState extends State<SyncScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error uploading: $e'),
+            content: Text(_s.errorUploading(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -345,7 +347,7 @@ class _SyncScreenState extends State<SyncScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sync Center'),
+        title: Text(_s.syncCenter),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -353,11 +355,11 @@ class _SyncScreenState extends State<SyncScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildSectionHeader(
-                context, 'Get New/Updated Surveys', Icons.download),
+                context, _s.getNewUpdatedSurveys, Icons.download),
             const SizedBox(height: 16),
             _buildDownloadSection(context),
             const SizedBox(height: 32),
-            _buildSectionHeader(context, 'Upload Data', Icons.upload),
+            _buildSectionHeader(context, _s.uploadData, Icons.upload),
             const SizedBox(height: 16),
             _buildUploadSection(context),
           ],
@@ -390,9 +392,9 @@ class _SyncScreenState extends State<SyncScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Connect to the server to check for new or updated survey forms.',
-              style: TextStyle(color: Colors.grey),
+            Text(
+              _s.connectToServerDescription,
+              style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
@@ -407,8 +409,7 @@ class _SyncScreenState extends State<SyncScreen> {
                       ),
                     )
                   : const Icon(Icons.refresh),
-              label:
-                  Text(_isConnecting ? 'Connecting...' : 'Check for Updates'),
+              label: Text(_isConnecting ? _s.connecting : _s.checkForUpdates),
             ),
             if (_statusMessage != null) ...[
               const SizedBox(height: 8),
@@ -466,9 +467,9 @@ class _SyncScreenState extends State<SyncScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Upload finalized records to the server.',
-              style: TextStyle(color: Colors.grey),
+            Text(
+              _s.uploadFinalizedRecords,
+              style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
@@ -484,14 +485,14 @@ class _SyncScreenState extends State<SyncScreen> {
                     )
                   : const Icon(Icons.cloud_upload),
               label: Text(_isUploading
-                  ? 'Uploading...'
-                  : 'Upload ${_activeSurveyName ?? "Data"}'),
+                  ? _s.uploading
+                  : _s.uploadSurvey(_activeSurveyName)),
             ),
             const SizedBox(height: 8),
             Text(
               _lastUploadTime != null
-                  ? 'Last local upload package: ${DateFormat('MMM d, yyyy HH:mm').format(_lastUploadTime!)}'
-                  : 'No local upload packages yet',
+                  ? '${_s.lastLocalUploadPackage}: ${DateFormat('MMM d, yyyy HH:mm').format(_lastUploadTime!)}'
+                  : _s.noUploadsYet,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey[600],

@@ -62,11 +62,11 @@ class SettingsService {
   Future<String?> get activeSurvey async => _read(_keyActiveSurvey);
 
   // Setters for settings
-  Future<void> setSurveyorId(String value) async => _write(_keysurveyorId, value);
-  Future<void> setFtpHost(String value) async => _write(_keyFtpHost, value);
-  Future<void> setFtpUsername(String value) async => _write(_keyFtpUsername, value);
-  Future<void> setFtpPassword(String value) async => _write(_keyFtpPassword, value);
-  Future<void> setActiveSurvey(String value) async => _write(_keyActiveSurvey, value);
+  Future<void> setSurveyorId(String value) => _write(_keysurveyorId, value);
+  Future<void> setFtpHost(String value) => _write(_keyFtpHost, value);
+  Future<void> setFtpUsername(String value) => _write(_keyFtpUsername, value);
+  Future<void> setFtpPassword(String value) => _write(_keyFtpPassword, value);
+  Future<void> setActiveSurvey(String value) => _write(_keyActiveSurvey, value);
 
   // Bulk save all settings
   Future<void> saveAllSettings({
@@ -87,30 +87,28 @@ class SettingsService {
 
   // Check if settings are configured
   Future<bool> isConfigured() async {
-    final surveyorId = await this.surveyorId;
-    return surveyorId != null && surveyorId.isNotEmpty;
+    final id = await surveyorId;
+    return id != null && id.isNotEmpty;
   }
 
   // Clear all settings
-  Future<void> clearAllSettings() async {
-    await _deleteAll();
-  }
+  Future<void> clearAllSettings() => _deleteAll();
 
   // Survey-specific credentials
-  Future<String?> getSurveyUsername(String surveyId) async =>
+  Future<String?> getSurveyUsername(String surveyId) =>
       _read('survey_${surveyId}_username');
 
-  Future<String?> getSurveyPassword(String surveyId) async =>
+  Future<String?> getSurveyPassword(String surveyId) =>
       _read('survey_${surveyId}_password');
 
-  Future<void> setSurveyCredentials(String surveyId, String username, String password) async {
+  Future<void> setSurveyCredentials(
+      String surveyId, String username, String password) async {
     await _write('survey_${surveyId}_username', username);
     await _write('survey_${surveyId}_password', password);
   }
 
   /// Get credentials for a survey - returns survey-specific if available, otherwise falls back to global
   Future<Map<String, String>?> getCredentialsForSurvey(String surveyId) async {
-    // Try survey-specific first
     final surveyUsername = await getSurveyUsername(surveyId);
     final surveyPassword = await getSurveyPassword(surveyId);
 
@@ -118,7 +116,6 @@ class SettingsService {
       return {'username': surveyUsername, 'password': surveyPassword};
     }
 
-    // Fall back to global credentials
     final globalUsername = await ftpUsername;
     final globalPassword = await ftpPassword;
 

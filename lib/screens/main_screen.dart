@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../config/app_config.dart';
+import '../services/app_strings.dart';
 import 'questionnaire_selector_screen.dart';
 import 'settings_screen.dart';
 import 'sync_screen.dart';
@@ -17,10 +19,10 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   final _settingsService = SettingsService();
   final _surveyConfig = SurveyConfigService();
-  // Available surveys - will be populated by scanning assets/surveys folder
   final List<String> _availableSurveys = [];
   String _surveyName = 'Select a Survey';
   bool _isLoading = true;
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   @override
   void initState() {
@@ -29,7 +31,6 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initialize() async {
-    // Initialize surveys (extract zips if needed)
     await _surveyConfig.initializeSurveys();
     await _loadAvailableSurveys();
     await _loadSurveyName();
@@ -38,8 +39,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadSurveyName() async {
     final activeSurvey = await _settingsService.activeSurvey;
 
-    // Validate that the active survey actually exists
-    String displayName = 'Select a Survey';
+    String displayName = _s.selectASurvey;
     if (activeSurvey != null && activeSurvey.isNotEmpty) {
       if (_availableSurveys.contains(activeSurvey)) {
         displayName = activeSurvey;
@@ -88,7 +88,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _changeSurvey() async {
     if (_availableSurveys.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No surveys available to select.')),
+        SnackBar(content: Text(_s.noSurveysAvailable)),
       );
       return;
     }
@@ -96,7 +96,7 @@ class _MainScreenState extends State<MainScreen> {
     await showDialog(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Select Active Survey'),
+        title: Text(_s.selectActiveSurvey),
         children: _availableSurveys.map((survey) {
           return SimpleDialogOption(
             onPressed: () async {
@@ -136,12 +136,12 @@ class _MainScreenState extends State<MainScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
-            tooltip: 'Summary Statistics',
+            tooltip: _s.tooltipStatistics,
             onPressed: () => _navigateToStatistics(context),
           ),
           IconButton(
             icon: const Icon(Icons.cloud_sync_outlined),
-            tooltip: 'Sync Center',
+            tooltip: _s.tooltipSyncCenter,
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -157,7 +157,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
+            tooltip: _s.tooltipSettings,
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -171,7 +171,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
-            tooltip: 'Exit',
+            tooltip: _s.tooltipExit,
             onPressed: () {
               exit(0);
             },
@@ -226,7 +226,7 @@ class _MainScreenState extends State<MainScreen> {
                         child: Column(
                           children: [
                             Text(
-                              'CURRENT PROJECT',
+                              _s.currentProject,
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -285,7 +285,7 @@ class _MainScreenState extends State<MainScreen> {
                       );
                     },
                     icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('New Survey'),
+                    label: Text(_s.newSurvey),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 20),
@@ -317,7 +317,7 @@ class _MainScreenState extends State<MainScreen> {
                       );
                     },
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Modify Existing Survey'),
+                    label: Text(_s.modifyExistingSurvey),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 20),
@@ -367,24 +367,18 @@ class _MainScreenState extends State<MainScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.settings, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Settings Required'),
+            const Icon(Icons.settings, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(_s.settingsRequired),
           ],
         ),
-        content: const Text(
-          'Please configure your settings before starting a survey.\n\n'
-          'You need to:\n'
-          '• Enter your Surveyor ID\n'
-          '• Enter your credentials\n'
-          '• Download/select an active survey',
-        ),
+        content: Text(_s.settingsRequiredMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(_s.cancel),
           ),
           FilledButton(
             onPressed: () async {
@@ -397,7 +391,7 @@ class _MainScreenState extends State<MainScreen> {
               );
               _loadSurveyName();
             },
-            child: const Text('Go to Settings'),
+            child: Text(_s.goToSettings),
           ),
         ],
       ),

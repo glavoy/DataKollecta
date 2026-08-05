@@ -6,6 +6,8 @@ import '../services/survey_loader.dart';
 import '../services/auto_fields.dart';
 import '../services/csv_data_service.dart';
 import '../services/database_response_service.dart';
+import '../config/app_config.dart';
+import '../services/app_strings.dart';
 
 /// Custom TextInputFormatter that converts all input to uppercase
 class UpperCaseTextFormatter extends TextInputFormatter {
@@ -179,6 +181,8 @@ class _QuestionViewState extends State<QuestionView> {
   List<QuestionOption> _dynamicOptions = [];
   final ScrollController _radioScrollController = ScrollController();
   final ScrollController _checkboxScrollController = ScrollController();
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
+
 
   String _normalizeValue(dynamic value) {
     if (value == null) return '';
@@ -470,7 +474,8 @@ class _QuestionViewState extends State<QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if ((q.text ?? '').isNotEmpty)
-          _buildSectionTitle(isWarning ? 'Warning' : 'Information'),
+          _buildSectionTitle(
+              isWarning ? _s.warningTitle : _s.informationTitle),
         Container(
           decoration: BoxDecoration(
             color: isWarning
@@ -559,8 +564,9 @@ class _QuestionViewState extends State<QuestionView> {
           keyboardType:
               isIntegerField ? TextInputType.number : TextInputType.text,
           inputFormatters: formatters,
-          decoration: const InputDecoration(
-            hintText: 'Type your answer',
+          decoration: InputDecoration(
+            hintText:
+                _s.isFrench ? 'Saisissez votre réponse' : 'Type your answer',
           ),
           onChanged: (val) {
             final old = widget.answers[q.fieldName];
@@ -578,6 +584,17 @@ class _QuestionViewState extends State<QuestionView> {
             clearLocal: () => _textController.clear()),
       ],
     );
+  }
+
+  String _specialResponseLabel(Question q, QuestionOption opt) {
+    final dontKnowValue = q.responseConfig?.dontKnowValue ?? q.dontKnow;
+    if (dontKnowValue != null && opt.value == dontKnowValue) {
+      return _s.dontKnow;
+    }
+    if (q.refuse != null && opt.value == q.refuse) {
+      return _s.refuse;
+    }
+    return opt.label;
   }
 
   Widget _buildRadio(Question q) {
@@ -625,9 +642,7 @@ class _QuestionViewState extends State<QuestionView> {
           child: Column(
             children: options.map(
               (opt) {
-                // Check if this is a special response option. A CSV- or
-                // database-backed list can declare its own "Don't know" value,
-                // which takes precedence over the question-level one.
+                // Check if this is a special response option
                 final dontKnowValue =
                     q.responseConfig?.dontKnowValue ?? q.dontKnow;
                 final isDontKnow =
@@ -640,7 +655,7 @@ class _QuestionViewState extends State<QuestionView> {
                     builder: (context) => RadioListTile<String>(
                       value: opt.value,
                       title: Text(
-                        opt.label,
+                        _specialResponseLabel(q, opt),
                         style: TextStyle(
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.black87
@@ -723,7 +738,7 @@ class _QuestionViewState extends State<QuestionView> {
               value: checked,
               dense: true,
               title: Text(
-                opt.label,
+                _specialResponseLabel(q, opt),
                 style: TextStyle(
                   color: Theme.of(context).brightness == Brightness.dark
                       ? Colors.black87
@@ -834,7 +849,7 @@ class _QuestionViewState extends State<QuestionView> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: DropdownButton<String>(
             value: dropdownValue,
-            hint: const Text('Select an option'),
+            hint: Text(_s.selectAnOption),
             isExpanded: true,
             underline: const SizedBox(),
             style: TextStyle(
@@ -934,10 +949,10 @@ class _QuestionViewState extends State<QuestionView> {
               children: [
                 Text(
                   hasSpecialResponse
-                      ? (isDontKnow ? "Don't know" : 'Refuse to answer')
+                      ? (isDontKnow ? _s.dontKnow : _s.refuse)
                       : (_selectedDate != null
                           ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                          : 'Select a date'),
+                          : _s.selectADate),
                   style: TextStyle(
                     fontSize: 16,
                     color: hasSpecialResponse
@@ -1017,10 +1032,9 @@ class _QuestionViewState extends State<QuestionView> {
       child: Row(
         children: [
           if (q.dontKnow != null)
-            buildButton("Don't know", q.dontKnow!, isDontKnow),
+            buildButton(_s.dontKnow, q.dontKnow!, isDontKnow),
           if (q.dontKnow != null && q.refuse != null) const SizedBox(width: 12),
-          if (q.refuse != null)
-            buildButton('Refuse to answer', q.refuse!, isRefuse),
+          if (q.refuse != null) buildButton(_s.refuse, q.refuse!, isRefuse),
         ],
       ),
     );
@@ -1077,7 +1091,7 @@ class _QuestionViewState extends State<QuestionView> {
                 Text(
                   _selectedDateTime != null
                       ? '${_selectedDateTime!.year}-${_selectedDateTime!.month.toString().padLeft(2, '0')}-${_selectedDateTime!.day.toString().padLeft(2, '0')} ${_selectedDateTime!.hour.toString().padLeft(2, '0')}:${_selectedDateTime!.minute.toString().padLeft(2, '0')}'
-                      : 'Select date and time',
+                      : _s.selectDateAndTime,
                   style: TextStyle(
                     fontSize: 16,
                     color:

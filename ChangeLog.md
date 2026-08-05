@@ -1,3 +1,19 @@
+## [Unreleased]
+
+### Changed
+- **One codebase for both countries.** The Burkina Faso variant was maintained on a separate `burkinafaso` branch, which silently drifted from `main` — a fix to special-response handling sat un-ported for months with no failing test to reveal it. The two are now a single branch, and the country is selected when the app is **built** rather than in Settings:
+
+  ```
+  dart run tool/build.dart apk                 # Uganda: English, FTP
+  dart run tool/build.dart apk --flavor bf     # Burkina Faso: French, SFTP
+  ```
+
+  Because the country is a compile-time constant, the Uganda build contains **no country control in Settings at all**, and nothing needs removing from the UI once the Burkina Faso study ends. Both builds keep the same application id and signing key, so either continues to update an existing installation in place.
+- **One build script for every target and platform.** `build_apk.ps1`, `build_windows.ps1` and `tool/build_macos_dmg.sh` are replaced by `tool/build.dart`, which behaves identically on macOS and Windows and handles all targets and flavors. It no longer bumps the version: both flavors of a release must carry the same version, and test builds should not consume version numbers. Run `dart run tool/update_version.dart` when cutting a release.
+
+### Housekeeping
+- **Special-response tests now cover both languages.** The widget test previously mocked the stored country setting; it now follows the build flavor, so `flutter test` and `flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"` each assert the correct language.
+
 ## [1.0.7+6] - 2026-08-05
 
 ### Added
@@ -23,6 +39,7 @@
 ## [1.0.5+4] - 2026-07-13
 
 ### Fixed
+- **French special-response labels:** For Burkina Faso, "Don't know" and "Refuse" now display in French as "Ne sait pas" and "Refuse de répondre".
 - **Vaccine coverage participant message:** Fixed the message shown when there are no "Vaccine coverage" participants so it no longer displays the technical filter text `need_vac_cov=1`.
 - **Incomplete decimal validation:** Decimal numeric fields now require a digit after the decimal separator when a decimal is entered. Values such as `120.` are blocked, while whole numbers and completed decimals such as `120`, `120.0`, and `120.5` remain valid.
 - **Special-response option layout:** "Don't know" and "Refuse" radio and checkbox options now use the full response width while keeping their distinct highlight colors, preventing awkward text wrapping in longer labels.
@@ -30,6 +47,7 @@
 ## [1.0.4+3] - 2026-07-03
 
 ### Fixed
+- **SFTP survey download hang:** Downloading a survey from the Burkina Faso server could hang indefinitely. An untracked `pubspec.lock` had silently picked up a `dartssh2` release that rewrote the SSH transport's internals; pinned back to the previously known-good `2.18.0`. Also added a 2-minute timeout to the SFTP download as a safety net against future stalls.
 - **Survey download timeout:** Added a 2-minute timeout to the FTP survey zip download, so a stalled connection now fails clearly instead of hanging indefinitely.
 
 ### Housekeeping
@@ -66,6 +84,8 @@
 First stable 1.0 release.
 
 ### Added
+- **Burkina Faso SFTP support:** Added SFTP transfers via `dartssh2`, with the server and port (2220) selected automatically, so a Burkina Faso build can use that server.
+- **French localization:** Translated the UI to French for the Burkina Faso build — error messages, placeholders, and special-response button labels.
 - **Desktop builds:** Added macOS build support and a macOS/Linux `SharedPreferences` fallback.
 - **Release signing:** Release builds are now signed from `key.properties`.
 
