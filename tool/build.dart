@@ -10,7 +10,13 @@
 ///
 /// Options:
 ///     --flavor <name>   country flavor: uganda (default) or bf
-///     --no-version-bump skip the patch-version increment
+///
+/// This does NOT touch the version. Both flavors of a release must carry the
+/// same version, and test builds should not consume version numbers — bumping
+/// here would make `apk --flavor bf` and `apk` two different versions of the
+/// same release. Bump deliberately before a release instead:
+///
+///     dart run tool/update_version.dart
 ///
 /// The flavor is passed through as --dart-define, never as a Gradle product
 /// flavor: product flavors conventionally add an applicationIdSuffix, which
@@ -40,14 +46,11 @@ Future<void> main(List<String> args) async {
   }
 
   var flavorName = 'uganda';
-  var bumpVersion = true;
   for (var i = 1; i < args.length; i++) {
     switch (args[i]) {
       case '--flavor':
         if (i + 1 >= args.length) _fail('--flavor needs a value.');
         flavorName = args[++i].toLowerCase();
-      case '--no-version-bump':
-        bumpVersion = false;
       default:
         _fail('Unknown option "${args[i]}".');
     }
@@ -63,10 +66,6 @@ Future<void> main(List<String> args) async {
     _fail('Building for macOS requires macOS and Xcode.');
   }
 
-  if (bumpVersion) {
-    _step('Updating version');
-    await _run('dart', ['run', 'tool/update_version.dart']);
-  }
   final version = _readVersion();
 
   final defines = <String>['--dart-define=GISTX_COUNTRY=${flavor.define}'];
@@ -175,6 +174,9 @@ Targets:
 
 Options:
   --flavor <name>     uganda (default) or bf
-  --no-version-bump   do not increment the patch version
+
+The version is never changed by this script; both flavors of a release must
+carry the same version. Bump it deliberately with:
+  dart run tool/update_version.dart
 ''');
 }

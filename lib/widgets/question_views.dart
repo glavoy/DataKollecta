@@ -474,9 +474,8 @@ class _QuestionViewState extends State<QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if ((q.text ?? '').isNotEmpty)
-          _buildSectionTitle(isWarning
-              ? (_s.isFrench ? 'Avertissement' : 'Warning')
-              : 'Information'),
+          _buildSectionTitle(
+              isWarning ? _s.warningTitle : _s.informationTitle),
         Container(
           decoration: BoxDecoration(
             color: isWarning

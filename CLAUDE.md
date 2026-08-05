@@ -16,9 +16,13 @@ Because `country` is a compile-time constant, `AppConfig.isFrench` and
 `AppConfig.isDefaultCountry` fold away during compilation: the Uganda build contains no
 country control in Settings at all, and neither build needs a setting to switch.
 
-There was previously a `burkinafaso` branch holding the French/SFTP variant. It silently
-drifted from `main` (a `dont_know` fix sat un-ported for months), so it was merged in and
-retired — the tag `burkinafaso-final` marks its last commit.
+The French/SFTP variant used to live on a `burkinafaso` branch, which silently drifted
+from `main` (a `dont_know` fix sat un-ported for months). It has been merged in.
+
+**`main` is the only branch to work on.** The `burkinafaso` branch is kept frozen — and
+the tag `burkinafaso-final` marks its tip — purely so an old APK can be rebuilt from it if
+a serious bug ever needs a fix on the pre-merge code. Do not commit to it; anything
+committed there will not reach `main` and the drift starts again.
 
 **Rules when touching country-specific behavior:**
 
@@ -42,16 +46,21 @@ flutter run -d windows|macos|linux|chrome                              # Uganda
 flutter run -d macos --dart-define=GISTX_COUNTRY="Burkina Faso"        # Burkina Faso
 ```
 
-Version bump + build for release. One script for every target and flavor, working the
-same way on macOS and Windows. It runs `dart run tool/update_version.dart` first, which
-auto-increments the patch version in `pubspec.yaml`:
+One build script for every target and flavor, working the same way on macOS and Windows:
 
 ```bash
 dart run tool/build.dart apk                  # Uganda        -> gistx.apk
 dart run tool/build.dart apk --flavor bf      # Burkina Faso  -> gistx-bf.apk
 dart run tool/build.dart windows              # -> build/windows/runner/Release/gistx.exe
 dart run tool/build.dart macos                # -> installer_output/GiSTX-<version>.dmg
-dart run tool/build.dart apk --no-version-bump   # rebuild without incrementing
+```
+
+The build script **never changes the version** — both flavors of a release must carry the
+same version, and test builds should not consume version numbers. Bump deliberately when
+cutting a release:
+
+```bash
+dart run tool/update_version.dart   # increments the patch version in pubspec.yaml
 ```
 
 When cutting a release, update `ChangeLog.md` (Added/Changed/Fixed/Housekeeping sections per version) alongside the version bump.

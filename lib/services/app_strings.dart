@@ -5,6 +5,12 @@ class AppStrings {
   // ── Common ───────────────────────────────────────────────────────────────
   String get error => isFrench ? 'Erreur' : 'Error';
 
+  // ── Information / warning question headers ────────────────────────────────
+  // The body text of these questions comes from the survey XML, so it is
+  // translated in the data dictionary, not here.
+  String get informationTitle => isFrench ? 'Information' : 'Information';
+  String get warningTitle => isFrench ? 'Avertissement' : 'Warning';
+
   // ── Special responses ──────────────────────────────────────────────────────
   String get dontKnow => isFrench ? 'Ne sait pas' : "Don't know";
   String get refuse => isFrench ? 'Refuse de répondre' : 'Refuse to answer';

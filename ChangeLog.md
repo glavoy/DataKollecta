@@ -9,7 +9,7 @@
   ```
 
   Because the country is a compile-time constant, the Uganda build contains **no country control in Settings at all**, and nothing needs removing from the UI once the Burkina Faso study ends. Both builds keep the same application id and signing key, so either continues to update an existing installation in place.
-- **One build script for every target and platform.** `build_apk.ps1`, `build_windows.ps1` and `tool/build_macos_dmg.sh` are replaced by `tool/build.dart`, which behaves identically on macOS and Windows and handles all targets and flavors.
+- **One build script for every target and platform.** `build_apk.ps1`, `build_windows.ps1` and `tool/build_macos_dmg.sh` are replaced by `tool/build.dart`, which behaves identically on macOS and Windows and handles all targets and flavors. It no longer bumps the version: both flavors of a release must carry the same version, and test builds should not consume version numbers. Run `dart run tool/update_version.dart` when cutting a release.
 
 ### Housekeeping
 - **Special-response tests now cover both languages.** The widget test previously mocked the stored country setting; it now follows the build flavor, so `flutter test` and `flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"` each assert the correct language.
