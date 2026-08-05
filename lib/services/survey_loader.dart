@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/foundation.dart';
 import 'package:xml/xml.dart';
+import '../config/app_config.dart';
 import '../models/question.dart';
+import 'app_strings.dart';
 
 class SurveyLoader {
   /// Load and parse a survey XML from a local File.
@@ -265,8 +268,106 @@ class SurveyLoader {
         ),
       );
     }
-    return questions;
+    return finalizeQuestions(questions);
   }
+
+  /// The end-of-survey screen the survey generator writes into every
+  /// questionnaire. Recognised by fieldname *and* exact text, so a
+  /// hand-customised message is left alone.
+  static const String endOfQuestionsField = 'end_of_questions';
+  static const String _generatedEndOfQuestionsText =
+      "Press the 'Finish' button to save the data.";
+
+  /// System variables recorded on every questionnaire, in the order they must
+  /// appear. Position matters: an automatic question is computed when
+  /// navigation reaches it, so `starttime` has to come before the first real
+  /// question and `stoptime` after the last one.
+  static const List<({String field, String fieldType})> _leadingSystemFields = [
+    (field: 'starttime', fieldType: 'datetime'),
+    (field: 'startdate', fieldType: 'date'),
+  ];
+  static const List<({String field, String fieldType})> _trailingSystemFields = [
+    (field: 'uniqueid', fieldType: 'text'),
+    (field: 'swver', fieldType: 'text'),
+    (field: 'survey_id', fieldType: 'text'),
+    (field: 'lastmod', fieldType: 'datetime'),
+    (field: 'stoptime', fieldType: 'datetime'),
+  ];
+
+  /// Fills in what every questionnaire needs but no longer has to declare.
+  ///
+  /// Adds any missing system variable, and translates the generated
+  /// end-of-survey screen. A questionnaire that already declares these — every
+  /// survey package built so far does — is left exactly as it was, so existing
+  /// zips behave identically.
+  ///
+  /// Public so the behaviour can be tested without a file on disk.
+  @visibleForTesting
+  static List<Question> finalizeQuestions(List<Question> questions) {
+    final result = List<Question>.from(questions);
+    final declared = result.map((q) => q.fieldName.toLowerCase()).toSet();
+
+    Question systemQuestion(({String field, String fieldType}) spec) => Question(
+          type: QuestionType.automatic,
+          fieldName: spec.field,
+          fieldType: spec.fieldType,
+        );
+
+    // Leading fields go in front, in order, so they record the start of the
+    // interview rather than whenever they happen to be reached.
+    for (final spec in _leadingSystemFields.reversed) {
+      if (!declared.contains(spec.field)) {
+        result.insert(0, systemQuestion(spec));
+      }
+    }
+
+    // Trailing fields go last, but still ahead of the end-of-survey screen:
+    // navigation stops on that screen, so anything after it is never computed.
+    var insertAt = result.indexWhere(
+        (q) => q.fieldName.toLowerCase() == endOfQuestionsField);
+    if (insertAt < 0) insertAt = result.length;
+    for (final spec in _trailingSystemFields) {
+      if (!declared.contains(spec.field)) {
+        result.insert(insertAt, systemQuestion(spec));
+        insertAt++;
+      }
+    }
+
+    // The generator writes this screen's text, so the app owns its wording and
+    // can show it in the right language. Custom text is never touched.
+    for (var i = 0; i < result.length; i++) {
+      final q = result[i];
+      if (q.fieldName.toLowerCase() == endOfQuestionsField &&
+          q.text?.trim() == _generatedEndOfQuestionsText) {
+        result[i] = _withText(q, const AppStrings(AppConfig.isFrench).pressFinishToSave);
+      }
+    }
+
+    return result;
+  }
+
+  static Question _withText(Question q, String text) => Question(
+        type: q.type,
+        fieldName: q.fieldName,
+        fieldType: q.fieldType,
+        text: text,
+        maxCharacters: q.maxCharacters,
+        fixedLength: q.fixedLength,
+        numericRange: q.numericRange,
+        numericCheck: q.numericCheck,
+        options: q.options,
+        responseConfig: q.responseConfig,
+        preSkips: q.preSkips,
+        postSkips: q.postSkips,
+        logicChecks: q.logicChecks,
+        dontKnow: q.dontKnow,
+        refuse: q.refuse,
+        minDate: q.minDate,
+        maxDate: q.maxDate,
+        uniqueCheck: q.uniqueCheck,
+        calculation: q.calculation,
+        mask: q.mask,
+      );
 
   static String? _sanitizeField(String? field) {
     if (field == null) return null;
@@ -496,7 +597,13 @@ QuestionType parseQuestionType(String type) {
       return QuestionType.combobox;
     case 'datetime':
       return QuestionType.datetime;
+    // All spellings of "automatic". What the question actually does is decided
+    // by its fieldname (a reserved variable), by whether it carries a
+    // calculation, or by the CRF's idconfig — never by the word used here.
     case 'automatic':
+    case 'calc':
+    case 'calculation':
+    case 'calculated':
       return QuestionType.automatic;
     default:
       return QuestionType.information;

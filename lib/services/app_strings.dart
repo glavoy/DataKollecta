@@ -11,6 +11,13 @@ class AppStrings {
   String get informationTitle => isFrench ? 'Information' : 'Information';
   String get warningTitle => isFrench ? 'Avertissement' : 'Warning';
 
+  /// Text of the end-of-survey screen, which the survey generator adds to every
+  /// questionnaire rather than the author writing it. Built from [finish] so it
+  /// always names the button the interviewer is actually looking at.
+  String get pressFinishToSave => isFrench
+      ? 'Appuyez sur le bouton « $finish » pour enregistrer les données.'
+      : "Press the '$finish' button to save the data.";
+
   // ── Special responses ──────────────────────────────────────────────────────
   String get dontKnow => isFrench ? 'Ne sait pas' : "Don't know";
   String get refuse => isFrench ? 'Refuse de répondre' : 'Refuse to answer';
