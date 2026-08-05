@@ -23,6 +23,96 @@ class UpperCaseTextFormatter extends TextInputFormatter {
   }
 }
 
+/// Custom TextInputFormatter that allows digits and a single decimal point.
+///
+/// The whole value is checked rather than the keystroke, so a paste cannot
+/// smuggle in a second point.
+class DecimalTextInputFormatter extends TextInputFormatter {
+  static final RegExp _decimal = RegExp(r'^\d*\.?\d*$');
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return _decimal.hasMatch(newValue.text) ? newValue : oldValue;
+  }
+}
+
+/// Custom TextInputFormatter for a 24-hour time, `hh:mm`.
+///
+/// The separator is inserted for the interviewer as the third digit arrives,
+/// so the only key ever pressed is a digit. Editing works on the digits rather
+/// than the displayed text, which is what makes backspacing behave: deleting
+/// the "3" of `12:34` leaves `12:3`, and deleting again leaves `12` — the
+/// separator goes with the digit it was inserted for instead of stranding a
+/// trailing colon that has to be deleted separately.
+///
+/// An edit that would not leave the start of a real time is refused outright,
+/// so `9` cannot begin an hour and `12:6` cannot begin a minute. Refusing the
+/// whole edit rather than dropping the offending digit matters on a paste:
+/// dropping would shuffle `25:00` down into `20:0`, a wrong time that looks
+/// right, where refusing leaves the field as it was. The value is therefore
+/// always the start of a real time; whether it is *complete* is a separate
+/// question, answered by the field's fixed length of 5.
+class HourMinInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    var raw = newValue.text;
+
+    // A typed separator means "the hour is finished": "9:" is 09:.
+    final separator = raw.indexOf(':');
+    if (separator == 1 && _isDigit(raw[0])) {
+      raw = '0$raw';
+    }
+
+    // Count the digits the caret sits after, so it can be put back in the
+    // same place once the separator has moved.
+    final caret = newValue.selection.end.clamp(0, raw.length);
+    var digitsBeforeCaret = 0;
+    for (var i = 0; i < caret; i++) {
+      if (_isDigit(raw[i])) digitsBeforeCaret++;
+    }
+
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (!_startsARealTime(digits)) return oldValue;
+
+    final text = digits.length > 2
+        ? '${digits.substring(0, 2)}:${digits.substring(2)}'
+        : digits;
+
+    // Never leave the caret before the separator it has just passed.
+    var offset = digitsBeforeCaret <= 2
+        ? digitsBeforeCaret
+        : digitsBeforeCaret + 1;
+    offset = offset.clamp(0, text.length);
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: offset),
+    );
+  }
+
+  static bool _isDigit(String c) => c.codeUnitAt(0) ^ 0x30 <= 9;
+
+  /// Whether these digits are the beginning of a real 24-hour time.
+  static bool _startsARealTime(String digits) {
+    if (digits.length > 4) return false;
+    if (digits.isEmpty) return true;
+    if (digits.codeUnitAt(0) > '2'.codeUnitAt(0)) return false;
+    if (digits.length >= 2 && int.parse(digits.substring(0, 2)) > 23) {
+      return false;
+    }
+    if (digits.length >= 3 && digits.codeUnitAt(2) > '5'.codeUnitAt(0)) {
+      return false;
+    }
+    return true;
+  }
+}
+
 /// Custom TextInputFormatter that applies a mask (e.g., "R21-[0-9][0-9][0-9]-[A-Z0-9][0-9A-Z][A-Z0-9][A-Z0-9]")
 class MaskedTextInputFormatter extends TextInputFormatter {
   final String mask;
@@ -524,13 +614,22 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildText(Question q) {
-    final isIntegerField = q.fieldType.toLowerCase().contains('integer');
+    final fieldType = q.fieldType.toLowerCase();
+    final isIntegerField = fieldType.contains('integer');
+    final isDecimalField = fieldType.contains('decimal');
+    final isHourMinField = fieldType == 'hourmin';
     final formatters = <TextInputFormatter>[];
     if (q.maxCharacters != null) {
       formatters.add(LengthLimitingTextInputFormatter(q.maxCharacters));
     }
-    if (isIntegerField) {
+    if (isHourMinField) {
+      formatters.add(HourMinInputFormatter());
+    } else if (isIntegerField) {
       formatters.add(FilteringTextInputFormatter.digitsOnly);
+    } else if (isDecimalField) {
+      // Digits and one decimal point; never uppercased, since there is
+      // nothing to uppercase and it would only mangle a pasted value.
+      formatters.add(DecimalTextInputFormatter());
     } else {
       if (q.mask != null) {
         formatters.add(MaskedTextInputFormatter(mask: q.mask!));
@@ -561,8 +660,13 @@ class _QuestionViewState extends State<QuestionView> {
           maxLengthEnforcement: q.maxCharacters != null
               ? MaxLengthEnforcement.enforced
               : MaxLengthEnforcement.none,
-          keyboardType:
-              isIntegerField ? TextInputType.number : TextInputType.text,
+          keyboardType: isIntegerField
+              ? TextInputType.number
+              : isDecimalField
+                  ? const TextInputType.numberWithOptions(decimal: true)
+                  : isHourMinField
+                      ? TextInputType.datetime
+                      : TextInputType.text,
           inputFormatters: formatters,
           decoration: InputDecoration(
             hintText:

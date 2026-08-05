@@ -477,17 +477,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
             ((q.dontKnow != null && raw == q.dontKnow) ||
                 (q.refuse != null && raw == q.refuse));
 
-        if (_logicError == null &&
-            q.numericCheck != null &&
-            raw.isNotEmpty &&
-            !isSpecialResponse) {
-          if (NumericValidationService.hasTrailingDecimalSeparator(raw)) {
+        if (_logicError == null && raw.isNotEmpty && !isSpecialResponse) {
+          // "12." is a number the interviewer has not finished typing. Flag it
+          // on any decimal field, not just one that also declares a range.
+          if (NumericValidationService.isIncompleteDecimal(q.fieldType, raw,
+              hasRangeCheck: q.numericCheck != null)) {
             _logicError = _s.incompleteDecimalValue;
             return;
           }
 
           final parsed = num.tryParse(raw);
-          if (parsed != null) {
+          if (q.numericCheck != null && parsed != null) {
             final nc = q.numericCheck!;
             final exceptions = (nc.otherValues ?? '')
                 .split(',')
@@ -736,11 +736,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
         if (raw.length != q.maxCharacters) return false;
       }
 
+      // A half-typed decimal blocks Next whether or not a range is declared.
+      if (NumericValidationService.isIncompleteDecimal(q.fieldType, raw,
+          hasRangeCheck: q.numericCheck != null)) {
+        return false;
+      }
+
       if (q.numericCheck != null) {
         if (raw.isEmpty) return false;
-        if (NumericValidationService.hasTrailingDecimalSeparator(raw)) {
-          return false;
-        }
 
         final parsed = num.tryParse(raw);
         if (parsed == null) return false;
