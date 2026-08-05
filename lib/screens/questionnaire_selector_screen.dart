@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/db_service.dart';
 import '../services/survey_config_service.dart';
+import '../config/app_config.dart';
+import '../services/app_strings.dart';
 import 'survey_screen.dart';
 import 'record_selector_screen.dart';
 import 'parent_id_selector_screen.dart';
@@ -54,12 +56,14 @@ class _QuestionnaireSelectorScreenState
   List<QuestionnaireInfo> _availableQuestionnaires = [];
   bool _isLoading = true;
   String? _errorMessage;
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   @override
   void initState() {
     super.initState();
     _loadAvailableQuestionnaires();
   }
+
 
   /// Loads the list of available questionnaire XML files from assets
   /// and fetches their display names from the database
@@ -74,8 +78,7 @@ class _QuestionnaireSelectorScreenState
 
       if (surveyId == null) {
         setState(() {
-          _errorMessage =
-              'No survey selected. Please configure settings first.';
+          _errorMessage = _s.noSurveySelectedConfigure;
           _isLoading = false;
         });
         return;
@@ -87,7 +90,7 @@ class _QuestionnaireSelectorScreenState
       final manifest = await surveyConfig.getActiveSurveyManifest();
       if (manifest == null) {
         setState(() {
-          _errorMessage = 'Could not load survey manifest for: $surveyId';
+          _errorMessage = _s.couldNotLoadManifest(surveyId);
           _isLoading = false;
         });
         return;
@@ -96,7 +99,7 @@ class _QuestionnaireSelectorScreenState
       final xmlFiles = manifest['xmlFiles'] as List?;
       if (xmlFiles == null || xmlFiles.isEmpty) {
         setState(() {
-          _errorMessage = 'No XML files defined in survey manifest';
+          _errorMessage = _s.noXmlFilesInManifest;
           _isLoading = false;
         });
         return;
@@ -155,7 +158,7 @@ class _QuestionnaireSelectorScreenState
       // 5. If no questionnaires found, show error
       if (_availableQuestionnaires.isEmpty) {
         setState(() {
-          _errorMessage = 'No questionnaires found for survey: $surveyId';
+          _errorMessage = _s.noQuestionnairesForSurvey(surveyId);
           _isLoading = false;
         });
         return;
@@ -170,7 +173,7 @@ class _QuestionnaireSelectorScreenState
     } catch (e) {
       debugPrint('[QuestionnaireSelector] Error: $e');
       setState(() {
-        _errorMessage = 'Error loading questionnaires: $e';
+        _errorMessage = _s.errorLoadingQuestionnaires(e);
         _isLoading = false;
       });
     }
@@ -229,11 +232,6 @@ class _QuestionnaireSelectorScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.isModifyMode
-              ? 'Select Questionnaire to Modify'
-              : 'Select Questionnaire',
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
@@ -274,7 +272,7 @@ class _QuestionnaireSelectorScreenState
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Go Back'),
+                          child: Text(_s.goBack),
                         ),
                       ],
                     ),
@@ -287,8 +285,8 @@ class _QuestionnaireSelectorScreenState
                     children: [
                       Text(
                         widget.isModifyMode
-                            ? 'Select the questionnaire you want to modify:'
-                            : 'Select the questionnaire you want to complete:',
+                            ? _s.selectQuestionnaireToModifyInstruction
+                            : _s.selectQuestionnaireInstruction,
                         style: Theme.of(context).textTheme.titleLarge,
                         textAlign: TextAlign.center,
                       ),

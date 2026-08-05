@@ -476,7 +476,7 @@ class SurveyLoader {
   static bool isWarning(String? text) {
     if (text == null) return false;
     final trimmed = text.trim().toLowerCase();
-    return trimmed.startsWith('warning');
+    return trimmed.startsWith('warning') || trimmed.startsWith('avertissement');
   }
 }
 

@@ -6,6 +6,8 @@ import '../services/db_service.dart';
 import 'survey_screen.dart';
 import '../services/survey_config_service.dart';
 import '../services/question_cache_service.dart';
+import '../config/app_config.dart';
+import '../services/app_strings.dart';
 
 /// Screen for selecting a parent ID before starting a linked questionnaire
 ///
@@ -43,6 +45,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
   String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
   List<String> _filteredIds = [];
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   /// Display-field subtitle text per linking value (e.g. participant's name)
   final Map<String, String> _subtitleByLinkingValue = {};
@@ -52,6 +55,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
     super.initState();
     _loadAvailableIds();
   }
+
 
   @override
   void dispose() {
@@ -154,10 +158,11 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
 
       if (_availableIds.isEmpty) {
         setState(() {
-          _errorMessage =
-              'No eligible ${widget.linkingField} found in ${widget.parentTable} table.\n\n'
-              '${widget.entryCondition != null ? "Note: Only records matching '${widget.entryCondition}' are shown.\n\n" : ""}'
-              'Please complete a ${widget.parentTable} questionnaire first.';
+          _errorMessage = _s.noEligibleIds(
+            widget.linkingField,
+            widget.parentTable,
+            widget.entryCondition,
+          );
           _isLoading = false;
         });
         return;
@@ -168,7 +173,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error loading IDs: $e';
+        _errorMessage = _s.errorLoadingIds(e);
         _isLoading = false;
       });
     }
@@ -314,7 +319,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
           builder: (context, snapshot) {
             if (snapshot.hasData) {
               return Text(
-                'Next ${widget.incrementField}: ${snapshot.data}',
+                _s.nextIncrement(widget.incrementField!, snapshot.data!),
                 style: TextStyle(color: Colors.grey[600]),
               );
             }
@@ -335,7 +340,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Select ${widget.linkingField.toUpperCase()}'),
+        title: Text(_s.selectFieldTitle(widget.linkingField)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -360,7 +365,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Go Back'),
+                          child: Text(_s.goBack),
                         ),
                       ],
                     ),
@@ -372,7 +377,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Select the ${widget.linkingField.toUpperCase()} for this questionnaire:',
+                        _s.selectFieldInstruction(widget.linkingField),
                         style: Theme.of(context).textTheme.titleLarge,
                         textAlign: TextAlign.center,
                       ),
@@ -381,7 +386,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
                       TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
-                          hintText: 'Search ${widget.linkingField}...',
+                          hintText: _s.searchField(widget.linkingField),
                           prefixIcon: const Icon(Icons.search),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -400,7 +405,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        '${_filteredIds.length} ${widget.linkingField}(s) available',
+                        _s.availableCount(_filteredIds.length, widget.linkingField),
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 14,
@@ -412,7 +417,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
                         child: _filteredIds.isEmpty
                             ? Center(
                                 child: Text(
-                                  'No matching ${widget.linkingField} found',
+                                  _s.noMatchingField(widget.linkingField),
                                   style: TextStyle(
                                     color: Colors.grey[600],
                                     fontSize: 16,

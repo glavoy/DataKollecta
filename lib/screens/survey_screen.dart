@@ -13,6 +13,7 @@ import '../services/survey_config_service.dart';
 import '../services/survey_navigation_service.dart';
 import '../services/csv_data_service.dart';
 import '../services/change_summary_service.dart';
+import '../services/app_strings.dart';
 import '../services/numeric_validation_service.dart';
 
 class SurveyScreen extends StatefulWidget {
@@ -59,9 +60,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
   late Future<List<Question>> _questions = _loadSurvey();
   List<Question>?
       _loadedQuestions; // Holds the questions after future completes
-  bool _isSaving = false; // Flag to prevent multiple submissions
+  bool _isSaving = false;
   String? _activeSurveyId;
   final CsvDataService _csvDataService = CsvDataService();
+  static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   // Duplicate check variables
   Set<String> _existingPrimaryKeys = {};
@@ -71,6 +73,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   void initState() {
     super.initState();
   }
+
 
   String? _logicError; // Holds the current logic check error message
 
@@ -479,7 +482,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
             raw.isNotEmpty &&
             !isSpecialResponse) {
           if (NumericValidationService.hasTrailingDecimalSeparator(raw)) {
-            _logicError = 'Please enter a digit after the decimal separator.';
+            _logicError = _s.incompleteDecimalValue;
             return;
           }
 
@@ -523,7 +526,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
             // Duplicate found!
             _showDuplicateErrorDialog(q.fieldName);
             // Don't clear the answer, but set logic error to prevent proceeding
-            _logicError = 'A record with this ID already exists.';
+            _logicError = _s.duplicateRecordMessage;
           }
         }
       }
@@ -535,13 +538,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Duplicate Record'),
-        content: Text(
-            'A record with this ID already exists. Please enter a unique ID.'),
+        title: Text(_s.duplicateRecord),
+        content: Text(_s.duplicateRecordMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text(_s.ok),
           ),
         ],
       ),
@@ -910,7 +912,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         if (snap.hasError) {
-          return Scaffold(body: Center(child: Text('Error: ${snap.error}')));
+          return Scaffold(body: Center(child: Text('${_s.error}: ${snap.error}')));
         }
 
         final questions = snap.data!;
@@ -955,18 +957,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
             toolbarHeight: 60,
             leading: IconButton(
               icon: const Icon(Icons.close),
-              tooltip: 'Cancel Interview',
+              tooltip: _s.cancelInterview,
               onPressed: () {
                 showDialog(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: const Text('Cancel Interview'),
-                    content: const Text(
-                        'Are you sure you want to cancel the interview? \n\nAll edits/modifications will be lost!'),
+                    title: Text(_s.cancelInterview),
+                    content: Text(_s.cancelInterviewMessage),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('No'),
+                        child: Text(_s.no),
                       ),
                       TextButton(
                         onPressed: () {
@@ -974,7 +975,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                           Navigator.of(context)
                               .pop(false); // Return false to indicate cancelled
                         },
-                        child: const Text('Yes'),
+                        child: Text(_s.yes),
                       ),
                     ],
                   ),
@@ -1172,7 +1173,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                             OutlinedButton.icon(
                               onPressed: _prev,
                               icon: const Icon(Icons.arrow_back),
-                              label: const Text('Previous'),
+                              label: Text(_s.previous),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 18, vertical: 14),
@@ -1190,7 +1191,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                   : null,
                               icon: Icon(
                                   isLast ? Icons.check : Icons.arrow_forward),
-                              label: Text(isLast ? 'Finish' : 'Next'),
+                              label: Text(isLast ? _s.finish : _s.next),
                               style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 18, vertical: 16),
@@ -1234,8 +1235,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
           context: context,
           barrierDismissible: false,
           builder: (_) => AlertDialog(
-            title: const Text('No Changes'),
-            content: const Text('No changes were made to this record.'),
+            title: Text(_s.noChanges),
+            content: Text(_s.noChangesMessage),
             actions: [
               TextButton(
                 onPressed: () {
@@ -1243,7 +1244,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   // Pop until we reach main screen (pop survey + record selector)
                   Navigator.of(context).popUntil((route) => route.isFirst);
                 },
-                child: const Text('OK'),
+                child: Text(_s.ok),
               )
             ],
           ),
@@ -1492,18 +1493,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text('Add $displayName Now?'),
-        content: Text(
-            'You indicated $count ${count == 1 ? 'record' : 'records'}.\n\n'
-            'Would you like to add them now?'),
+        title: Text(_s.addEntityNow(displayName)),
+        content: Text(_s.addEntityMessage(count)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Add Later'),
+            child: Text(_s.addLater),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Add Now'),
+            child: Text(_s.addNow),
           ),
         ],
       ),
@@ -1607,19 +1606,18 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text('Must Complete All $entityNamePlural'),
-        content: Text(
-            'You must add all $total $entityNamePlural.\n\nCurrently on ${entityName.toLowerCase()} $current of $total.'),
+        title: Text(_s.mustCompleteAll(entityNamePlural)),
+        content: Text(_s.mustCompleteMessage(total, entityNamePlural, entityName, current)),
         actions: [
           if (allowExit)
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Exit Anyway'),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: Text(_s.exitAnyway),
             ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continue'),
+            child: Text(_s.continueLabel),
           ),
         ],
       ),
@@ -1727,19 +1725,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Incomplete Data'),
-        content: Text(
-            'You indicated $expected ${expected == 1 ? 'record' : 'records'} for $displayName but only added $actual.\n\n'
-            'This will cause data quality issues.'),
+        title: Text(_s.incompleteData),
+        content: Text(_s.incompleteDataMessage(expected, displayName, actual)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'force'),
-            child: const Text('Exit Anyway ⚠️'),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text(_s.exitAnywayWarning),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, 'update'),
-            child: Text('Update Count to $actual'),
+            child: Text(_s.updateCountTo(actual)),
           ),
         ],
       ),
@@ -1822,10 +1818,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) => AlertDialog(
-          title: const Text('All done!'),
-          content: Text(isUpdate
-              ? 'Thanks! Record updated successfully.'
-              : 'Thanks! Answers saved successfully.'),
+          title: Text(_s.allDone),
+          content: Text(isUpdate ? _s.recordUpdatedSuccess : _s.answersSavedSuccess),
           actions: [
             TextButton(
               onPressed: () {
@@ -1839,7 +1833,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   Navigator.of(context).pop();
                 }
               },
-              child: const Text('OK'),
+              child: Text(_s.ok),
             )
           ],
         ),
@@ -1854,11 +1848,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.error_outline, color: Colors.red, size: 28),
-              SizedBox(width: 8),
-              Text('Save Failed'),
+              const Icon(Icons.error_outline, color: Colors.red, size: 28),
+              const SizedBox(width: 8),
+              Text(_s.saveFailed),
             ],
           ),
           content: SingleChildScrollView(
@@ -1866,12 +1860,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Failed to save the interview data to the database.',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                Text(
+                  _s.saveFailedMessage,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                const Text('Error details:'),
+                Text(_s.errorDetails),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -1888,12 +1882,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Please check:\n'
-                  '• Database file exists at the configured path\n'
-                  '• Table name matches the survey filename\n'
-                  '• All required columns exist in the table',
-                  style: TextStyle(fontSize: 12),
+                Text(
+                  _s.saveFailedChecklist,
+                  style: const TextStyle(fontSize: 12),
                 ),
               ],
             ),
@@ -1906,7 +1897,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                   _isSaving = false;
                 });
               },
-              child: const Text('Close'),
+              child: Text(_s.close),
             ),
           ],
         ),
@@ -1921,17 +1912,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.rate_review_outlined, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('Review Changes'),
+            const Icon(Icons.rate_review_outlined, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text(_s.reviewChanges),
           ],
         ),
         content: SizedBox(
           width: double.maxFinite,
           child: summary.isEmpty
-              ? const Text('No logical changes detected.')
+              ? Text(_s.noChangesDetected)
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: summary.length,
@@ -1989,18 +1980,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
                     final confirm = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text('Discard Changes?'),
-                        content: const Text(
-                            'Are you sure you want to discard all changes and exit? This cannot be undone.'),
+                        title: Text(_s.discardChangesTitle),
+                        content: Text(_s.discardChangesMessage),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancel'),
+                            child: Text(_s.cancel),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Discard & Exit',
-                                style: TextStyle(color: Colors.red)),
+                            child: Text(_s.discardAndExit,
+                                style: const TextStyle(color: Colors.red)),
                           ),
                         ],
                       ),
@@ -2009,16 +1999,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
                       Navigator.pop(context, 'discard');
                     }
                   },
-                  child: const Text('Discard & Exit',
-                      style: TextStyle(color: Colors.red)),
+                  child: Text(_s.discardAndExit,
+                      style: const TextStyle(color: Colors.red)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, 'back'),
-                  child: const Text('Back to Edit'),
+                  child: Text(_s.backToEdit),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, 'save'),
-                  child: const Text('Save Changes'),
+                  child: Text(_s.saveChanges),
                 ),
               ],
             ),

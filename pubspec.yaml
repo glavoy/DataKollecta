@@ -19,6 +19,9 @@ dependencies:
   csv: ^6.0.0
   archive: ^3.6.1
   ftpconnect: ^1.0.0
+  # Pinned: a later release rewrote the SSH transport's internals and made
+  # SFTP downloads hang indefinitely. See ChangeLog 1.0.4.
+  dartssh2: 2.18.0
   package_info_plus: ^8.0.0
   shared_preferences: ^2.3.2
 

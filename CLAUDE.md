@@ -2,9 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Branch context
+## Country flavors (single branch)
 
-This is the **`main` branch**: the general-purpose, **single-country, English-only** version of GiSTX. It connects to one FTP server and has no country selection or language switching. The **`burkinafaso`** branch is a fork of this app that adds a second country (Burkina Faso, over SFTP), bilingual English/French UI text, and per-country server routing — those concerns do not exist here. When porting fixes between branches, keep this in mind: `main` has no `app_strings.dart`, no `country` setting, and no `dartssh2` dependency.
+There is **one branch**. The country is chosen at **build time**, not at runtime, via
+`AppConfig.country` (`lib/config/app_config.dart`), which reads a `--dart-define`:
+
+| Build | `AppConfig.country` | Language | Server |
+|---|---|---|---|
+| default | `Uganda` | English | FTP, port 21 |
+| `--dart-define=GISTX_COUNTRY="Burkina Faso"` | `Burkina Faso` | French | SFTP, port 2220, `r21` path prefix |
+
+Because `country` is a compile-time constant, `AppConfig.isFrench` and
+`AppConfig.isDefaultCountry` fold away during compilation: the Uganda build contains no
+country control in Settings at all, and neither build needs a setting to switch.
+
+There was previously a `burkinafaso` branch holding the French/SFTP variant. It silently
+drifted from `main` (a `dont_know` fix sat un-ported for months), so it was merged in and
+retired — the tag `burkinafaso-final` marks its last commit.
+
+**Rules when touching country-specific behavior:**
+
+- Add UI strings to `lib/services/app_strings.dart` (both languages), never as literals in a widget.
+- Gate country-specific UI on `AppConfig.isDefaultCountry`, so nothing Burkina-specific appears in the Uganda build.
+- **Never use Gradle product flavors for this.** They conventionally add an `applicationIdSuffix`, which makes the second build a separate app that cannot update the first — orphaning the survey database already on the device. `--dart-define` cannot change the application id, which is why it is used here. Both flavors must keep `applicationId = "com.gistx.gistx"` and the same keystore.
 
 ## Commands
 
@@ -15,15 +35,23 @@ flutter test                    # run all tests
 flutter test test/services/db_service_test.dart   # run a single test file
 flutter test --plain-name "explicit null update"  # run a single test by name
 
-flutter run -d windows|macos|linux|chrome   # run during development
+# language-dependent widget tests must pass in both flavors
+flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"
+
+flutter run -d windows|macos|linux|chrome                              # Uganda
+flutter run -d macos --dart-define=GISTX_COUNTRY="Burkina Faso"        # Burkina Faso
 ```
 
-Version bump + build for release (each build script runs `dart run tool/update_version.dart` first, which auto-increments the patch version in `pubspec.yaml`):
+Version bump + build for release. One script for every target and flavor, working the
+same way on macOS and Windows. It runs `dart run tool/update_version.dart` first, which
+auto-increments the patch version in `pubspec.yaml`:
 
 ```bash
-./build_windows.ps1             # bump version, flutter build windows
-./build_apk.ps1                 # bump version, flutter build apk, renamed to gistx.apk
-./tool/build_macos_dmg.sh       # flutter build macos --release, packages GiSTX-<version>.dmg
+dart run tool/build.dart apk                  # Uganda        -> gistx.apk
+dart run tool/build.dart apk --flavor bf      # Burkina Faso  -> gistx-bf.apk
+dart run tool/build.dart windows              # -> build/windows/runner/Release/gistx.exe
+dart run tool/build.dart macos                # -> installer_output/GiSTX-<version>.dmg
+dart run tool/build.dart apk --no-version-bump   # rebuild without incrementing
 ```
 
 When cutting a release, update `ChangeLog.md` (Added/Changed/Fixed/Housekeeping sections per version) alongside the version bump.
