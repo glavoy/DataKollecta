@@ -278,60 +278,17 @@ class SurveyLoader {
   static const String _generatedEndOfQuestionsText =
       "Press the 'Finish' button to save the data.";
 
-  /// System variables recorded on every questionnaire, in the order they must
-  /// appear. Position matters: an automatic question is computed when
-  /// navigation reaches it, so `starttime` has to come before the first real
-  /// question and `stoptime` after the last one.
-  static const List<({String field, String fieldType})> _leadingSystemFields = [
-    (field: 'starttime', fieldType: 'datetime'),
-    (field: 'startdate', fieldType: 'date'),
-  ];
-  static const List<({String field, String fieldType})> _trailingSystemFields = [
-    (field: 'uniqueid', fieldType: 'text'),
-    (field: 'swver', fieldType: 'text'),
-    (field: 'survey_id', fieldType: 'text'),
-    (field: 'lastmod', fieldType: 'datetime'),
-    (field: 'stoptime', fieldType: 'datetime'),
-  ];
-
-  /// Fills in what every questionnaire needs but no longer has to declare.
+  /// Translates the generated end-of-survey screen.
   ///
-  /// Adds any missing system variable, and translates the generated
-  /// end-of-survey screen. A questionnaire that already declares these — every
-  /// survey package built so far does — is left exactly as it was, so existing
-  /// zips behave identically.
+  /// The survey generator supplies everything else a questionnaire needs —
+  /// including the reserved system variables, in the positions that make them
+  /// correct — so the only thing left to do here is the wording of this one
+  /// screen, which no data dictionary can author.
   ///
   /// Public so the behaviour can be tested without a file on disk.
   @visibleForTesting
   static List<Question> finalizeQuestions(List<Question> questions) {
     final result = List<Question>.from(questions);
-    final declared = result.map((q) => q.fieldName.toLowerCase()).toSet();
-
-    Question systemQuestion(({String field, String fieldType}) spec) => Question(
-          type: QuestionType.automatic,
-          fieldName: spec.field,
-          fieldType: spec.fieldType,
-        );
-
-    // Leading fields go in front, in order, so they record the start of the
-    // interview rather than whenever they happen to be reached.
-    for (final spec in _leadingSystemFields.reversed) {
-      if (!declared.contains(spec.field)) {
-        result.insert(0, systemQuestion(spec));
-      }
-    }
-
-    // Trailing fields go last, but still ahead of the end-of-survey screen:
-    // navigation stops on that screen, so anything after it is never computed.
-    var insertAt = result.indexWhere(
-        (q) => q.fieldName.toLowerCase() == endOfQuestionsField);
-    if (insertAt < 0) insertAt = result.length;
-    for (final spec in _trailingSystemFields) {
-      if (!declared.contains(spec.field)) {
-        result.insert(insertAt, systemQuestion(spec));
-        insertAt++;
-      }
-    }
 
     // The generator writes this screen's text, so the app owns its wording and
     // can show it in the right language. Custom text is never touched.

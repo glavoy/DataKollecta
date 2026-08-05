@@ -52,47 +52,9 @@ void main() {
   });
 
   group('system variables', () {
-    test('missing ones are added', () {
-      final result = SurveyLoader.finalizeQuestions([q('age')]);
-
-      for (final field in systemFields) {
-        expect(namesOf(result), contains(field));
-      }
-    });
-
-    test('starttime and startdate come before the first real question', () {
-      final names = namesOf(SurveyLoader.finalizeQuestions([q('age')]));
-
-      expect(names.indexOf('starttime'), lessThan(names.indexOf('age')));
-      expect(names.indexOf('startdate'), lessThan(names.indexOf('age')));
-      expect(names.indexOf('starttime'), lessThan(names.indexOf('startdate')));
-    });
-
-    test('stoptime comes after the last real question', () {
-      final names = namesOf(SurveyLoader.finalizeQuestions([q('age')]));
-
-      expect(names.indexOf('stoptime'), greaterThan(names.indexOf('age')));
-    });
-
-    test('trailing fields stay ahead of the end-of-survey screen', () {
-      // Navigation stops on that screen, so anything after it is never
-      // computed and would be saved empty.
-      final result = SurveyLoader.finalizeQuestions([
-        q('age'),
-        q(SurveyLoader.endOfQuestionsField, type: QuestionType.information),
-      ]);
-      final names = namesOf(result);
-      final end = names.indexOf(SurveyLoader.endOfQuestionsField);
-
-      for (final field in ['uniqueid', 'swver', 'survey_id', 'lastmod', 'stoptime']) {
-        expect(names.indexOf(field), lessThan(end),
-            reason: '$field must be reached before the final screen');
-      }
-      expect(end, names.length - 1);
-    });
-
-    test('declared ones are not duplicated', () {
-      // Every survey package built so far declares these explicitly.
+    test('the loader neither adds nor moves them', () {
+      // The survey generator writes all seven, in the positions that make them
+      // correct, so the app takes the questionnaire exactly as it finds it.
       final declared = [
         q('starttime', type: QuestionType.automatic),
         q('startdate', type: QuestionType.automatic),
@@ -104,29 +66,16 @@ void main() {
         q('stoptime', type: QuestionType.automatic),
       ];
 
-      final result = SurveyLoader.finalizeQuestions(declared);
-
-      expect(namesOf(result), namesOf(declared),
-          reason: 'an existing questionnaire must be left exactly as it was');
+      expect(namesOf(SurveyLoader.finalizeQuestions(declared)),
+          namesOf(declared));
     });
 
-    test('a partially declared questionnaire gets only what is missing', () {
-      final result = SurveyLoader.finalizeQuestions([
-        q('starttime', type: QuestionType.automatic),
-        q('age'),
-      ]);
-      final names = namesOf(result);
+    test('a questionnaire without them does not gain them', () {
+      final names = namesOf(SurveyLoader.finalizeQuestions([q('age')]));
 
-      expect(names.where((n) => n == 'starttime').length, 1);
-      expect(names, contains('stoptime'));
-    });
-
-    test('synthesized fields are automatic so they never render', () {
-      final result = SurveyLoader.finalizeQuestions([q('age')]);
-
+      expect(names, ['age']);
       for (final field in systemFields) {
-        expect(result.firstWhere((q) => q.fieldName == field).type,
-            QuestionType.automatic);
+        expect(names, isNot(contains(field)));
       }
     });
   });
