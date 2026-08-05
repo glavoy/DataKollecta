@@ -1,4 +1,4 @@
-## [1.0.x-bf+x] - 2026-08-xx
+## [1.0.7-bf+6] - 2026-08-05
 
 ### Added
 - **`in` / `not in` response filters:** Database-backed response lists now support `in` and `not in` filter operators, which treat the filter value as a comma-separated list. Combined with a `query` calculation field, this allows a question to exclude choices already used elsewhere — for example, offering only the household members who have not yet been recorded as sleeping under another net. An empty list is handled as the natural no-op (`not in` excludes nothing, `in` matches nothing), so the first record of a repeating section behaves correctly.
