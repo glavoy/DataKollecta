@@ -1187,13 +1187,25 @@ class _SurveyScreenState extends State<SurveyScreen> {
                           if (!isFirst) const SizedBox(width: 12),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: canProceed
+                              // Disabled while a save is in flight. Without
+                              // this the button stays live and gives no sign
+                              // anything is happening, which is what prompted
+                              // interviewers to press it again.
+                              onPressed: (canProceed && !_isSaving)
                                   ? () => isLast
                                       ? _showDone(context)
                                       : _next(questions)
                                   : null,
-                              icon: Icon(
-                                  isLast ? Icons.check : Icons.arrow_forward),
+                              icon: _isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : Icon(isLast
+                                      ? Icons.check
+                                      : Icons.arrow_forward),
                               label: Text(isLast ? _s.finish : _s.next),
                               style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
@@ -1217,8 +1229,22 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   void _showDone(BuildContext context) async {
-    // Prevent multiple submissions
+    // Claim the save synchronously, before the first await.
+    //
+    // Everything below this point suspends at least once, and the Finish button
+    // stays mounted while it does. Checking the flag here but setting it after
+    // an await leaves a window in which a second tap passes the check and
+    // inserts a second record: five copies of one interview reached the field
+    // that way, identical but for their save timestamp.
+    //
+    // The invariant: the flag is released on every path that does not insert a
+    // record, and stays set once one exists. That second half also stops a
+    // record being saved twice by going back, editing an answer and pressing
+    // Finish again — which is still an insert, not an update.
     if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
 
     // Get questions list for clearing skipped answers
     final questions = await _questions;
@@ -1252,6 +1278,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
             ],
           ),
         );
+        setState(() {
+          _isSaving = false;
+        });
         return;
       }
 
@@ -1269,19 +1298,24 @@ class _SurveyScreenState extends State<SurveyScreen> {
         if (result == 'discard') {
           // Exit without saving
           if (mounted) {
+            setState(() {
+              _isSaving = false;
+            });
             Navigator.of(context).popUntil((route) => route.isFirst);
           }
           return;
         } else if (result != 'save') {
-          // 'back' or null (dialog dismissed/canceled)
+          // 'back' or null (dialog dismissed/canceled). The user stays on this
+          // screen, so release the guard or Finish is dead for good.
+          if (mounted) {
+            setState(() {
+              _isSaving = false;
+            });
+          }
           return;
         }
       }
     }
-
-    setState(() {
-      _isSaving = true;
-    });
 
     // Update lastmod timestamp only when actually saving
     AutoFields.touchLastMod(_answers);
@@ -1347,13 +1381,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
       debugPrint('Save failed: $e');
     }
 
-    // Reset saving flag so user can retry if save failed
-    setState(() {
-      _isSaving = false;
-    });
-
     if (!mounted) return;
 
+    // The guard is released only when the save failed, so the user can retry.
+    // On success it stays set: the record is in the database, and the success
+    // dialog is about to pop this screen. Clearing it here would leave the
+    // Finish button live on a screen whose record has already been inserted.
     if (saveSuccessful) {
       // Check if we should start auto-repeat for child surveys (only for new records, not modifications)
       if (widget.uniqueId == null) {
