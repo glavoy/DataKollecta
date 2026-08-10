@@ -140,3 +140,4 @@ linux/flutter/ephemeral/
 /tmp
 tmp
 .claude/settings.local.json
+/zips

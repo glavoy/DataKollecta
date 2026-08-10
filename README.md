@@ -1,8 +1,26 @@
-# GiSTX — main branch
+# GiSTX
 
-This is the **general-purpose English-only** version of GiSTX. It connects to a single FTP server and displays all text in English.
+**`main` is the only branch to work on.** There was previously a separate
+`burkinafaso` branch for the French/SFTP variant; it silently drifted from
+`main` and has been merged in. The country is now chosen when the app is
+**built**, not at runtime:
 
-See the **burkinafaso** branch for the bilingual (English / French) dual-server version used for the R21 Negative study across Uganda and Burkina Faso.
+| Build | Language | Server |
+|---|---|---|
+| `dart run tool/build.dart apk` | English | FTP |
+| `dart run tool/build.dart apk --flavor bf` | French | SFTP |
+
+Both flavours share one application id and one signing key, so either can
+update an existing installation in place without losing the device's database.
+
+The `burkinafaso` branch is kept frozen — the tag `burkinafaso-final` marks its
+tip — purely so an old APK could be rebuilt from the pre-merge code if a serious
+bug ever needed fixing there. **Do not commit to it.** Anything committed there
+will not reach `main` and the drift starts again.
+
+See [md/BUILD_INSTRUCTIONS.md](md/BUILD_INSTRUCTIONS.md) for build and release
+steps. Keystore and signing instructions are deliberately **not** in this
+repository — they are kept with the keystore backup.
 
 ---
 

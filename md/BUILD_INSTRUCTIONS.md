@@ -4,25 +4,61 @@ This document provides step-by-step instructions for building GiSTX for differen
 
 ## Prerequisites
 
-- Flutter SDK (3.38.3 or later)
+- Flutter SDK (3.44 or later)
 - For Windows builds: Windows 10 or later with Visual Studio
 - For Android builds: Android Studio with Android SDK
 - For Linux builds: Linux development environment with required libraries
 - For Windows installer: Inno Setup (https://jrsoftware.org/isdl.php)
 
+## One build script for every target
+
+It behaves identically on macOS and Windows.
+
+```bash
+dart run tool/build.dart apk                  # Uganda        -> gistx.apk
+dart run tool/build.dart apk --flavor bf      # Burkina Faso  -> gistx-bf.apk
+dart run tool/build.dart windows              # -> build/windows/runner/Release/gistx.exe
+dart run tool/build.dart macos                # -> installer_output/GiSTX-<version>.dmg
+```
+
+**The country is chosen at build time, not at runtime.** `--flavor bf` compiles
+the French/SFTP variant; the default is English/FTP. Both flavours keep the same
+application id and signing key, so either updates an existing installation in
+place without losing the device's database.
+
+### Versioning
+
+**The build script never changes the version.** Both flavours of a release must
+carry the same version, and test builds should not consume version numbers.
+Bump deliberately when cutting a release, and update `ChangeLog.md` at the same
+time:
+
+```bash
+dart run tool/update_version.dart   # increments the patch version in pubspec.yaml
+```
+
+Android decides whether an APK is an update or a downgrade using the
+**`versionCode`** — the number after the `+` in `pubspec.yaml`, not the version
+name. A lower `versionCode` is rejected outright, and the only way to install it
+is to uninstall first, which deletes the survey database on that device.
+
+**The build number must only ever increase, whatever the version name does.**
+
+---
+
 ## Android APK Build
+
+Use `dart run tool/build.dart apk` (above) for anything you intend to
+distribute — it applies the release signing config and names the output per
+flavour.
+
+The raw Flutter commands below are for local experiments only.
 
 ### Debug APK (for testing)
 ```bash
 flutter build apk --debug
 ```
 Output: `build/app/outputs/flutter-apk/app-debug.apk`
-
-### Release APK (for distribution)
-```bash
-flutter build apk --release
-```
-Output: `build/app/outputs/flutter-apk/app-release.apk`
 
 ### Split APKs by ABI (smaller file sizes)
 ```bash
@@ -33,28 +69,33 @@ Output: Multiple APKs in `build/app/outputs/flutter-apk/`:
 - `app-arm64-v8a-release.apk` (64-bit ARM)
 - `app-x86_64-release.apk` (64-bit x86)
 
-### Android App Bundle (for Google Play Store)
-```bash
-flutter build appbundle --release
-```
-Output: `build/app/outputs/bundle/release/app-release.aab`
+### Signing
 
-**Note:** For release builds, you'll need to sign the APK. See Flutter's documentation on signing: https://docs.flutter.dev/deployment/android#signing-the-app
+Release builds are signed with the project keystore, configured through
+`android/key.properties`. That file and the keystore itself are gitignored and
+are **not** in this repository — the keystore, its password and the setup
+instructions are kept with the keystore backup.
+
+A release signed with a different key cannot update an installed app; the only
+way to install it is to uninstall first, which deletes the device's database.
+Never generate a replacement keystore, and never change `applicationId` (it is
+`com.gistx.gistx` for both flavours).
 
 ---
 
 ## Windows Executable Build
 
-### Build Windows Release Executable
 ```bash
-flutter build windows --release
+dart run tool/build.dart windows
 ```
-Output: `build\windows\x64\runner\Release\gistx.exe`
+Output: `build\windows\runner\Release\gistx.exe`
+
+The underlying Flutter command is `flutter build windows --release`.
 
 **Important:** The executable requires all DLL files and the `data` folder to run. The entire `Release` folder must be distributed together.
 
 ### Contents to Distribute
-When distributing the Windows executable, include all files from `build\windows\x64\runner\Release\`:
+When distributing the Windows executable, include all files from `build\windows\runner\Release\`:
 - `gistx.exe` - Main executable
 - `flutter_windows.dll` - Flutter engine
 - `flutter_secure_storage_windows_plugin.dll` - Plugin DLL
@@ -245,10 +286,11 @@ cd bundle
 
 | Platform | Command | Output Location |
 |----------|---------|----------------|
-| Android APK | `flutter build apk --release` | `build/app/outputs/flutter-apk/app-release.apk` |
-| Android Bundle | `flutter build appbundle --release` | `build/app/outputs/bundle/release/app-release.aab` |
-| Windows EXE | `flutter build windows --release` | `build\windows\x64\runner\Release\gistx.exe` |
-| Windows Installer | `ISCC.exe installer.iss` | `installer_output\GiSTX-Setup-1.0.0.exe` |
+| Android APK (Uganda) | `dart run tool/build.dart apk` | `build/app/outputs/flutter-apk/gistx.apk` |
+| Android APK (Burkina Faso) | `dart run tool/build.dart apk --flavor bf` | `build/app/outputs/flutter-apk/gistx-bf.apk` |
+| Windows EXE | `dart run tool/build.dart windows` | `build\windows\runner\Release\gistx.exe` |
+| macOS DMG | `dart run tool/build.dart macos` | `installer_output/GiSTX-<version>.dmg` |
+| Windows Installer | `ISCC.exe installer.iss` | `installer_output\GiSTX-Setup-<version>.exe` |
 | Linux Binary | `flutter build linux --release` | `build/linux/x64/release/bundle/gistx` |
 
 ---
@@ -260,7 +302,7 @@ Always rebuild before creating installers:
 ```bash
 flutter clean
 flutter pub get
-flutter build windows --release  # or apk, linux, etc.
+dart run tool/build.dart windows   # or apk, macos
 ```
 
 ### Missing Dependencies
@@ -269,9 +311,25 @@ If build fails, ensure all dependencies are installed:
 flutter doctor -v
 ```
 
-### Signing APKs for Release
-You need to create a keystore and configure signing. See:
-https://docs.flutter.dev/deployment/android#signing-the-app
+### The APK will not install over the existing app
+Two causes, both covered above:
+
+- **Signed with a different key.** The keystore must be the project one. Verify
+  with `apksigner verify --print-certs <apk>`.
+- **`versionCode` is the same or lower** than the installed build. Check the
+  number after the `+` in `pubspec.yaml`.
+
+Do **not** solve either by uninstalling the app on a device that holds real
+data — uninstalling deletes the survey database and resets the subject-ID
+counter.
+
+### Language-dependent tests
+Widget tests that assert on text must pass in both flavours:
+
+```bash
+flutter test
+flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"
+```
 
 ---
 

@@ -1,4 +1,4 @@
-## [1.0.0+7] - 2026-08-05
+## [1.1.0+7] - 2026-08-05
 
 ### Changed
 - **One codebase for both countries.** The Burkina Faso variant was maintained on a separate `burkinafaso` branch, which silently drifted from `main` — a fix to special-response handling sat un-ported for months with no failing test to reveal it. The two are now a single branch, and the country is selected when the app is **built** rather than in Settings:
