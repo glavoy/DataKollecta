@@ -278,6 +278,22 @@ class SurveyLoader {
   static const String _generatedEndOfQuestionsText =
       "Press the 'Finish' button to save the data.";
 
+  /// The out-of-range message the generator composes for every numeric
+  /// question, always in English. Matched on shape rather than rebuilt from the
+  /// parsed bounds, because the spreadsheet's `0.50` and the parsed `0.5` would
+  /// not compare equal. A message an author wrote by hand does not look like
+  /// this and is left alone.
+  static final RegExp _generatedNumericRangeMessage =
+      RegExp(r'^Number must be between .+ and .+!$');
+
+  /// Whether [message] is the generator's own wording rather than the author's.
+  ///
+  /// Unlike the end-of-survey screen, this is translated where it is shown
+  /// rather than rewritten at load time: it has a single consumer, so the
+  /// parsed questionnaire is left exactly as the XML wrote it.
+  static bool isGeneratedNumericRangeMessage(String? message) =>
+      message != null && _generatedNumericRangeMessage.hasMatch(message.trim());
+
   /// Translates the generated end-of-survey screen.
   ///
   /// The survey generator supplies everything else a questionnaire needs —

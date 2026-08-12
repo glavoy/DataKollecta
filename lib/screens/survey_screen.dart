@@ -498,8 +498,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
             if (!exceptions.contains(parsed.toString())) {
               if ((nc.minValue != null && parsed < nc.minValue!) ||
                   (nc.maxValue != null && parsed > nc.maxValue!)) {
-                _logicError = nc.message ??
-                    'Value must be between ${nc.minValue} and ${nc.maxValue}';
+                // The generator writes this sentence in English whatever the
+                // build, so the app supplies the wording. A message the author
+                // wrote is already in the dictionary's language: use it as-is.
+                final ownWording = _s.numberMustBeBetween(
+                    nc.minValue ?? '', nc.maxValue ?? '');
+                _logicError =
+                    SurveyLoader.isGeneratedNumericRangeMessage(nc.message)
+                        ? ownWording
+                        : (nc.message ?? ownWording);
               }
             }
           }
@@ -602,8 +609,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
           if (!isUnique) {
             setState(() {
-              _logicError = currentQ.uniqueCheck!.message ??
-                  'This value already exists in the database.';
+              _logicError =
+                  currentQ.uniqueCheck!.message ?? _s.valueAlreadyExists;
             });
             return;
           }

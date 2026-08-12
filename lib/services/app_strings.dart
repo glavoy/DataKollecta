@@ -335,6 +335,21 @@ class AppStrings {
   String get incompleteDecimalValue => isFrench
       ? 'Veuillez entrer un chiffre après le séparateur décimal.'
       : 'Please enter a digit after the decimal separator.';
+
+  /// Out-of-range message for a numeric question.
+  ///
+  /// The survey generator composes this sentence itself from the range columns
+  /// and writes it into every questionnaire, in English, because it has no way
+  /// to know which build will read the file. So the app owns the wording, the
+  /// same way it owns the end-of-survey screen. The English form here is
+  /// deliberately byte-identical to the generated one.
+  String numberMustBeBetween(Object min, Object max) => isFrench
+      ? 'Le nombre doit être compris entre $min et $max !'
+      : 'Number must be between $min and $max!';
+
+  String get valueAlreadyExists => isFrench
+      ? 'Cette valeur existe déjà dans la base de données.'
+      : 'This value already exists in the database.';
   String get noChanges => isFrench ? 'Aucune Modification' : 'No Changes';
   String get noChangesMessage => isFrench
       ? "Aucune modification n'a été apportée à cet enregistrement."

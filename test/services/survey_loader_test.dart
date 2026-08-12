@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:GiSTX/config/app_config.dart';
 import 'package:GiSTX/models/question.dart';
+import 'package:GiSTX/services/app_strings.dart';
 import 'package:GiSTX/services/survey_loader.dart';
 
 /// Run under both flavors to cover the end-of-survey wording:
@@ -120,6 +121,72 @@ void main() {
 
       expect(namesOf(result),
           isNot(contains(SurveyLoader.endOfQuestionsField)));
+    });
+  });
+
+  group('numeric range message', () {
+    // The generator composes this sentence from the range columns and writes
+    // it in English into every questionnaire, French ones included. The app
+    // recognises its own wording so it can show the right language, and leaves
+    // anything an author wrote alone.
+
+    test('the generated wording is recognised', () {
+      // Every distinct message in the live Burkina Faso package.
+      const generated = [
+        'Number must be between 100 and 999!',
+        'Number must be between 0 and 999999!',
+        'Number must be between 1 and 4!',
+        'Number must be between 50 and 300!',
+        'Number must be between 3 and 99!',
+        'Number must be between 0 and 99999999!',
+      ];
+
+      for (final message in generated) {
+        expect(SurveyLoader.isGeneratedNumericRangeMessage(message), isTrue,
+            reason: message);
+      }
+    });
+
+    test('a decimal range is recognised', () {
+      // Matched on shape, so a spreadsheet's '0.50' is caught even though the
+      // parsed bound would render as '0.5'.
+      expect(
+          SurveyLoader.isGeneratedNumericRangeMessage(
+              'Number must be between 0.50 and 12.75!'),
+          isTrue);
+    });
+
+    test('a message an author wrote is left alone', () {
+      for (final message in [
+        'Le nombre doit être compris entre 100 et 999 !',
+        'Weight looks implausible — please re-measure.',
+        'Number must be between 1 and 4',   // no exclamation mark
+      ]) {
+        expect(SurveyLoader.isGeneratedNumericRangeMessage(message), isFalse,
+            reason: message);
+      }
+    });
+
+    test('a missing message is not mistaken for generated wording', () {
+      expect(SurveyLoader.isGeneratedNumericRangeMessage(null), isFalse);
+    });
+
+    test('the replacement follows the build language', () {
+      const s = AppStrings(AppConfig.isFrench);
+
+      if (AppConfig.isFrench) {
+        expect(s.numberMustBeBetween(100, 999),
+            'Le nombre doit être compris entre 100 et 999 !');
+      } else {
+        // Byte-identical to what the generator writes, so the English build
+        // shows exactly what it always did.
+        expect(s.numberMustBeBetween(100, 999),
+            'Number must be between 100 and 999!');
+        expect(
+            SurveyLoader.isGeneratedNumericRangeMessage(
+                s.numberMustBeBetween(100, 999)),
+            isTrue);
+      }
     });
   });
 
