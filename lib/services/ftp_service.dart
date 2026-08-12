@@ -67,11 +67,27 @@ class FtpService {
   String _pathPrefix = '';
   bool get _usesSftp => _sftpClient != null;
 
-  /// Server for the country this build was compiled for.
-  static ({String host, int port, String pathPrefix}) _countryConfig(
-      String country) {
+  /// Accounts whose files do not sit at the usual depth. The test account's
+  /// home directory holds a copy of the production layout one level down, and
+  /// neither folder can be renamed on our side.
+  ///
+  /// A prefix with a slash in it only works over SFTP, which builds absolute
+  /// paths. The FTP branch below walks the prefix as a single changeDirectory
+  /// hop, so teach it to walk segments before adding an entry for a build that
+  /// uses FTP.
+  static const Map<String, String> _burkinaPathPrefix = {
+    'r21_test': 'r21_test/r21',
+  };
+
+  /// Server and folder for a login on the country this build was compiled for.
+  static ({String host, int port, String pathPrefix}) _serverConfig(
+      String country, String username) {
     if (country == 'Burkina Faso') {
-      return (host: 'ftp.crundata.net', port: 2220, pathPrefix: 'r21');
+      return (
+        host: 'ftp.crundata.net',
+        port: 2220,
+        pathPrefix: _burkinaPathPrefix[username] ?? 'r21',
+      );
     }
     return (host: '0f7a55b.netsolhost.com', port: 21, pathPrefix: '');
   }
@@ -82,8 +98,10 @@ class FtpService {
   /// Connect to the server (SFTP for Burkina Faso, FTP for Uganda)
   Future<bool> connect(String username, String password) async {
     const country = AppConfig.country;
-    final config = _countryConfig(country);
+    final config = _serverConfig(country, username);
     _pathPrefix = config.pathPrefix;
+    debugPrint(
+        '[FtpService] $username -> ${_pathPrefix.isEmpty ? '/' : '/$_pathPrefix'}');
 
     if (country == 'Burkina Faso') {
       try {
