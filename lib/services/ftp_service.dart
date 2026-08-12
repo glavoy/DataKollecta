@@ -6,6 +6,10 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../config/app_config.dart';
+import 'app_strings.dart';
+
+/// Wording for the messages an interviewer sees when a sync fails.
+const AppStrings _s = AppStrings(AppConfig.isFrench);
 
 enum FtpUploadStage {
   changeDirectory,
@@ -50,7 +54,7 @@ class FtpUploadResult {
 
   String get failureMessage {
     if (success) return message;
-    return 'Upload failed during ${stage.label}: $message';
+    return _s.uploadFailedAtStage(stage.label, message);
   }
 }
 
@@ -251,7 +255,7 @@ class FtpService {
         remoteFilename: remoteFilename,
         localBytes: localBytes,
         remoteBytes: null,
-        message: 'Not connected to FTP server.',
+        message: _s.notConnectedToServer,
       );
     }
 
@@ -267,7 +271,7 @@ class FtpService {
             remoteFilename: remoteFilename,
             localBytes: localBytes,
             remoteBytes: null,
-            message: 'Cannot access /$_pathPrefix on the FTP server.',
+            message: _s.cannotAccessDirectory('/$_pathPrefix'),
           );
         }
       }
@@ -281,7 +285,7 @@ class FtpService {
           remoteFilename: remoteFilename,
           localBytes: localBytes,
           remoteBytes: null,
-          message: 'Cannot access $remoteDirectory on the FTP server.',
+          message: _s.cannotAccessDirectory(remoteDirectory),
         );
       }
 
@@ -372,7 +376,7 @@ class FtpService {
           remoteFilename: remoteFilename,
           localBytes: localBytes,
           remoteBytes: null,
-          message: '$remoteFilename was not found in $remoteDirectory.',
+          message: _s.fileNotFoundInDirectory(remoteFilename, remoteDirectory),
         );
       }
       if (remoteBytes != localBytes) {
@@ -383,8 +387,8 @@ class FtpService {
           remoteFilename: remoteFilename,
           localBytes: localBytes,
           remoteBytes: remoteBytes,
-          message:
-              '$remoteFilename exists in $remoteDirectory but is $remoteBytes bytes; expected $localBytes bytes.',
+          message: _s.fileSizeMismatch(
+              remoteFilename, remoteDirectory, remoteBytes, localBytes),
         );
       }
       debugPrint('[FtpService] SFTP verified upload: $remotePath ($remoteBytes bytes)');
@@ -446,7 +450,7 @@ class FtpService {
         remoteFilename: remoteFilename,
         localBytes: localBytes,
         remoteBytes: null,
-        message: '$remoteFilename was not found in $remoteDirectory.',
+        message: _s.fileNotFoundInDirectory(remoteFilename, remoteDirectory),
       );
     }
 

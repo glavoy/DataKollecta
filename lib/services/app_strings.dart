@@ -130,6 +130,31 @@ class AppStrings {
   String get failedToConnectFtp => isFrench
       ? 'Impossible de se connecter au serveur FTP.'
       : 'Failed to connect to FTP server.';
+
+  // ── Upload diagnostics ─────────────────────────────────────────────────────
+  // These reach the interviewer through errorUploading when a sync fails, so
+  // the prose is translated. The stage name it is paired with — changeDirectory,
+  // verifySize — deliberately stays in English: it names a step in the code,
+  // and keeping it stable is what makes a photographed error report useful.
+  String uploadFailedAtStage(String stage, String message) => isFrench
+      ? "Échec du téléversement à l'étape $stage : $message"
+      : 'Upload failed during $stage: $message';
+  String get notConnectedToServer => isFrench
+      ? 'Non connecté au serveur FTP.'
+      : 'Not connected to FTP server.';
+  String cannotAccessDirectory(String directory) => isFrench
+      ? "Impossible d'accéder à $directory sur le serveur FTP."
+      : 'Cannot access $directory on the FTP server.';
+  String fileNotFoundInDirectory(String filename, String directory) => isFrench
+      ? '$filename est introuvable dans $directory.'
+      : '$filename was not found in $directory.';
+  String fileSizeMismatch(
+          String filename, String directory, Object remote, Object local) =>
+      isFrench
+          ? '$filename existe dans $directory mais fait $remote octets ; '
+              '$local octets étaient attendus.'
+          : '$filename exists in $directory but is $remote bytes; '
+              'expected $local bytes.';
   String get connectionLost =>
       isFrench ? 'Connexion perdue.' : 'Connection lost.';
   String get downloadFailed =>
