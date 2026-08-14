@@ -18,6 +18,20 @@ tip — purely so an old APK could be rebuilt from the pre-merge code if a serio
 bug ever needed fixing there. **Do not commit to it.** Anything committed there
 will not reach `main` and the drift starts again.
 
+This same codebase also builds a second product, **DataKollecta** — same survey
+engine, a different sync backend (Supabase/HTTP with incremental upload instead
+of FTP/SFTP). It's a separate, independent build axis from the country flavors
+above: country never changes which app you get, product always does.
+
+| Build | Product | Sync |
+|---|---|---|
+| `dart run tool/build.dart apk` | GiSTX | FTP/SFTP |
+| `dart run tool/build.dart apk --product datakollecta` | DataKollecta | Supabase/HTTP |
+
+The two products have separate application ids and separate signing keys, so
+they install side by side rather than updating each other. See CLAUDE.md's
+"Product flavors" section for how the build mechanism works.
+
 See [md/BUILD_INSTRUCTIONS.md](md/BUILD_INSTRUCTIONS.md) for build and release
 steps. Keystore and signing instructions are deliberately **not** in this
 repository — they are kept with the keystore backup.

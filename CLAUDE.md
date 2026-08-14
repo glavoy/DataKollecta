@@ -30,6 +30,61 @@ committed there will not reach `main` and the drift starts again.
 - Gate country-specific UI on `AppConfig.isDefaultCountry`, so nothing Burkina-specific appears in the Uganda build.
 - **Never use Gradle product flavors for this.** They conventionally add an `applicationIdSuffix`, which makes the second build a separate app that cannot update the first — orphaning the survey database already on the device. `--dart-define` cannot change the application id, which is why it is used here. Both flavors must keep `applicationId = "com.gistx.gistx"` and the same keystore.
 
+## Product flavors: GiSTX vs DataKollecta (two independent axes)
+
+GiSTX ships as two separate products from this one codebase: **GiSTX** (FTP/SFTP sync, the
+axis described above) and **DataKollecta** (Supabase/HTTP sync). This is a second,
+independent build axis from *country* — the two must never be conflated:
+
+| Axis | Changes app identity? | Compile-time constant | Values |
+|---|---|---|---|
+| Country | No — same app, different market | `AppConfig.country` | `Uganda` (default), `Burkina Faso` |
+| Product | **Yes** — separate apps | `AppConfig.product` | `gistx` (default), `datakollecta` |
+
+`country` must never change `applicationId`, the keystore, or the storage folder, because
+Uganda and Burkina Faso are two markets for *one* app that must be able to update itself in
+place. `product` must always change those things — GiSTX and DataKollecta are meant to
+install side by side as separate apps, not update each other — which is exactly why the
+country axis is forbidden from using Gradle product flavors but the product axis needs
+something with equivalent effect. See `AppConfig.isDataKollecta` / `AppConfig.storageFolder`
+/ `AppConfig.appName` / `AppConfig.brandingAsset` in `lib/config/app_config.dart` — all fold
+away at compile time via `String.fromEnvironment('APP_PRODUCT', ...)`, so a GiSTX build
+carries no HTTP/Supabase code and a DataKollecta build carries no FTP/SFTP code.
+
+DataKollecta never sets `GISTX_COUNTRY` — it always builds as the unflavored default
+(Uganda/English), which is why `AppConfig.isFrench` and its French strings are unreachable
+in a DataKollecta build. It has its own `applicationId` (`com.datakollecta.datakollecta`)
+and its own signing key (`android/key-datakollecta.properties`, gitignored like
+`key.properties`), so the two products carry independent signing certificates.
+
+**The product axis is driven by generated per-product config files, not Gradle flavors
+either** — flavors would force `--flavor` onto every Android command permanently, and
+Windows has no flavor concept at all. `tool/build.dart` copies
+`tool/product/<platform>/<product>.*` over four native project files immediately before
+each build, then restores them to their committed GiSTX-default content in a `finally`
+block once the build finishes (success or failure):
+
+| Generated file | Platform | Read by |
+|---|---|---|
+| `android/product.properties` | Android | `android/app/build.gradle.kts` (applicationId, signing file, app label, launcher icon dir) |
+| `windows/product.cmake` | Windows | `windows/CMakeLists.txt` (`BINARY_NAME`, via `include()` so CMake reconfigures automatically) |
+| `windows/runner/product_strings.h` | Windows | `main.cpp` (window title) and `Runner.rc` (the six `StringFileInfo` values) |
+| `macos/Runner/Configs/AppInfo.xcconfig` | macOS | Already Xcode's single source of truth for `PRODUCT_NAME`/`PRODUCT_BUNDLE_IDENTIFIER`/`PRODUCT_COPYRIGHT`; this generated file *is* that file, not a separate indirection |
+
+**Never hand-edit any of those four files directly** — edit the matching template under
+`tool/product/` instead. Their committed content in the repo is always the GiSTX product, so
+a fresh checkout or a build that skipped the tool stays buildable, and `git status` stays
+clean between builds.
+
+```bash
+dart run tool/build.dart apk                            # GiSTX Uganda       -> gistx.apk
+dart run tool/build.dart apk --flavor bf                # GiSTX Burkina Faso -> gistx-bf.apk
+dart run tool/build.dart apk --product datakollecta      # DataKollecta       -> datakollecta.apk
+```
+
+`--flavor` is rejected for a product that doesn't vary by country (checked in
+`tool/build.dart`, not just documented).
+
 ## Commands
 
 ```bash
@@ -39,20 +94,25 @@ flutter test                    # run all tests
 flutter test test/services/db_service_test.dart   # run a single test file
 flutter test --plain-name "explicit null update"  # run a single test by name
 
-# language-dependent widget tests must pass in both flavors
+# language-dependent widget tests must pass in both flavors, and the DataKollecta
+# product axis must pass its own suite (see "Product flavors" above)
 flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"
+flutter test --dart-define=APP_PRODUCT=datakollecta
 
-flutter run -d windows|macos|linux|chrome                              # Uganda
-flutter run -d macos --dart-define=GISTX_COUNTRY="Burkina Faso"        # Burkina Faso
+flutter run -d windows|macos|linux|chrome                              # GiSTX Uganda
+flutter run -d macos --dart-define=GISTX_COUNTRY="Burkina Faso"        # GiSTX Burkina Faso
+flutter run -d macos --dart-define=APP_PRODUCT=datakollecta            # DataKollecta
 ```
 
-One build script for every target and flavor, working the same way on macOS and Windows:
+One build script for every target, product, and flavor, working the same way on macOS and
+Windows:
 
 ```bash
-dart run tool/build.dart apk                  # Uganda        -> gistx.apk
-dart run tool/build.dart apk --flavor bf      # Burkina Faso  -> gistx-bf.apk
-dart run tool/build.dart windows              # -> build/windows/runner/Release/gistx.exe
-dart run tool/build.dart macos                # -> installer_output/GiSTX-<version>.dmg
+dart run tool/build.dart apk                            # GiSTX Uganda       -> gistx.apk
+dart run tool/build.dart apk --flavor bf                # GiSTX Burkina Faso -> gistx-bf.apk
+dart run tool/build.dart apk --product datakollecta      # DataKollecta       -> datakollecta.apk
+dart run tool/build.dart windows                         # -> build/windows/runner/Release/gistx.exe
+dart run tool/build.dart macos                           # -> installer_output/GiSTX-<version>.dmg
 ```
 
 The build script **never changes the version** — both flavors of a release must carry the
@@ -102,9 +162,19 @@ GiSTX is an offline-first Flutter survey/data-collection app. Surveys are define
 6. `question_views.dart` renders each `QuestionType` (text/radio/checkbox/combobox/date/datetime/information/automatic); dynamic response lists come from `DatabaseResponseService` (DB-backed, with placeholder-expanded filters) or `csv_data_service.dart` (CSV-backed).
 7. On completion, skipped-question answers are cleared, IDs are generated if configured, `lastmod` is touched only on an actual save, and the record is written via `DbService.saveInterview` / `updateInterview`.
 
-### Sync (`FtpService`, `sync_screen.dart`)
+### Sync: two backends, selected by product
 
-Transfers survey data files to/from a single remote FTP server via `ftpconnect`. Credentials can be global (`SettingsService.ftpHost/Username/Password`) or per-survey (`getCredentialsForSurvey`, falling back to global). `SettingsService` stores secrets via `flutter_secure_storage`, except on macOS/Linux where it falls back to `shared_preferences` (keychain entitlements conflict with local ad-hoc code signing there).
+`SettingsService` stores secrets via `flutter_secure_storage`, except on macOS/Linux where it falls back to `shared_preferences` (keychain entitlements conflict with local ad-hoc code signing there).
+
+**GiSTX — `FtpService`, `sync_screen.dart`.** Transfers survey data files to/from a single remote FTP server via `ftpconnect` (SFTP via `dartssh2` for the Burkina Faso flavor). Credentials can be global (`SettingsService.ftpHost/Username/Password`) or per-survey (`getCredentialsForSurvey`, falling back to global). Upload zips the whole SQLite database and PUTs one blob.
+
+**DataKollecta — `lib/services/sync/`, `sync_screen_http.dart`.** Talks to two deployed Supabase edge functions (`app-login`, `app-sync`) plus signed-URL downloads. Upload is incremental and per-record, not a whole-database blob: `RecordUploader` walks unsynced rows in batches via a strictly-monotonic SQLite `rowid` cursor, so a batch that fails is never re-fetched forever (a real defect found and fixed when porting from an earlier, unmerged reference implementation of this backend). `ApiClient` is the HTTP transport (never logs request/response bodies — only method/host/status/counts); `DeviceIdentity` gives every platform a real, stable `device_id` (never the literal string `'unknown'`); `HttpSyncBackend` ties them together and additionally exposes `uploadPending()`/`countPending()`, which are not part of the shared seam below.
+
+**The shared seam — `sync_backend.dart`.** `SyncBackend` covers **download only** (`connect`/`listSurveys`/`downloadSurvey`/`disconnect`); `createSyncBackend()` selects `FtpSyncBackend` or `HttpSyncBackend` based on `AppConfig.isDataKollecta`. Upload is deliberately **not** unified — FTP ships one whole-database zip, HTTP ships incrementally-acknowledged batches, and forcing both behind one `Future<void> upload()` would hide that difference rather than abstract it. Each product's sync screen calls its own upload path directly, which is also why `sync_screen.dart` (FTP) and `sync_screen_http.dart` (DataKollecta) are two separate files rather than one with branches threaded through — they share almost no state, and `sync_screen.dart` is live production code for Burkina Faso that a new sibling file cannot regress.
+
+Failures from the HTTP backend are a sealed `SyncException` family (`SyncConnectionException`/`SyncAuthException`/`SyncTransferException`), so a call site exhaustively `switch`es into a user-facing message instead of sniffing exception text.
+
+New DataKollecta-only UI copy lives in `app_strings_http_sync.dart` (`HttpSyncStrings`, English-only, with its reasoning documented inline) rather than `app_strings.dart` — DataKollecta never sets `GISTX_COUNTRY`, so French copy for it would be unreachable code.
 
 ### Key services reference
 
@@ -124,9 +194,18 @@ Transfers survey data files to/from a single remote FTP server via `ftpconnect`.
 | `survey_navigation_service.dart` | Navigation helpers shared with `SurveyScreen` |
 | `settings_service.dart` | Secure/prefs-backed credentials and app settings |
 | `theme_service.dart` | Light/dark theme state |
+| `ftp_service.dart` | FTP/SFTP transport for the GiSTX product (unchanged since the sync-backend seam was added) |
+| `sync/sync_backend.dart` | The download-only `SyncBackend` seam, `SyncException` family, `createSyncBackend()` |
+| `sync/ftp_sync_backend.dart` | Thin `SyncBackend` adapter over `FtpService` |
+| `sync/http_sync_backend.dart` | `SyncBackend` adapter over `ApiClient` for DataKollecta; also owns `uploadPending()`/`countPending()` |
+| `sync/api_client.dart` | HTTP transport for the deployed Supabase `app-login`/`app-sync` edge functions and signed-URL downloads |
+| `sync/record_uploader.dart` | Batched, cursor-based record upload for DataKollecta with a bounded-retry circuit breaker |
+| `sync/device_identity.dart` | Per-platform stable `device_id`, with a persisted-UUID fallback |
+| `app_strings_http_sync.dart` | English-only UI copy for DataKollecta's HTTP sync screen |
 
 ### Platform-specific notes
 
 - Desktop (Windows/Linux/macOS) uses `sqflite_common_ffi`; mobile uses native `sqflite`. Any DB code must work under both.
-- File-system base directories differ per platform (see `SurveyConfigService._getBaseDir()` and the equivalent logic in `DbService`/`FtpService`) — Android uses external storage, Windows uses `%LOCALAPPDATA%`, macOS/Linux use application support dir.
+- File-system base directories differ per platform (see `SurveyConfigService._getBaseDir()` and the equivalent logic in `DbService`/`FtpService`) — Android uses external storage, Windows uses `%LOCALAPPDATA%`, macOS/Linux use application support dir. The path segment under that base dir is `AppConfig.storageFolder` (`'GiSTX'` or `'DataKollecta'`) — per-product, never per-country, since the two country flavors share one storage folder on purpose.
 - macOS keychain entitlements conflict with local ad-hoc signing, hence the `shared_preferences` fallback in `SettingsService` for macOS/Linux.
+- The four generated build-config files (see "Product flavors" above) are native project files, not Dart — they aren't covered by `flutter analyze`/`flutter test`. Verify a product's build directly (`dart run tool/build.dart apk --product datakollecta`, etc.) rather than assuming the Dart test suite catches a mistake in them.

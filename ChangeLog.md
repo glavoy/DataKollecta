@@ -1,5 +1,25 @@
 ## [1.1.x+8] - 2026-xx-xx
 
+### Added
+- **DataKollecta: a second product built from this same codebase.** The survey engine — XML parsing, skip/logic/calculation, ID generation, the SQLite schema — is identical; only the sync backend differs. GiSTX keeps FTP/SFTP; DataKollecta talks to a Supabase project over HTTP, with incremental per-record upload instead of one whole-database zip. Selected at build time with a new `--product` flag alongside the existing country `--flavor`:
+
+  ```bash
+  dart run tool/build.dart apk                          # GiSTX (default)
+  dart run tool/build.dart apk --product datakollecta    # DataKollecta
+  ```
+
+  The two products have separate application ids (`com.gistx.gistx` /
+  `com.datakollecta.datakollecta`) and separate signing keys, so they install
+  side by side rather than updating each other — see `CLAUDE.md`'s "Product
+  flavors" section. DataKollecta ported forward from an earlier, unmerged
+  implementation that had drifted behind this codebase's engine fixes; several
+  real defects in that implementation were fixed along the way, including a
+  password and full record data being logged in plaintext, no timeout on any
+  HTTP call, an infinite-retry bug where a failed upload batch was silently
+  re-sent forever instead of the run ever completing, and every non-Android/
+  Windows device reporting the same placeholder `device_id`.
+- **`formchanges` gained `changeuniqueid`, `surveyor_id` and `synced_at`** (both products, additive via `ALTER TABLE`), and survey/CRF tables gained `synced_at`. Editing a previously-synced record now clears its `synced_at`, so the correction is picked up by the next DataKollecta sync instead of only the original value ever reaching the server.
+
 ### Fixed
 - **A calculation could not correctly compare a checkbox field.** A checkbox answer is stored internally as a list of the selected values, and a calculation read it with Dart's default list formatting — `[1, 3]`, brackets included — instead of the comma-joined form skip conditions already use. So a `case` calculation's `when:` condition, a `lookup`, or a SQL query parameter reading a checkbox field never matched the way its literal suggested: `when:screen_cab_drug2 != 99` was true even when `99` was the only thing selected, because `"[99]"` is never equal to `"99"`. Depending on where the condition sat in the `case` block, this could make a later branch — including `else` — unreachable. All four calculation types that read a field's value now see a checkbox answer the same way skip conditions do.
 

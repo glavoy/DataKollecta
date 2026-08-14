@@ -15,16 +15,26 @@ This document provides step-by-step instructions for building GiSTX for differen
 It behaves identically on macOS and Windows.
 
 ```bash
-dart run tool/build.dart apk                  # Uganda        -> gistx.apk
-dart run tool/build.dart apk --flavor bf      # Burkina Faso  -> gistx-bf.apk
-dart run tool/build.dart windows              # -> build/windows/runner/Release/gistx.exe
-dart run tool/build.dart macos                # -> installer_output/GiSTX-<version>.dmg
+dart run tool/build.dart apk                            # GiSTX Uganda       -> gistx.apk
+dart run tool/build.dart apk --flavor bf                # GiSTX Burkina Faso -> gistx-bf.apk
+dart run tool/build.dart apk --product datakollecta      # DataKollecta       -> datakollecta.apk
+dart run tool/build.dart windows                         # -> build/windows/runner/Release/gistx.exe
+dart run tool/build.dart macos                           # -> installer_output/GiSTX-<version>.dmg
 ```
 
 **The country is chosen at build time, not at runtime.** `--flavor bf` compiles
 the French/SFTP variant; the default is English/FTP. Both flavours keep the same
 application id and signing key, so either updates an existing installation in
 place without losing the device's database.
+
+**The product is a separate axis, chosen the same way.** `--product datakollecta`
+builds DataKollecta (Supabase/HTTP sync) instead of the default GiSTX (FTP/SFTP).
+Unlike the country flavors, the two products have **different** application ids
+and **different** signing keys — they are meant to install side by side as
+separate apps, not update each other. `--flavor` is rejected for DataKollecta,
+since it doesn't vary by country. See `CLAUDE.md`'s "Product flavors" section for
+how the underlying mechanism works, and the "Android APK Build" section below for
+DataKollecta's signing key.
 
 ### Versioning
 
@@ -80,6 +90,14 @@ A release signed with a different key cannot update an installed app; the only
 way to install it is to uninstall first, which deletes the device's database.
 Never generate a replacement keystore, and never change `applicationId` (it is
 `com.gistx.gistx` for both flavours).
+
+**DataKollecta uses a separate keystore**, `android/key-datakollecta.properties`
+(same gitignored treatment, same format as `key.properties`). It's a genuinely
+different `.jks` file with its own password and alias — deliberately, since
+`com.datakollecta.datakollecta` is a different app with a different install
+base, so there's no reason to share signing-key blast radius with GiSTX's
+production Burkina Faso deployment. A `--product datakollecta` build fails at
+Gradle configuration time with a readable error if this file is missing.
 
 ---
 
