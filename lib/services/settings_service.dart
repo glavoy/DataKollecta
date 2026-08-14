@@ -53,6 +53,7 @@ class SettingsService {
   static const String _keyFtpUsername = 'ftp_username';
   static const String _keyFtpPassword = 'ftp_password';
   static const String _keyActiveSurvey = 'active_survey';
+  static const String _keyDeviceUuid = 'device_uuid';
 
   // Getters for settings
   Future<String?> get surveyorId async => _read(_keysurveyorId);
@@ -61,12 +62,17 @@ class SettingsService {
   Future<String?> get ftpPassword async => _read(_keyFtpPassword);
   Future<String?> get activeSurvey async => _read(_keyActiveSurvey);
 
+  /// A random id generated and persisted the first time a platform's own
+  /// device-info APIs have nothing usable to offer (see [DeviceIdentity]).
+  Future<String?> get deviceUuid async => _read(_keyDeviceUuid);
+
   // Setters for settings
   Future<void> setSurveyorId(String value) => _write(_keysurveyorId, value);
   Future<void> setFtpHost(String value) => _write(_keyFtpHost, value);
   Future<void> setFtpUsername(String value) => _write(_keyFtpUsername, value);
   Future<void> setFtpPassword(String value) => _write(_keyFtpPassword, value);
   Future<void> setActiveSurvey(String value) => _write(_keyActiveSurvey, value);
+  Future<void> setDeviceUuid(String value) => _write(_keyDeviceUuid, value);
 
   // Bulk save all settings
   Future<void> saveAllSettings({
