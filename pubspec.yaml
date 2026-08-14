@@ -24,6 +24,13 @@ dependencies:
   dartssh2: 2.18.0
   package_info_plus: ^8.0.0
   shared_preferences: ^2.3.2
+  http: ^1.2.0
+  # Already a transitive dependency (sync_screen.dart already imports it);
+  # declared directly so it can't silently disappear if that transitive path
+  # ever changes. Pinned to what ftpconnect already forces (^0.17.0) rather
+  # than a newer intl, so this doesn't become the thing that breaks FTP.
+  intl: ^0.17.0
+  device_info_plus: ^10.1.0
 
 dev_dependencies:
   flutter_test:
