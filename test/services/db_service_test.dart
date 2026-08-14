@@ -122,4 +122,104 @@ void main() {
     );
     expect(matched.length, 2);
   });
+
+  test('formchanges is created with changeuniqueid/surveyor_id/synced_at',
+      () async {
+    sqfliteFfiInit();
+    final database =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(database.close);
+
+    await DbService.syncFormChangesTableForTesting('survey1', database);
+
+    final columns = (await database.rawQuery('PRAGMA table_info(formchanges)'))
+        .map((row) => row['name'])
+        .toList();
+
+    expect(columns, containsAll(['changeuniqueid', 'surveyor_id', 'synced_at']));
+
+    final indexes =
+        await database.rawQuery('PRAGMA index_list(formchanges)');
+    expect(
+      indexes.any((i) => i['name'] == 'idx_formchanges_changeuniqueid'),
+      isTrue,
+    );
+
+    // The unique index must tolerate more than one legacy row with a NULL
+    // changeuniqueid -- SQLite allows this, and it's how existing GiSTX
+    // records stay excluded from HTTP sync without a backfill.
+    await database.insert('formchanges', {
+      'tablename': 't',
+      'fieldname': 'f',
+      'uniqueid': 'u1',
+      'newvalue': 'a',
+    });
+    await database.insert('formchanges', {
+      'tablename': 't',
+      'fieldname': 'f',
+      'uniqueid': 'u2',
+      'newvalue': 'b',
+    });
+    final rows = await database.query('formchanges');
+    expect(rows.length, 2);
+  });
+
+  test('a legacy formchanges table is migrated without losing existing rows',
+      () async {
+    sqfliteFfiInit();
+    final database =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(database.close);
+
+    // The pre-Phase-3 schema, created directly rather than through
+    // DbService so this test pins the migration path regardless of future
+    // changes to the "create" branch.
+    await database.execute('''
+      CREATE TABLE formchanges (
+          changeid     INTEGER PRIMARY KEY AUTOINCREMENT,
+          tablename    TEXT NOT NULL,
+          fieldname    TEXT NOT NULL,
+          uniqueid     TEXT NOT NULL,
+          oldvalue     TEXT,
+          newvalue     TEXT,
+          changed_at   DATETIME DEFAULT (CURRENT_TIMESTAMP)
+      )
+    ''');
+    await database.insert('formchanges', {
+      'tablename': 'enrollee',
+      'fieldname': 'age',
+      'uniqueid': 'record-1',
+      'oldvalue': '10',
+      'newvalue': '11',
+    });
+
+    await DbService.syncFormChangesTableForTesting('survey1', database);
+
+    final columns = (await database.rawQuery('PRAGMA table_info(formchanges)'))
+        .map((row) => row['name'])
+        .toList();
+    expect(columns, containsAll(['changeuniqueid', 'surveyor_id', 'synced_at']));
+
+    final rows = await database.query('formchanges');
+    expect(rows.length, 1);
+    expect(rows.single['uniqueid'], 'record-1');
+    expect(rows.single['newvalue'], '11');
+    expect(rows.single['changeuniqueid'], isNull);
+  });
+
+  test('prepareUpdateRowData clears synced_at only when the column exists',
+      () {
+    final withColumn = DbService.prepareUpdateRowData(
+      {'uniqueid': 'record-1', 'need_vac_cov': '1'},
+      {'uniqueid', 'need_vac_cov', 'synced_at'},
+    );
+    expect(withColumn.containsKey('synced_at'), isTrue);
+    expect(withColumn['synced_at'], isNull);
+
+    final withoutColumn = DbService.prepareUpdateRowData(
+      {'uniqueid': 'record-1', 'need_vac_cov': '1'},
+      {'uniqueid', 'need_vac_cov'},
+    );
+    expect(withoutColumn.containsKey('synced_at'), isFalse);
+  });
 }

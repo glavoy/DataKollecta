@@ -7,10 +7,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import '../config/app_config.dart';
 import '../models/question.dart';
 import 'csv_data_service.dart';
+import 'settings_service.dart';
 import 'survey_loader.dart';
 
 class DbService {
@@ -344,6 +346,13 @@ class DbService {
     }
   }
 
+  /// Public to allow the create-vs-migrate schema path to be verified
+  /// without initializing the application's survey database registry.
+  @visibleForTesting
+  static Future<void> syncFormChangesTableForTesting(
+          String surveyId, Database db) =>
+      _syncFormChangesTable(surveyId, db);
+
   static Future<void> _syncFormChangesTable(
       String surveyId, Database db) async {
     final tableExists = await _tableExists(db, 'formchanges');
@@ -351,15 +360,47 @@ class DbService {
       _log('Creating formchanges table for $surveyId...');
       await db.execute('''
         CREATE TABLE formchanges (
-            changeid     INTEGER PRIMARY KEY AUTOINCREMENT,
-            tablename    TEXT NOT NULL,
-            fieldname    TEXT NOT NULL,
-            uniqueid     TEXT NOT NULL,
-            oldvalue     TEXT,
-            newvalue     TEXT,
-            changed_at   DATETIME DEFAULT (CURRENT_TIMESTAMP)
+            changeid       INTEGER PRIMARY KEY AUTOINCREMENT,
+            tablename      TEXT NOT NULL,
+            fieldname      TEXT NOT NULL,
+            uniqueid       TEXT NOT NULL,
+            oldvalue       TEXT,
+            newvalue       TEXT,
+            changed_at     DATETIME DEFAULT (CURRENT_TIMESTAMP),
+            changeuniqueid TEXT,
+            surveyor_id    TEXT,
+            synced_at      DATETIME
         )
       ''');
+    } else {
+      final existingColumns = await _getTableColumns(db, 'formchanges');
+      for (final column in const [
+        'changeuniqueid',
+        'surveyor_id',
+        'synced_at',
+      ]) {
+        if (!existingColumns.contains(column)) {
+          final type = column == 'synced_at' ? 'DATETIME' : 'TEXT';
+          try {
+            await db
+                .execute('ALTER TABLE formchanges ADD COLUMN $column $type');
+            _log('Added $column column to formchanges for $surveyId');
+          } catch (e) {
+            _logError('Failed to add $column column to formchanges: $e');
+          }
+        }
+      }
+    }
+
+    // SQLite permits unlimited NULLs in a unique index, so legacy rows
+    // (created before changeuniqueid existed) need no backfill -- HTTP sync
+    // simply excludes them with a `WHERE changeuniqueid IS NOT NULL` filter.
+    try {
+      await db.execute(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_formchanges_changeuniqueid '
+          'ON formchanges(changeuniqueid)');
+    } catch (e) {
+      _logError('Failed to create formchanges changeuniqueid index: $e');
     }
   }
 
@@ -404,14 +445,19 @@ class DbService {
 
         final colDefs = <String>[];
         bool hasUniqueId = false;
+        bool hasSyncedAt = false;
 
         for (final q in dataQuestions) {
           colDefs.add('${q.fieldName} TEXT');
           if (q.fieldName.toLowerCase() == 'uniqueid') hasUniqueId = true;
+          if (q.fieldName.toLowerCase() == 'synced_at') hasSyncedAt = true;
         }
 
         if (!hasUniqueId) {
           colDefs.add('uniqueid TEXT PRIMARY KEY');
+        }
+        if (!hasSyncedAt) {
+          colDefs.add('synced_at DATETIME');
         }
 
         buffer.write(colDefs.join(', '));
@@ -430,6 +476,15 @@ class DbService {
             } catch (e) {
               _logError('Failed to add column ${q.fieldName}: $e');
             }
+          }
+        }
+        if (!existingColumns.contains('synced_at')) {
+          try {
+            await db
+                .execute('ALTER TABLE $tableName ADD COLUMN synced_at DATETIME');
+            _log('Added synced_at column to $tableName');
+          } catch (e) {
+            _logError('Failed to add synced_at column to $tableName: $e');
           }
         }
       }
@@ -675,6 +730,14 @@ class DbService {
       }
     }
 
+    // An edit must re-upload even if the HTTP-sync product already sent an
+    // earlier version of this row; clearing it here (rather than at each
+    // call site) covers every update path uniformly. GiSTX rows -- no
+    // synced_at column -- are unaffected.
+    if (normalizedColumns.contains('synced_at')) {
+      rowData['synced_at'] = null;
+    }
+
     return rowData;
   }
 
@@ -688,6 +751,9 @@ class DbService {
   }) async {
     try {
       if (!await _tableExists(db, 'formchanges')) return;
+
+      // Looked up once per call, not per field.
+      final surveyorId = await SettingsService().surveyorId;
 
       for (final entry in newAnswers.entries) {
         final fieldName = entry.key;
@@ -715,6 +781,8 @@ class DbService {
             'oldvalue': oldValueStr,
             'newvalue': newValueStr,
             'changed_at': DateTime.now().toIso8601String(),
+            'changeuniqueid': const Uuid().v4(),
+            'surveyor_id': surveyorId,
           });
         }
       }
