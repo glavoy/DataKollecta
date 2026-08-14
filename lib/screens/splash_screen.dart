@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/app_config.dart';
 import '../services/db_service.dart';
 import '../services/survey_config_service.dart';
 import 'main_screen.dart';
@@ -42,7 +43,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Image.asset(
-            'assets/branding/gistx.png',
+            AppConfig.brandingAsset,
             width: 200,
             height: 200,
           ),

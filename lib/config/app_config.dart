@@ -28,6 +28,48 @@ class AppConfig {
   /// rather than showing a control with only one option.
   static const bool isDefaultCountry = country == 'Uganda';
 
+  /// The product this build was compiled for. A second, independent axis
+  /// from [country]:
+  ///
+  ///     dart run tool/build.dart apk                          -> gistx
+  ///     dart run tool/build.dart apk --product datakollecta    -> datakollecta
+  ///
+  /// [country] must never change app identity -- same applicationId, same
+  /// keystore, same on-device database, because it is a market selector for
+  /// one app. [product] must always change it: GiSTX and DataKollecta are
+  /// two separate apps that need to install side by side, not two markets
+  /// for one app, so this deliberately forks applicationId, the signing
+  /// key, the storage folder and the local database, the same way changing
+  /// applicationId itself would.
+  static const String product =
+      String.fromEnvironment('APP_PRODUCT', defaultValue: 'gistx');
+
+  /// True for the Supabase/HTTP-sync build. Folds away at compile time, so
+  /// the GiSTX build carries no HTTP sync code and the DataKollecta build
+  /// no FTP/SFTP code.
+  static const bool isDataKollecta = product == 'datakollecta';
+
+  /// The single path segment under the platform base directory that holds
+  /// this product's zips/surveys/databases/backups/outbox.
+  ///
+  /// Changing this for an already-shipped build orphans every installed
+  /// device's data, exactly as changing applicationId would. It is
+  /// per-product, never per-country -- Uganda and Burkina Faso share one
+  /// storage folder on purpose, because they are the same app.
+  static const String storageFolder = isDataKollecta ? 'DataKollecta' : 'GiSTX';
+
+  /// Name recorded in every collected record's `swver` field, and shown as
+  /// the window/MaterialApp title.
+  static const String appName = isDataKollecta ? 'DataKollecta' : 'GiSTX';
+
+  /// The bundled splash/logo image for this product. Both images are
+  /// declared in pubspec.yaml's asset list regardless of which build is
+  /// running, since Flutter bundles by declaration, not by reachability --
+  /// simpler than a per-product pubspec for a few hundred KB of art.
+  static const String brandingAsset = isDataKollecta
+      ? 'assets/branding/datakollecta.png'
+      : 'assets/branding/gistx.png';
+
   // Software version - now read from pubspec.yaml via PackageInfo
   // See auto_fields.dart for implementation
 

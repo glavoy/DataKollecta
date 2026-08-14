@@ -8,6 +8,7 @@ import 'package:GiSTX/config/app_config.dart';
 ///
 ///     flutter test
 ///     flutter test --dart-define=GISTX_COUNTRY="Burkina Faso"
+///     flutter test --dart-define=APP_PRODUCT=datakollecta
 void main() {
   test('the build resolves to exactly one known country', () {
     expect(
@@ -31,6 +32,41 @@ void main() {
     const isFlavored =
         bool.hasEnvironment('GISTX_COUNTRY') ? true : false;
     if (!isFlavored) {
+      expect(AppConfig.country, 'Uganda');
+      expect(AppConfig.isFrench, isFalse);
+      expect(AppConfig.isDefaultCountry, isTrue);
+    }
+  });
+
+  test('the build resolves to exactly one known product', () {
+    expect(
+      AppConfig.product,
+      anyOf('gistx', 'datakollecta'),
+      reason: 'APP_PRODUCT was set to an unrecognised value; the app would '
+          'silently fall back to gistx settings.',
+    );
+  });
+
+  test('storage folder and app name follow the product, not the country',
+      () {
+    expect(
+        AppConfig.storageFolder, AppConfig.isDataKollecta ? 'DataKollecta' : 'GiSTX');
+    expect(AppConfig.appName, AppConfig.isDataKollecta ? 'DataKollecta' : 'GiSTX');
+    expect(
+        AppConfig.brandingAsset,
+        AppConfig.isDataKollecta
+            ? 'assets/branding/datakollecta.png'
+            : 'assets/branding/gistx.png');
+  });
+
+  test('exactly one product is active', () {
+    expect(AppConfig.product == 'gistx', !AppConfig.isDataKollecta);
+  });
+
+  test('DataKollecta never participates in the country axis', () {
+    // DataKollecta builds never set GISTX_COUNTRY, so if this build is
+    // DataKollecta, country must still resolve to the unflavored default.
+    if (AppConfig.isDataKollecta) {
       expect(AppConfig.country, 'Uganda');
       expect(AppConfig.isFrench, isFalse);
       expect(AppConfig.isDefaultCountry, isTrue);

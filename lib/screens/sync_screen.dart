@@ -258,9 +258,9 @@ class _SyncScreenState extends State<SyncScreen> {
       }
 
       final baseDir = await _surveyConfig.getSurveysDirectory();
-      // Go up one level from surveys to get to GiSTX root, then into databases
-      final gistxDir = baseDir.parent;
-      final dbPath = p.join(gistxDir.path, 'databases', dbName);
+      // Go up one level from surveys to get to the storage root, then into databases
+      final storageDir = baseDir.parent;
+      final dbPath = p.join(storageDir.path, 'databases', dbName);
       final dbFile = File(dbPath);
 
       if (!await dbFile.exists()) {
@@ -274,7 +274,7 @@ class _SyncScreenState extends State<SyncScreen> {
       final encoder = ZipFileEncoder();
 
       // Use 'outbox' folder instead of temp
-      final outboxDir = Directory(p.join(gistxDir.path, 'outbox'));
+      final outboxDir = Directory(p.join(storageDir.path, 'outbox'));
       if (!await outboxDir.exists()) {
         await outboxDir.create(recursive: true);
       }
@@ -284,7 +284,7 @@ class _SyncScreenState extends State<SyncScreen> {
       encoder.addFile(dbFile);
 
       // Add backups folder if exists
-      final backupsDir = Directory(p.join(gistxDir.path, 'backups', surveyId));
+      final backupsDir = Directory(p.join(storageDir.path, 'backups', surveyId));
       if (await backupsDir.exists()) {
         await encoder.addDirectory(backupsDir);
       }

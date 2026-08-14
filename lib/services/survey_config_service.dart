@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
+import '../config/app_config.dart';
 import 'settings_service.dart';
 
 class SurveyConfigService {
@@ -29,8 +30,8 @@ class SurveyConfigService {
   Future<void> initializeSurveys() async {
     try {
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
-      final surveysDir = Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
+      final zipsDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
+      final surveysDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
 
       if (!await zipsDir.exists()) {
         await zipsDir.create(recursive: true);
@@ -124,7 +125,7 @@ class SurveyConfigService {
     try {
       final surveysDir = await getSurveysDirectory();
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, 'GiSTX', 'zips'));
+      final zipsDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
 
       // Find the survey folder by name
       final entities = await surveysDir.list().toList();
@@ -213,7 +214,7 @@ class SurveyConfigService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'surveys'));
+    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
   }
 
   /// Get the local directory where outbox files are stored
@@ -234,7 +235,7 @@ class SurveyConfigService {
       // Linux/Mac
       baseDir = await getApplicationSupportDirectory();
     }
-    return Directory(p.join(baseDir.path, 'GiSTX', 'outbox'));
+    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'outbox'));
   }
 
   /// Get the survey ID from the survey name stored in settings

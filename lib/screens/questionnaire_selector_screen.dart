@@ -238,7 +238,7 @@ class _QuestionnaireSelectorScreenState
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.asset(
-                'assets/branding/gistx.png',
+                AppConfig.brandingAsset,
                 width: 50,
                 height: 50,
               ),

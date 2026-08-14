@@ -1,3 +1,4 @@
+import '../config/app_config.dart';
 import '../models/question.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
@@ -51,10 +52,10 @@ class AutoFields {
     if (_cachedVersion == null) {
       try {
         final packageInfo = await PackageInfo.fromPlatform();
-        _cachedVersion = 'GiSTX ${packageInfo.version}';
+        _cachedVersion = '${AppConfig.appName} ${packageInfo.version}';
       } catch (e) {
         debugPrint('[AutoFields] Error loading version from pubspec.yaml: $e');
-        _cachedVersion = 'GiSTX unknown';
+        _cachedVersion = '${AppConfig.appName} unknown';
       }
     }
 

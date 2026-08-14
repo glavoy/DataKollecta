@@ -194,7 +194,7 @@ class _MainScreenState extends State<MainScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
-                        'assets/branding/gistx.png',
+                        AppConfig.brandingAsset,
                         width: 120,
                         height: 120,
                       ),
