@@ -7,6 +7,7 @@ import '../services/app_strings.dart';
 import 'questionnaire_selector_screen.dart';
 import 'settings_screen.dart';
 import 'sync_screen.dart';
+import 'sync_screen_http.dart';
 import 'summary_statistics_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -146,7 +147,9 @@ class _MainScreenState extends State<MainScreen> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const SyncScreen(),
+                  builder: (context) => AppConfig.isDataKollecta
+                      ? const HttpSyncScreen()
+                      : const SyncScreen(),
                 ),
               );
               // Re-initialize to extract any new zips

@@ -19,15 +19,22 @@ class HttpSyncBackend implements SyncBackend {
   final SettingsService _settings;
   List<ApiSurvey> _surveys = const [];
 
+  /// Set on the most recent failed [connect] or [downloadSurvey] call
+  /// (cleared at the start of each), so a caller that gets `false`/`null`
+  /// back can exhaustively switch on the reason instead of guessing from a
+  /// generic failure.
+  SyncException? lastError;
+
   HttpSyncBackend({ApiClient? apiClient, SettingsService? settings})
       : _api = apiClient ?? ApiClient(),
         _settings = settings ?? SettingsService();
 
   @override
   Future<bool> connect(String username, String password) async {
+    lastError = null;
     final projectCode = await _settings.projectCode;
     if (projectCode == null || projectCode.isEmpty) {
-      debugPrint('[HttpSyncBackend] No project code configured');
+      lastError = const SyncAuthException('No project code configured');
       return false;
     }
 
@@ -45,6 +52,7 @@ class HttpSyncBackend implements SyncBackend {
       await _settings.setAuthToken(session.token, session.expiresAt);
       return true;
     } on SyncException catch (e) {
+      lastError = e;
       debugPrint('[HttpSyncBackend] connect failed: $e');
       return false;
     }
@@ -56,10 +64,11 @@ class HttpSyncBackend implements SyncBackend {
 
   @override
   Future<File?> downloadSurvey(String filename) async {
+    lastError = null;
     final survey = _findSurveyByName(filename);
     final downloadUrl = survey?.downloadUrl;
     if (downloadUrl == null) {
-      debugPrint('[HttpSyncBackend] No download URL for "$filename"');
+      lastError = SyncTransferException('No download URL for "$filename"');
       return null;
     }
 
@@ -67,6 +76,7 @@ class HttpSyncBackend implements SyncBackend {
       return await _api.downloadSurveyZip(
           downloadUrl, resolveLocalFilename(downloadUrl, filename));
     } on SyncException catch (e) {
+      lastError = e;
       debugPrint('[HttpSyncBackend] download failed: $e');
       return null;
     }
@@ -95,6 +105,31 @@ class HttpSyncBackend implements SyncBackend {
     final deviceId = await DeviceIdentity.deviceId();
     final uploader = RecordUploader(apiClient: _api);
     return uploader.uploadSurvey(db: db, token: token, deviceId: deviceId);
+  }
+
+  /// A live count of unsynced records across every CRF table plus
+  /// formchanges, for the "N pending" display before a user taps upload.
+  Future<int> countPending(String surveyId) async {
+    try {
+      final db = await DbService.getDatabaseForQueries(surveyId);
+      final tableRows = await db.query('crfs', columns: ['tablename']);
+      var total = 0;
+      for (final row in tableRows) {
+        final tableName = row['tablename'] as String?;
+        if (tableName == null) continue;
+        final result = await db
+            .rawQuery('SELECT COUNT(*) as count FROM $tableName WHERE synced_at IS NULL');
+        total += (result.first['count'] as int?) ?? 0;
+      }
+      final formchangesResult = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM formchanges '
+          'WHERE changeuniqueid IS NOT NULL AND synced_at IS NULL');
+      total += (formchangesResult.first['count'] as int?) ?? 0;
+      return total;
+    } catch (e) {
+      debugPrint('[HttpSyncBackend] countPending failed: $e');
+      return 0;
+    }
   }
 
   ApiSurvey? _findSurveyByName(String name) {

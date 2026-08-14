@@ -19,6 +19,10 @@ class HttpSyncStrings {
   String get downloadSurveys => 'Download surveys';
   String get pendingRecords => 'Pending records';
 
+  String uploadSummary(int synced, int failed) => failed == 0
+      ? 'Uploaded $synced record${synced == 1 ? '' : 's'}.'
+      : 'Uploaded $synced record${synced == 1 ? '' : 's'}, $failed failed.';
+
   String get sessionExpired => 'Session expired -- please log in again.';
   String get tooManyFailures =>
       'Upload stopped after repeated failures. Some records were not sent.';
