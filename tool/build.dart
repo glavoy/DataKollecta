@@ -62,7 +62,7 @@ const _products = <String,
     displayName: 'DataKollecta',
     binaryName: 'datakollecta',
     supportsCountryFlavor: false,
-    supportedTargets: {'apk'},
+    supportedTargets: {'apk', 'windows', 'macos'},
   ),
 };
 
@@ -176,20 +176,22 @@ Future<void> _build(List<String> args) async {
 }
 
 /// Materializes tool/product/**/<productId>.* into the native project files
-/// each platform reads at build time. Only Android needs one so far;
-/// Windows and macOS templates land in a later step of this rollout.
+/// each platform reads at build time.
 void _applyProductConfigs(String productId) {
+  _copyProductFile('tool/product/android/$productId.properties',
+      'android/product.properties');
   _copyProductFile(
-      'tool/product/android/$productId.properties', 'android/product.properties');
+      'tool/product/windows/$productId.cmake', 'windows/product.cmake');
+  _copyProductFile('tool/product/windows/$productId.h',
+      'windows/runner/product_strings.h');
+  _copyProductFile('tool/product/macos/$productId.xcconfig',
+      'macos/Runner/Configs/AppInfo.xcconfig');
 }
 
 /// Restores every generated file to its committed, GiSTX-default content --
 /// called from a `finally`, so a crashed build (or simply not running this
 /// script) always leaves the tree buildable and `git status` clean.
-void _restoreDefaultProductConfigs() {
-  _copyProductFile(
-      'tool/product/android/gistx.properties', 'android/product.properties');
-}
+void _restoreDefaultProductConfigs() => _applyProductConfigs('gistx');
 
 void _copyProductFile(String from, String to) {
   final source = File(from);

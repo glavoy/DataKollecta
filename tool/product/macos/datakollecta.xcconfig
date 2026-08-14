@@ -1,0 +1,7 @@
+// See gistx.xcconfig for what this file is and how it's used.
+
+PRODUCT_NAME = datakollecta
+
+PRODUCT_BUNDLE_IDENTIFIER = com.datakollecta.datakollecta
+
+PRODUCT_COPYRIGHT = Copyright © 2025 com.datakollecta. All rights reserved.

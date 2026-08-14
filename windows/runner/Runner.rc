@@ -2,6 +2,7 @@
 //
 #pragma code_page(65001)
 #include "resource.h"
+#include "product_strings.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -89,13 +90,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.gistx" "\0"
-            VALUE "FileDescription", "gistx" "\0"
+            VALUE "CompanyName", PRODUCT_COMPANY_NAME "\0"
+            VALUE "FileDescription", PRODUCT_FILE_DESCRIPTION "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "gistx" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.gistx. All rights reserved." "\0"
-            VALUE "OriginalFilename", "gistx.exe" "\0"
-            VALUE "ProductName", "gistx" "\0"
+            VALUE "InternalName", PRODUCT_INTERNAL_NAME "\0"
+            VALUE "LegalCopyright", PRODUCT_LEGAL_COPYRIGHT "\0"
+            VALUE "OriginalFilename", PRODUCT_ORIGINAL_FILENAME "\0"
+            VALUE "ProductName", PRODUCT_DISPLAY_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
