@@ -87,4 +87,48 @@ void main() {
       expect(await AutoFields.compute(answers, q), '1,3');
     });
   });
+
+  group('contains / does not contain in a case calculation', () {
+    // The capability the checkbox-List fix made possible: real membership
+    // testing, rather than the mutual-exclusion `!= 99` trick above, which
+    // only works when the excluded value can never co-occur with another.
+    test('contains finds a value regardless of what else was selected',
+        () async {
+      final q = caseQuestion([
+        CaseConfig(
+          field: 'screen_cab_drug2',
+          operator: 'contains',
+          value: '99',
+          result: CalculationConfig(type: 'constant', value: '0'),
+        ),
+      ]);
+
+      expect(
+          await AutoFields.compute(
+              {'screen_cab_drug2': ['1', '99']}, q),
+          '0');
+      expect(
+          await AutoFields.compute({'screen_cab_drug2': ['1', '3']}, q),
+          '1');
+    });
+
+    test('does not contain negates membership', () async {
+      final q = caseQuestion([
+        CaseConfig(
+          field: 'screen_cab_drug2',
+          operator: 'does not contain',
+          value: '99',
+          result: CalculationConfig(type: 'constant', value: '1'),
+        ),
+      ], orElse: CalculationConfig(type: 'constant', value: '0'));
+
+      expect(
+          await AutoFields.compute({'screen_cab_drug2': ['1', '3']}, q),
+          '1');
+      expect(
+          await AutoFields.compute(
+              {'screen_cab_drug2': ['1', '99']}, q),
+          '0');
+    });
+  });
 }
