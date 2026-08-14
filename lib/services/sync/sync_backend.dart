@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../../config/app_config.dart';
 import 'ftp_sync_backend.dart';
+import 'http_sync_backend.dart';
 
 /// A survey package available for download from a sync backend's server.
 class RemoteSurvey {
@@ -51,13 +52,5 @@ abstract class SyncBackend {
 /// Compile-time selection, so the unused implementation tree-shakes away --
 /// the GiSTX build carries no HTTP/Supabase code, the DataKollecta build no
 /// ftpconnect/dartssh2 code.
-SyncBackend createSyncBackend() {
-  if (AppConfig.isDataKollecta) {
-    // HttpSyncBackend lands later in the Phase 3 rollout; nothing calls
-    // createSyncBackend() yet, so this branch is unreachable in practice
-    // until that step also updates this factory.
-    throw UnimplementedError(
-        'HttpSyncBackend has not been added yet (Phase 3, later step).');
-  }
-  return FtpSyncBackend();
-}
+SyncBackend createSyncBackend() =>
+    AppConfig.isDataKollecta ? HttpSyncBackend() : FtpSyncBackend();

@@ -7,6 +7,7 @@ import '../services/survey_config_service.dart';
 import '../services/theme_service.dart';
 import '../config/app_config.dart';
 import '../services/app_strings.dart';
+import '../services/app_strings_http_sync.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -24,11 +25,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _surveyorIdController = TextEditingController();
   final _ftpUsernameController = TextEditingController();
   final _ftpPasswordController = TextEditingController();
+  final _projectCodeController = TextEditingController();
 
   bool _isLoading = true;
   bool _obscurePassword = true;
   String _appVersion = '';
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
+  static const HttpSyncStrings _httpSync = HttpSyncStrings();
 
   @override
   void initState() {
@@ -61,20 +64,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _surveyorIdController.dispose();
     _ftpUsernameController.dispose();
     _ftpPasswordController.dispose();
+    _projectCodeController.dispose();
     _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
   Future<void> _loadSettings() async {
     final surveyorId = await _settingsService.surveyorId;
-    final ftpUsername = await _settingsService.ftpUsername;
-    final ftpPassword = await _settingsService.ftpPassword;
+    final String? username;
+    final String? password;
+    if (AppConfig.isDataKollecta) {
+      username = await _settingsService.apiUsername;
+      password = await _settingsService.apiPassword;
+      _projectCodeController.text = await _settingsService.projectCode ?? '';
+    } else {
+      username = await _settingsService.ftpUsername;
+      password = await _settingsService.ftpPassword;
+    }
 
     if (mounted) {
       setState(() {
         _surveyorIdController.text = surveyorId ?? '';
-        _ftpUsernameController.text = ftpUsername ?? '';
-        _ftpPasswordController.text = ftpPassword ?? '';
+        _ftpUsernameController.text = username ?? '';
+        _ftpPasswordController.text = password ?? '';
         _isLoading = false;
       });
     }
@@ -83,12 +95,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       try {
-        await _settingsService.saveAllSettings(
-          surveyorId: _surveyorIdController.text.trim(),
-          ftpHost: '',
-          ftpUsername: _ftpUsernameController.text.trim(),
-          ftpPassword: _ftpPasswordController.text,
-        );
+        if (AppConfig.isDataKollecta) {
+          await _settingsService.setSurveyorId(_surveyorIdController.text.trim());
+          await _settingsService.setApiUsername(_ftpUsernameController.text.trim());
+          await _settingsService.setApiPassword(_ftpPasswordController.text);
+          await _settingsService.setProjectCode(_projectCodeController.text.trim());
+        } else {
+          await _settingsService.saveAllSettings(
+            surveyorId: _surveyorIdController.text.trim(),
+            ftpHost: '',
+            ftpUsername: _ftpUsernameController.text.trim(),
+            ftpPassword: _ftpPasswordController.text,
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -231,6 +250,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
+                    if (AppConfig.isDataKollecta) ...[
+                      TextFormField(
+                        controller: _projectCodeController,
+                        decoration: InputDecoration(
+                          labelText: _httpSync.projectCode,
+                          hintText: _httpSync.enterProjectCode,
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.badge_outlined),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return _httpSync.projectCodeRequired;
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     TextFormField(
                       controller: _ftpUsernameController,
                       decoration: InputDecoration(
