@@ -1,3 +1,8 @@
+## [1.1.x+8] - 2026-xx-xx
+
+### Fixed
+- **A calculation could not correctly compare a checkbox field.** A checkbox answer is stored internally as a list of the selected values, and a calculation read it with Dart's default list formatting — `[1, 3]`, brackets included — instead of the comma-joined form skip conditions already use. So a `case` calculation's `when:` condition, a `lookup`, or a SQL query parameter reading a checkbox field never matched the way its literal suggested: `when:screen_cab_drug2 != 99` was true even when `99` was the only thing selected, because `"[99]"` is never equal to `"99"`. Depending on where the condition sat in the `case` block, this could make a later branch — including `else` — unreachable. All four calculation types that read a field's value now see a checkbox answer the same way skip conditions do.
+
 ## [1.1.0+7] - 2026-08-10
 
 ### Fixed

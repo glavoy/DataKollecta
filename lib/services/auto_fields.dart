@@ -137,6 +137,21 @@ class AutoFields {
     return field;
   }
 
+  /// The text a calculation reads for [field], resolving a checkbox answer to
+  /// the same comma-separated form SkipService already uses for
+  /// preskip/postskip. A checkbox answer is stored as a `List<String>`, and
+  /// Dart's default `List.toString()` renders it as `[1, 3]` -- brackets and
+  /// all -- which can never equal or contain a plain value like `1`. Every
+  /// calculation type reads an answer this same way, so this is the one place
+  /// that decides what "the value of a field" means for all of them.
+  static String _answerText(AnswerMap answers, String? field) {
+    if (field == null) return '';
+    final value = answers[field];
+    if (value == null) return '';
+    if (value is List) return value.join(',');
+    return value.toString();
+  }
+
   static Future<String> _executeCalculation(
       CalculationConfig config, AnswerMap answers, String? surveyId) async {
     try {
@@ -147,11 +162,7 @@ class AutoFields {
           return config.value ?? '';
 
         case 'lookup':
-          final field = _sanitizeField(config.field);
-          if (field != null) {
-            return answers[field]?.toString() ?? '';
-          }
-          return '';
+          return _answerText(answers, _sanitizeField(config.field));
 
         case 'query':
           if (surveyId == null || config.sql == null) return '';
@@ -170,11 +181,7 @@ class AutoFields {
               final paramName = match.group(0)!;
               final rawFieldName = params[paramName];
               final fieldName = _sanitizeField(rawFieldName);
-
-              final val = fieldName != null
-                  ? (answers[fieldName]?.toString() ?? '')
-                  : '';
-              args.add(val);
+              args.add(_answerText(answers, fieldName));
             }
 
             // Replace all @param with ?
@@ -242,7 +249,7 @@ class AutoFields {
           if (config.cases != null) {
             for (final c in config.cases!) {
               final field = _sanitizeField(c.field);
-              final val = answers[field]?.toString() ?? '';
+              final val = _answerText(answers, field);
               bool match = false;
 
               switch (c.operator) {
@@ -317,7 +324,7 @@ class AutoFields {
         case 'date_offset':
           final field = _sanitizeField(config.field);
           if (field == null) return '';
-          final baseVal = answers[field]?.toString() ?? '';
+          final baseVal = _answerText(answers, field);
           if (baseVal.isEmpty) return '';
 
           final baseDate = DateTime.tryParse(baseVal);
@@ -339,7 +346,7 @@ class AutoFields {
             final now = DateTime.now();
             startDate = DateTime(now.year, now.month, now.day);
           } else if (startFieldName != null) {
-            final val = answers[startFieldName]?.toString() ?? '';
+            final val = _answerText(answers, startFieldName);
             if (val.isNotEmpty) startDate = DateTime.tryParse(val);
           }
 
@@ -348,7 +355,7 @@ class AutoFields {
             final now = DateTime.now();
             endDate = DateTime(now.year, now.month, now.day);
           } else if (endFieldName != null) {
-            final val = answers[endFieldName]?.toString() ?? '';
+            final val = _answerText(answers, endFieldName);
             if (val.isNotEmpty) endDate = DateTime.tryParse(val);
           }
 
