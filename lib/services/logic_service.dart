@@ -1,6 +1,7 @@
 // lib/services/logic_service.dart
 import 'package:flutter/foundation.dart';
 import '../models/question.dart';
+import 'field_comparator.dart';
 
 /// Service for evaluating logic check expressions in survey questions.
 ///
@@ -197,7 +198,12 @@ class LogicService {
         caseSensitive: false);
     final containsMatch = containsRegex.firstMatch(condition);
     if (containsMatch != null) {
-      return _evaluateContainsCondition(containsMatch, answers);
+      return _evaluateParsedCondition(
+        fieldName: containsMatch.group(1)!.trim(),
+        operator: containsMatch.group(2)!.trim().toLowerCase(),
+        valueOrField: containsMatch.group(3)!.trim(),
+        answers: answers,
+      );
     }
 
     // Regex to capture: (field_name) (operator) (value)
@@ -213,149 +219,57 @@ class LogicService {
       throw FormatException('Invalid condition format: "$condition"');
     }
 
-    final String fieldName = match.group(1)!.trim();
-    String operator = match.group(2)!.trim();
-    // Normalize operators
-    operator = operator.replaceAll('!=', '<>'); // != to <>
-    operator = operator.replaceAll('==', '=');  // == to =
-    String valueOrField = match.group(3)!.trim();
+    return _evaluateParsedCondition(
+      fieldName: match.group(1)!.trim(),
+      operator: match.group(2)!.trim(),
+      valueOrField: match.group(3)!.trim(),
+      answers: answers,
+    );
+  }
 
-    debugPrint('[LogicService]   Parsed: $fieldName $operator $valueOrField');
+  /// Resolves [fieldName] and [valueOrField] against [answers] and evaluates
+  /// the comparison. Shared by both the symbolic-operator path (=, <>, ...)
+  /// and the contains/does not contain path -- they parse their operator and
+  /// their right-hand side identically, and previously duplicated that
+  /// resolution with a subtle difference: only the general path treated an
+  /// unresolved field-vs-field comparison as automatically false. Both now
+  /// do, since a check that cannot be evaluated should not block navigation
+  /// either way.
+  static bool _evaluateParsedCondition({
+    required String fieldName,
+    required String operator,
+    required String valueOrField,
+    required AnswerMap answers,
+  }) {
+    final dynamic leftRaw = answers[fieldName];
 
-    // Get the actual value of the left-hand side operand from the answers map
-    final dynamic leftValue = answers[fieldName];
-
-    // Determine the right-hand side value
-    dynamic rightValue;
+    final dynamic rightRaw;
     if (valueOrField.startsWith("'") && valueOrField.endsWith("'")) {
       // It's a literal string value (quoted) - could be a date or regular string
-      rightValue = valueOrField.substring(1, valueOrField.length - 1);
+      rightRaw = valueOrField.substring(1, valueOrField.length - 1);
     } else if (int.tryParse(valueOrField) != null || double.tryParse(valueOrField) != null) {
       // It's a numeric literal (not a field name)
-      rightValue = valueOrField;
+      rightRaw = valueOrField;
     } else {
       // It's a dynamic value from another field
-      rightValue = answers[valueOrField];
+      rightRaw = answers[valueOrField];
     }
 
-    debugPrint('[LogicService]   Values: leftValue="$leftValue" (${leftValue.runtimeType}), rightValue="$rightValue" (${rightValue.runtimeType})');
+    debugPrint('[LogicService]   Parsed: $fieldName $operator $valueOrField');
+    debugPrint('[LogicService]   Values: leftValue="$leftRaw" (${leftRaw.runtimeType}), rightValue="$rightRaw" (${rightRaw.runtimeType})');
 
     // If either value is null, the condition cannot be met
-    if (leftValue == null || rightValue == null) {
-      debugPrint(
-          '[LogicService]   One value is null, returning false.');
+    if (leftRaw == null || rightRaw == null) {
+      debugPrint('[LogicService]   One value is null, returning false.');
       return false;
     }
 
-    final result = _compare(leftValue.toString(), rightValue.toString(), operator);
+    final result = FieldComparator.compare(
+      FieldComparator.resolveText(leftRaw)!,
+      operator,
+      FieldComparator.resolveText(rightRaw)!,
+    );
     debugPrint('[LogicService]   Result: $result');
     return result;
-  }
-
-  /// Evaluates a "field contains 'value'" / "field does not contain 'value'" condition.
-  /// Used for checkbox (multi-select) fields, whose answer is stored as a List.
-  static bool _evaluateContainsCondition(RegExpMatch match, AnswerMap answers) {
-    final String fieldName = match.group(1)!.trim();
-    final String operatorWord = match.group(2)!.trim().toLowerCase();
-    String valueOrField = match.group(3)!.trim();
-
-    final dynamic leftValue = answers[fieldName];
-    if (leftValue == null) {
-      debugPrint('[LogicService]   Contains: left value is null, returning false.');
-      return false;
-    }
-
-    // Determine the value to search for (quoted literal, numeric literal, or another field)
-    String compareValue;
-    if (valueOrField.startsWith("'") && valueOrField.endsWith("'")) {
-      compareValue = valueOrField.substring(1, valueOrField.length - 1);
-    } else if (int.tryParse(valueOrField) != null ||
-        double.tryParse(valueOrField) != null) {
-      compareValue = valueOrField;
-    } else {
-      compareValue = answers[valueOrField]?.toString() ?? '';
-    }
-
-    // Checkbox answers are normally a List; fall back to a comma-separated string
-    // for any field that stores its values that way.
-    final List<String> list = leftValue is List
-        ? leftValue.map((e) => e.toString()).toList()
-        : leftValue.toString().split(',').map((s) => s.trim()).toList();
-
-    final bool contains = list.contains(compareValue);
-    final bool result =
-        operatorWord == 'contains' ? contains : !contains;
-
-    debugPrint(
-        '[LogicService]   Contains: $fieldName ($list) $operatorWord "$compareValue" --> $result');
-    return result;
-  }
-
-  /// Performs a comparison between two string values based on the operator.
-  /// Automatically detects and handles numeric, date (ISO format), or string comparisons.
-  static bool _compare(String val1, String val2, String operator) {
-    final num1 = double.tryParse(val1);
-    final num2 = double.tryParse(val2);
-
-    if (num1 != null && num2 != null) {
-      // Numeric comparison
-      switch (operator) {
-        case '=':
-        case '==':
-          return num1 == num2;
-        case '<>':
-        case '!=':
-          return num1 != num2;
-        case '>':
-          return num1 > num2;
-        case '<':
-          return num1 < num2;
-        case '>=':
-          return num1 >= num2;
-        case '<=':
-          return num1 <= num2;
-        default:
-          return false;
-      }
-    }
-
-    // Try date comparison for ISO date strings (e.g., '2026-01-31', '2025-12-19T14:30:00')
-    // Works with both date-only (YYYY-MM-DD) and datetime (ISO 8601) formats
-    final date1 = DateTime.tryParse(val1);
-    final date2 = DateTime.tryParse(val2);
-
-    if (date1 != null && date2 != null) {
-      // Date/DateTime comparison
-      switch (operator) {
-        case '=':
-        case '==':
-          return date1.isAtSameMomentAs(date2);
-        case '<>':
-        case '!=':
-          return !date1.isAtSameMomentAs(date2);
-        case '>':
-          return date1.isAfter(date2);
-        case '<':
-          return date1.isBefore(date2);
-        case '>=':
-          return date1.isAfter(date2) || date1.isAtSameMomentAs(date2);
-        case '<=':
-          return date1.isBefore(date2) || date1.isAtSameMomentAs(date2);
-        default:
-          return false;
-      }
-    }
-
-    // Fall back to string comparison for equality only
-    switch (operator) {
-      case '=':
-      case '==':
-        return val1 == val2;
-      case '<>':
-      case '!=':
-        return val1 != val2;
-      default:
-        return false;
-    }
   }
 }

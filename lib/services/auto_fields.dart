@@ -1,6 +1,7 @@
 import '../models/question.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
+import 'field_comparator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -137,20 +138,13 @@ class AutoFields {
     return field;
   }
 
-  /// The text a calculation reads for [field], resolving a checkbox answer to
-  /// the same comma-separated form SkipService already uses for
-  /// preskip/postskip. A checkbox answer is stored as a `List<String>`, and
-  /// Dart's default `List.toString()` renders it as `[1, 3]` -- brackets and
-  /// all -- which can never equal or contain a plain value like `1`. Every
-  /// calculation type reads an answer this same way, so this is the one place
-  /// that decides what "the value of a field" means for all of them.
-  static String _answerText(AnswerMap answers, String? field) {
-    if (field == null) return '';
-    final value = answers[field];
-    if (value == null) return '';
-    if (value is List) return value.join(',');
-    return value.toString();
-  }
+  /// The text a calculation reads for [field]. Every calculation type in
+  /// this file reads an answer through this one choke point, so it is where
+  /// "the value of a field" is defined for all of them: an unanswered field
+  /// is empty text, not a short-circuit, because a calculation -- unlike a
+  /// skip or a logic_check -- must still produce a value.
+  static String _answerText(AnswerMap answers, String? field) =>
+      field == null ? '' : FieldComparator.resolveTextOrEmpty(answers[field]);
 
   static Future<String> _executeCalculation(
       CalculationConfig config, AnswerMap answers, String? surveyId) async {
@@ -250,50 +244,8 @@ class AutoFields {
             for (final c in config.cases!) {
               final field = _sanitizeField(c.field);
               final val = _answerText(answers, field);
-              bool match = false;
 
-              switch (c.operator) {
-                case '=':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) {
-                    match = v1 == v2;
-                  } else {
-                    match = val == c.value;
-                  }
-                  break;
-                case '!=':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) {
-                    match = v1 != v2;
-                  } else {
-                    match = val != c.value;
-                  }
-                  break;
-                case '>':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) match = v1 > v2;
-                  break;
-                case '<':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) match = v1 < v2;
-                  break;
-                case '>=':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) match = v1 >= v2;
-                  break;
-                case '<=':
-                  final v1 = double.tryParse(val);
-                  final v2 = double.tryParse(c.value);
-                  if (v1 != null && v2 != null) match = v1 <= v2;
-                  break;
-              }
-
-              if (match) {
+              if (FieldComparator.compare(val, c.operator, c.value)) {
                 return await _executeCalculation(c.result, answers, surveyId);
               }
             }

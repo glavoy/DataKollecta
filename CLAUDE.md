@@ -115,7 +115,7 @@ Transfers survey data files to/from a single remote FTP server via `ftpconnect`.
 | `db_service.dart` | Per-survey SQLite lifecycle, schema sync, CRUD |
 | `skip_service.dart` | preskip/postskip evaluation |
 | `logic_service.dart` | Cross-field `logic_check` evaluation |
-| `expression_evaluator.dart` | Shared expression/condition parsing used by skip/logic/calculation |
+| `field_comparator.dart` | Shared checkbox-aware text resolution and the numeric/date/string/contains comparison used by skip, logic_check, and calculation |
 | `auto_fields.dart` | Computed/automatic field registry |
 | `id_generator.dart` | Subject/record ID generation and validation |
 | `database_response_service.dart` / `csv_data_service.dart` | Dynamic response-option sources for radio/checkbox/combobox |
