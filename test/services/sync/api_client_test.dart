@@ -1,0 +1,292 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:GiSTX/services/sync/api_client.dart';
+import 'package:GiSTX/services/sync/sync_backend.dart';
+
+void main() {
+  test('login sends exactly the fields the deployed app-login function expects',
+      () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        json.encode({
+          'success': true,
+          'token': 'session-token',
+          'expires_at': '2026-09-13T00:00:00.000Z',
+          'surveys': [
+            {'id': 'survey-1', 'name': 'AVERT', 'download_url': 'https://x/y.zip'},
+          ],
+        }),
+        200,
+      );
+    });
+    final api = ApiClient(client: client);
+
+    final session = await api.login(
+      projectCode: 'demo',
+      username: 'alice',
+      password: 'super-secret-pw',
+      deviceId: 'device-123',
+      deviceInfo: {'platform': 'macos'},
+    );
+
+    expect(session.token, 'session-token');
+    expect(session.expiresAt, DateTime.parse('2026-09-13T00:00:00.000Z'));
+    expect(session.surveys.single.id, 'survey-1');
+    expect(session.surveys.single.downloadUrl, 'https://x/y.zip');
+
+    expect(captured.headers['Content-Type'], contains('application/json'));
+    expect(captured.headers['Authorization'], startsWith('Bearer '));
+
+    final body = json.decode(captured.body) as Map<String, dynamic>;
+    expect(body, {
+      'project_code': 'demo',
+      'username': 'alice',
+      'password': 'super-secret-pw',
+      'device_id': 'device-123',
+      'device_info': {'platform': 'macos'},
+    });
+  });
+
+  test('login maps 401 to SyncAuthException', () async {
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'Invalid username or password'}), 401));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'alice',
+        password: 'wrong',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isA<SyncAuthException>()),
+    );
+  });
+
+  test('login maps 404 (unknown project code) to SyncAuthException', () async {
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'Project not found'}), 404));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'nonexistent',
+        username: 'alice',
+        password: 'pw',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isA<SyncAuthException>()),
+    );
+  });
+
+  test('login maps a 500 to SyncTransferException', () async {
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'Internal server error'}), 500));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'alice',
+        password: 'pw',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isA<SyncTransferException>()),
+    );
+  });
+
+  test('a hung connection times out as SyncConnectionException, not a hang',
+      () async {
+    final client = MockClient((request) async {
+      await Future.delayed(const Duration(milliseconds: 200));
+      return http.Response('{}', 200);
+    });
+    final api = ApiClient(
+      client: client,
+      requestTimeout: const Duration(milliseconds: 20),
+    );
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'alice',
+        password: 'pw',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isA<SyncConnectionException>()),
+    );
+  });
+
+  test('postSync omits the formchanges key entirely when there are none',
+      () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        json.encode({
+          'synced': ['u1'],
+          'failed': [],
+          'formchanges_synced': [],
+          'formchanges_failed': [],
+        }),
+        200,
+      );
+    });
+    final api = ApiClient(client: client);
+
+    final result = await api.postSync(
+      token: 'tok',
+      submissions: [
+        {'table_name': 'enrollee', 'local_uuid': 'u1', 'data': {}},
+      ],
+      formchanges: const [],
+    );
+
+    expect(result.synced, ['u1']);
+    final body = json.decode(captured.body) as Map<String, dynamic>;
+    expect(body.containsKey('formchanges'), isFalse);
+  });
+
+  test('postSync parses partial success -- some synced, some failed',
+      () async {
+    final client = MockClient((request) async => http.Response(
+          json.encode({
+            'synced': ['u1'],
+            'failed': [
+              {'id': 'u2', 'error': 'Survey package not found'}
+            ],
+            'formchanges_synced': ['fc1'],
+            'formchanges_failed': [],
+          }),
+          200,
+        ));
+    final api = ApiClient(client: client);
+
+    final result = await api.postSync(
+      token: 'tok',
+      submissions: [
+        {'local_uuid': 'u1'},
+        {'local_uuid': 'u2'},
+      ],
+      formchanges: [
+        {'formchanges_uuid': 'fc1'}
+      ],
+    );
+
+    expect(result.synced, ['u1']);
+    expect(result.failed.single.id, 'u2');
+    expect(result.failed.single.error, 'Survey package not found');
+    expect(result.formchangesSynced, ['fc1']);
+  });
+
+  test('postSync maps 401 (expired session) to SyncAuthException', () async {
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'Invalid or expired token'}), 401));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.postSync(token: 'stale', submissions: const [], formchanges: const []),
+      throwsA(isA<SyncAuthException>()),
+    );
+  });
+
+  test('a download failure (non-200) never touches the local filesystem',
+      () async {
+    final client =
+        MockClient((request) async => http.Response('not found', 404));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.downloadSurveyZip('https://x/missing.zip', 'missing.zip'),
+      throwsA(isA<SyncTransferException>()),
+    );
+  });
+
+  test('a download timeout raises SyncConnectionException', () async {
+    final client = MockClient((request) async {
+      await Future.delayed(const Duration(milliseconds: 200));
+      return http.Response.bytes([], 200);
+    });
+    final api = ApiClient(
+      client: client,
+      downloadTimeout: const Duration(milliseconds: 20),
+    );
+
+    await expectLater(
+      api.downloadSurveyZip('https://x/y.zip', 'y.zip'),
+      throwsA(isA<SyncConnectionException>()),
+    );
+  });
+
+  test(
+      'nothing logged during login or sync contains the password, token, or a record value',
+      () async {
+    final captured = <String>[];
+    final originalDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) captured.add(message);
+    };
+
+    try {
+      final client = MockClient((request) async {
+        if (request.url.path.contains('app-login')) {
+          return http.Response(
+            json.encode({
+              'token': 'super-secret-session-token',
+              'expires_at': '2026-09-13T00:00:00.000Z',
+              'surveys': [],
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          json.encode({
+            'synced': [],
+            'failed': [],
+            'formchanges_synced': [],
+            'formchanges_failed': [],
+          }),
+          200,
+        );
+      });
+      final api = ApiClient(client: client);
+
+      await api.login(
+        projectCode: 'demo',
+        username: 'alice',
+        password: 'super-secret-pw',
+        deviceId: 'd',
+        deviceInfo: const {},
+      );
+
+      await api.postSync(
+        token: 'super-secret-session-token',
+        submissions: [
+          {
+            'local_uuid': 'u1',
+            'data': {'patient_name': 'a-very-private-name'},
+          },
+        ],
+        formchanges: const [],
+      );
+    } finally {
+      debugPrint = originalDebugPrint;
+    }
+
+    for (final line in captured) {
+      expect(line, isNot(contains('super-secret-pw')));
+      expect(line, isNot(contains('super-secret-session-token')));
+      expect(line, isNot(contains('a-very-private-name')));
+    }
+  });
+}
