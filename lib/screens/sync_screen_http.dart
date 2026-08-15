@@ -46,6 +46,17 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
     _loadActiveSurvey();
   }
 
+  @override
+  void dispose() {
+    // The underlying http.Client is meant to be reused across every call
+    // this screen makes -- closing it only makes sense once, when the
+    // screen itself goes away, not after each individual operation (unlike
+    // FTP, an HTTP bearer token stays valid across many calls, so there is
+    // no per-operation connect/disconnect cycle to mirror here).
+    _syncBackend.disconnect();
+    super.dispose();
+  }
+
   Future<void> _loadActiveSurvey() async {
     final name = await _settingsService.activeSurvey;
     if (mounted) {
@@ -119,7 +130,6 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
         _statusIsError = true;
       });
     } finally {
-      await _syncBackend.disconnect();
       if (mounted) setState(() => _isConnecting = false);
     }
   }
