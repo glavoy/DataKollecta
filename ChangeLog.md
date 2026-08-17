@@ -1,4 +1,4 @@
-## [1.1.x+8] - 2026-xx-xx
+## [1.2.0+8] - 2026-08-17
 
 ### Added
 - **DataKollecta: a second product built from this same codebase.** The survey engine — XML parsing, skip/logic/calculation, ID generation, the SQLite schema — is identical; only the sync backend differs. GiSTX keeps FTP/SFTP; DataKollecta talks to a Supabase project over HTTP, with incremental per-record upload instead of one whole-database zip. Selected at build time with a new `--product` flag alongside the existing country `--flavor`:

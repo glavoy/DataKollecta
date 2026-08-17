@@ -117,11 +117,10 @@ dart run tool/build.dart macos                           # -> installer_output/G
 
 The build script **never changes the version** — both flavors of a release must carry the
 same version, and test builds should not consume version numbers. Bump deliberately when
-cutting a release:
-
-```bash
-dart run tool/update_version.dart   # increments the patch version in pubspec.yaml
-```
+cutting a release, by hand-editing `version:` in `pubspec.yaml`. `tool/update_version.dart`
+only ever increments the patch digit, which understates a release that adds real functionality
+rather than just fixing bugs — semver's MINOR is for that, and the script has no path to it. Do
+not run `tool/update_version.dart`; choose the version bump yourself instead.
 
 When cutting a release, update `ChangeLog.md` (Added/Changed/Fixed/Housekeeping sections per version) alongside the version bump.
 
