@@ -59,8 +59,9 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
           widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
 
       final pkFields = await DbService.getPrimaryKeyFields(surveyId, tableName);
-      final records = await DbService.getExistingRecords(surveyId, tableName,
+      final rawRecords = await DbService.getExistingRecords(surveyId, tableName,
           orderBy: 'lastmod DESC');
+      final records = DbService.collapseDuplicateUniqueIds(rawRecords);
 
       // Get display fields configuration from CRFs table
       final crfConfig = await DbService.getCrfConfig(surveyId, tableName);

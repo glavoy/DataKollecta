@@ -456,6 +456,14 @@ class DbService {
         if (!hasUniqueId) {
           colDefs.add('uniqueid TEXT PRIMARY KEY');
         }
+        // Every current survey declares uniqueid as a reserved system
+        // variable (the generator always writes it), so hasUniqueId is true
+        // in practice and this branch is never taken -- uniqueid has no real
+        // uniqueness constraint on-device today. Retrofitting one onto a
+        // live table would need a full rebuild (SQLite can't ALTER one in),
+        // so DbService.collapseDuplicateUniqueIds is the deliberate
+        // read-time mitigation for the resulting duplicate-row condition,
+        // not a schema fix.
         if (!hasSyncedAt) {
           colDefs.add('synced_at DATETIME');
         }
@@ -577,6 +585,57 @@ class DbService {
       _logError('Error fetching records: $e');
       return [];
     }
+  }
+
+  /// Collapses rows that share the same `uniqueid`, keeping only the one
+  /// with the lexicographically-greatest `lastmod` (ISO-8601 timestamps sort
+  /// correctly as strings -- every write goes through the one
+  /// `DateTime.now().toIso8601String()` call site in auto_fields.dart, so the
+  /// format is uniform). Mirrors avert_data's process_data.py `is_older()`,
+  /// the server-side pipeline's own resolution of the same condition.
+  ///
+  /// A double-tap on Finish (fixed in 1.1.0+7 with a debounce guard) could
+  /// save the same interview twice before that fix landed. `uniqueid` is not
+  /// a real SQLite PRIMARY KEY on any survey where the generator writes it as
+  /// a declared question (see `_syncSurveyTable`'s `hasUniqueId` branch,
+  /// which every current survey takes), so duplicate-`uniqueid` rows are a
+  /// structurally possible read-time condition, not just a closed historical
+  /// bug. This never deletes anything -- it only decides which row the UI
+  /// treats as "the" record.
+  ///
+  /// Rows with *different* `uniqueid`s are never merged, even if they share
+  /// every other field (e.g. the same subjid) -- that would hide a genuine
+  /// identity collision instead of a technical duplicate-save artifact.
+  static List<Map<String, dynamic>> collapseDuplicateUniqueIds(
+    List<Map<String, dynamic>> records,
+  ) {
+    final bestByKey = <String, Map<String, dynamic>>{};
+    final order = <String>[];
+    var unkeyedCount = 0;
+
+    for (final record in records) {
+      final uniqueId = record['uniqueid']?.toString();
+      final key = (uniqueId == null || uniqueId.isEmpty)
+          // No uniqueid to key on -- give it its own synthetic key so rows
+          // without one never collide with each other or a real uniqueid.
+          ? ' ${unkeyedCount++}'
+          : uniqueId;
+
+      final existing = bestByKey[key];
+      if (existing == null) {
+        order.add(key);
+        bestByKey[key] = record;
+        continue;
+      }
+
+      final candidateLastmod = record['lastmod']?.toString() ?? '';
+      final existingLastmod = existing['lastmod']?.toString() ?? '';
+      if (candidateLastmod.compareTo(existingLastmod) > 0) {
+        bestByKey[key] = record;
+      }
+    }
+
+    return [for (final key in order) bestByKey[key]!];
   }
 
   static Future<DateTime?> getLastBackupTime(String surveyId) async {

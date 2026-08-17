@@ -222,4 +222,91 @@ void main() {
     );
     expect(withoutColumn.containsKey('synced_at'), isFalse);
   });
+
+  test(
+      'collapseDuplicateUniqueIds keeps only the most-recent-lastmod row per uniqueid '
+      '(the real subject 21040040057 scenario: 3 identical rows, only lastmod differs)',
+      () {
+    final result = DbService.collapseDuplicateUniqueIds([
+      {
+        'uniqueid': '08edc212-a666-4f46-95a3-45c59ac3d63c',
+        'subjid': '21040040057',
+        'lastmod': '2026-08-07T10:35:41.222238',
+      },
+      {
+        'uniqueid': '08edc212-a666-4f46-95a3-45c59ac3d63c',
+        'subjid': '21040040057',
+        'lastmod': '2026-08-07T10:35:45.805192',
+      },
+      {
+        'uniqueid': '08edc212-a666-4f46-95a3-45c59ac3d63c',
+        'subjid': '21040040057',
+        'lastmod': '2026-08-07T10:35:40.882014',
+      },
+    ]);
+
+    expect(result.length, 1);
+    expect(result.single['lastmod'], '2026-08-07T10:35:45.805192');
+  });
+
+  test(
+      'collapseDuplicateUniqueIds only collapses the duplicated group and '
+      'preserves first-seen order for the rest', () {
+    final a1 = {'uniqueid': 'a', 'lastmod': 't1'};
+    final b = {'uniqueid': 'b', 'lastmod': 't1'};
+    final a2 = {'uniqueid': 'a', 'lastmod': 't2'};
+    final c = {'uniqueid': 'c', 'lastmod': 't1'};
+
+    final result = DbService.collapseDuplicateUniqueIds([a1, b, a2, c]);
+
+    expect(result.length, 3);
+    expect(result[0]['uniqueid'], 'a');
+    expect(result[0]['lastmod'], 't2'); // the newer of the two "a" rows
+    expect(result[1]['uniqueid'], 'b');
+    expect(result[2]['uniqueid'], 'c');
+  });
+
+  test(
+      'collapseDuplicateUniqueIds never merges different uniqueids, even when '
+      'every other field (including lastmod) matches -- the safety-net property '
+      'this function must never violate', () {
+    final result = DbService.collapseDuplicateUniqueIds([
+      {'uniqueid': 'person-a', 'subjid': '21040040057', 'lastmod': 't1'},
+      {'uniqueid': 'person-b', 'subjid': '21040040057', 'lastmod': 't1'},
+    ]);
+
+    expect(result.length, 2);
+    expect(result.map((r) => r['uniqueid']), containsAll(['person-a', 'person-b']));
+  });
+
+  test('collapseDuplicateUniqueIds resolves a tie on lastmod without crashing or '
+      'double-counting', () {
+    final result = DbService.collapseDuplicateUniqueIds([
+      {'uniqueid': 'a', 'lastmod': 'same-time'},
+      {'uniqueid': 'a', 'lastmod': 'same-time'},
+    ]);
+
+    expect(result.length, 1);
+  });
+
+  test('collapseDuplicateUniqueIds treats a missing lastmod as older than a real one',
+      () {
+    final withTimestamp = {'uniqueid': 'a', 'lastmod': '2026-01-01T00:00:00'};
+    final result = DbService.collapseDuplicateUniqueIds([
+      {'uniqueid': 'a', 'lastmod': null},
+      withTimestamp,
+    ]);
+
+    expect(result.single, withTimestamp);
+  });
+
+  test('collapseDuplicateUniqueIds keeps rows with no uniqueid as separate entries',
+      () {
+    final result = DbService.collapseDuplicateUniqueIds([
+      {'uniqueid': null, 'lastmod': 't1'},
+      {'lastmod': 't1'}, // uniqueid key absent entirely
+    ]);
+
+    expect(result.length, 2);
+  });
 }
