@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:GiSTX/services/sync/api_client.dart';
 import 'package:GiSTX/services/sync/record_uploader.dart';
 import 'package:GiSTX/services/sync/sync_backend.dart';
@@ -194,4 +195,118 @@ void main() {
     expect(outcome.stoppedEarly, isFalse);
     expect(outcome.syncedCount, 2); // only the last batch of 2 succeeded
   });
+
+  test(
+      'two rows sharing one wireId (a duplicate-uniqueid pair, e.g. the '
+      'historical double-tap-save bug) both get marked synced, not just '
+      'whichever one a naive wireId -> rowId map happened to keep', () async {
+    // Same shape as the real subject 21040040057 case DbService.
+    // collapseDuplicateUniqueIds resolves for editing: two on-device rows
+    // share one uniqueid. Editing either sets synced_at = null on both, so
+    // both land in the same upload batch.
+    final batch = [
+      UploadRow(rowId: 10, wireId: 'dup', data: const {}),
+      UploadRow(rowId: 11, wireId: 'dup', data: const {}),
+    ];
+    final markedRowIds = <int>[];
+
+    final outcome = await uploader.upload(
+      sourceName: 'enrollee',
+      fetchBatch: (after, limit) async => after == 0 ? batch : [],
+      markSynced: (rowIds) async => markedRowIds.addAll(rowIds),
+      // Two entries, not one: app-sync loops per submission, so a batch
+      // holding two submissions with the same local_uuid echoes that wireId
+      // back twice -- exercising the exact shape that first exposed the
+      // double-count bug (naive expansion produced [10, 11, 10, 11]).
+      send: (b) async =>
+          const BatchResult(syncedWireIds: ['dup', 'dup'], failed: []),
+    );
+
+    expect(markedRowIds, unorderedEquals([10, 11]));
+    expect(outcome.syncedCount, 2);
+  });
+
+  group('uploadSurvey against a real SQLite database', () {
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute(
+        'CREATE TABLE crfs (tablename TEXT)',
+      );
+      await db.execute(
+        'CREATE TABLE enrollee (uniqueid TEXT, subjid TEXT, lastmod TEXT, '
+        'synced_at DATETIME)',
+      );
+      await db.execute(
+        'CREATE TABLE formchanges (changeid INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'tablename TEXT, fieldname TEXT, uniqueid TEXT, oldvalue TEXT, '
+        'newvalue TEXT, changed_at TEXT, changeuniqueid TEXT, '
+        'surveyor_id TEXT, synced_at DATETIME)',
+      );
+      await db.insert('crfs', {'tablename': 'enrollee'});
+    });
+
+    tearDown(() => db.close());
+
+    test(
+        'a genuine unsynced row is read with a real int rowid and gets '
+        'marked synced end-to-end (the happy path this file had zero real-'
+        'database coverage for before)', () async {
+      await db.insert('enrollee',
+          {'uniqueid': 'u1', 'subjid': 's1', 'lastmod': 't1'});
+
+      final uploader = RecordUploader(apiClient: _FakeApiClient());
+      final outcome = await uploader.uploadSurvey(
+          db: db, token: 't', deviceId: 'd');
+
+      expect(outcome.syncedCount, 1);
+      expect(outcome.stoppedEarly, isFalse);
+      final rows = await db.query('enrollee');
+      expect(rows.single['synced_at'], isNotNull);
+    });
+
+    test(
+        'two rows sharing one uniqueid (an edit swept both back to '
+        'synced_at = null) both get marked synced after upload, mirroring '
+        'the real subject 21040040057 scenario', () async {
+      await db.insert('enrollee',
+          {'uniqueid': 'dup', 'subjid': 's1', 'lastmod': 't1'});
+      await db.insert('enrollee',
+          {'uniqueid': 'dup', 'subjid': 's1', 'lastmod': 't2'});
+
+      final uploader = RecordUploader(apiClient: _FakeApiClient());
+      final outcome = await uploader.uploadSurvey(
+          db: db, token: 't', deviceId: 'd');
+
+      expect(outcome.syncedCount, 2);
+      final rows = await db.query('enrollee');
+      expect(rows.every((r) => r['synced_at'] != null), isTrue);
+    });
+  });
+}
+
+/// Reports every submission/formchange it's handed as synced -- enough to
+/// drive [RecordUploader.uploadSurvey] end-to-end without a real network
+/// call, matching the fakes already used for [RecordUploader.upload] above.
+class _FakeApiClient implements ApiClient {
+  @override
+  Future<ApiSyncResult> postSync({
+    required String token,
+    required List<Map<String, dynamic>> submissions,
+    required List<Map<String, dynamic>> formchanges,
+  }) async {
+    return ApiSyncResult(
+      synced: submissions.map((s) => s['local_uuid'] as String).toList(),
+      failed: const [],
+      formchangesSynced:
+          formchanges.map((f) => f['formchanges_uuid'] as String).toList(),
+      formchangesFailed: const [],
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} not faked');
 }

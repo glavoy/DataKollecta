@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'api_client.dart';
@@ -127,11 +128,26 @@ class RecordUploader {
       }
 
       if (result.syncedWireIds.isNotEmpty) {
-        final rowIdByWireId = {for (final r in batch) r.wireId: r.rowId};
-        final syncedRowIds = result.syncedWireIds
-            .map((id) => rowIdByWireId[id])
-            .whereType<int>()
-            .toList();
+        // A wireId can legitimately map to more than one rowId here: a
+        // duplicate-uniqueid row (the historical double-tap-save bug, see
+        // DbService.collapseDuplicateUniqueIds) means two on-device rows
+        // share one uniqueid, and editing either sets synced_at = null on
+        // both, sweeping both into the same batch. Grouping (rather than a
+        // wireId -> single-rowId map, which would silently drop all but the
+        // last row sharing a wireId) ensures every duplicate gets marked
+        // synced together, not just one of them forever re-swept in.
+        final rowIdsByWireId = <String, List<int>>{};
+        for (final r in batch) {
+          rowIdsByWireId.putIfAbsent(r.wireId, () => []).add(r.rowId);
+        }
+        // Dedupe wireIds before expanding: a duplicate-uniqueid pair sends
+        // two submissions sharing one wireId, so the server can (and does,
+        // per app-sync's per-submission loop) echo that wireId back twice in
+        // syncedWireIds -- expanding per occurrence would double-count and
+        // double-pass the same rowIds to markSynced/syncedCount.
+        final syncedRowIds = [
+          for (final id in result.syncedWireIds.toSet()) ...?rowIdsByWireId[id]
+        ];
         if (syncedRowIds.isNotEmpty) await markSynced(syncedRowIds);
         syncedCount += syncedRowIds.length;
       }
@@ -216,12 +232,25 @@ class RecordUploader {
       'WHERE synced_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
       [afterRowId, limit],
     );
-    return rows.map((row) {
+    final result = <UploadRow>[];
+    for (final row in rows) {
       final data = Map<String, dynamic>.from(row);
-      final rowId = data.remove('rowid') as int;
-      return UploadRow(
-          rowId: rowId, wireId: data['uniqueid'] as String, data: data);
-    }).toList();
+      final rowId = data.remove('rowid');
+      final wireId = data['uniqueid'];
+      // Defensive, not expected: every row here came straight out of a
+      // rowid table's own rowid pseudo-column, which SQLite never leaves
+      // null. But a cast failure here used to abort the *entire* upload
+      // (every table, every pending record) instead of just this row --
+      // skip and log instead, so one unexpected row can't block everything
+      // else that's otherwise ready to sync.
+      if (rowId is! int || wireId is! String) {
+        debugPrint(
+            '[RecordUploader] Skipping malformed $tableName row: rowid=$rowId, uniqueid=$wireId');
+        continue;
+      }
+      result.add(UploadRow(rowId: rowId, wireId: wireId, data: data));
+    }
+    return result;
   }
 
   Future<void> _markTableSynced(
@@ -260,12 +289,19 @@ class RecordUploader {
       'AND synced_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
       [afterRowId, limit],
     );
-    return rows.map((row) {
+    final result = <UploadRow>[];
+    for (final row in rows) {
       final data = Map<String, dynamic>.from(row);
-      final rowId = data.remove('rowid') as int;
-      return UploadRow(
-          rowId: rowId, wireId: data['changeuniqueid'] as String, data: data);
-    }).toList();
+      final rowId = data.remove('rowid');
+      final wireId = data['changeuniqueid'];
+      if (rowId is! int || wireId is! String) {
+        debugPrint(
+            '[RecordUploader] Skipping malformed formchanges row: rowid=$rowId, changeuniqueid=$wireId');
+        continue;
+      }
+      result.add(UploadRow(rowId: rowId, wireId: wireId, data: data));
+    }
+    return result;
   }
 
   Future<void> _markFormchangesSynced(Database db, List<int> rowIds) async {
