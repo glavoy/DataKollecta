@@ -32,7 +32,7 @@ committed there will not reach `main` and the drift starts again.
 
 ## Product flavors: GiSTX vs DataKollecta (two independent axes)
 
-GiSTX ships as two separate products from this one codebase: **GiSTX** (FTP/SFTP sync, the
+This codebase ships two separate products: **GiSTX** (FTP/SFTP sync, the
 axis described above) and **DataKollecta** (Supabase/HTTP sync). This is a second,
 independent build axis from *country* — the two must never be conflated:
 
@@ -153,8 +153,8 @@ GiSTX and DataKollecta are offline-first Flutter survey/data-collection apps bui
 
 ### System variables and the end-of-survey screen
 
-- **Reserved system variables** — `starttime`, `startdate`, `uniqueid`, `swver`, `survey_id`, `lastmod`, `stoptime` are written by `GiSTXConfig_Python`, not by the app. The generator drops any row a data dictionary declares for them and emits its own: the leading pair before the first real question, the trailing five after the last one but ahead of the end-of-survey screen (navigation stops on that screen, so anything after it is never computed). **The app trusts the XML** — `SurveyLoader` never adds, moves or de-duplicates a system variable. Getting their position right is the generator's job alone; don't add a second implementation in the app.
-- **The end-of-survey screen** (`SurveyLoader.finalizeQuestions`) — `GiSTXConfig_Python` writes `end_of_questions` into every questionnaire with a fixed English sentence. Because no data dictionary can author that question, the app owns its wording and translates it. Matching is on the fieldname **and** the exact generated text, so hand-customised wording is never overwritten. This is why a French build shows the right text without regenerating or redeploying any survey package.
+- **Reserved system variables** — `starttime`, `startdate`, `uniqueid`, `swver`, `survey_id`, `lastmod`, `stoptime` are written by `DataKollecta-SurveyGen` (the data-dictionary-to-XML generator, a separate repo), not by the app. The generator drops any row a data dictionary declares for them and emits its own: the leading pair before the first real question, the trailing five after the last one but ahead of the end-of-survey screen (navigation stops on that screen, so anything after it is never computed). **The app trusts the XML** — `SurveyLoader` never adds, moves or de-duplicates a system variable. Getting their position right is the generator's job alone; don't add a second implementation in the app.
+- **The end-of-survey screen** (`SurveyLoader.finalizeQuestions`) — `DataKollecta-SurveyGen` writes `end_of_questions` into every questionnaire with a fixed English sentence. Because no data dictionary can author that question, the app owns its wording and translates it. Matching is on the fieldname **and** the exact generated text, so hand-customised wording is never overwritten. This is why a French build shows the right text without regenerating or redeploying any survey package.
 
 `calc`, `calculation` and `calculated` are accepted as spellings of `automatic`. The spelling never decides behavior — that comes from the fieldname (a reserved variable), from whether a `<calculation>` is present, or from the CRF's `idconfig` (generated IDs).
 5. `IdGenerator` builds subject/record IDs from the CRF's `id_config` JSON (field sources + padding + fixed strings + an auto-incrementing counter queried from the survey's own table).
