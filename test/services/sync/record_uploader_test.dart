@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:GiSTX/services/sync/api_client.dart';
-import 'package:GiSTX/services/sync/record_uploader.dart';
-import 'package:GiSTX/services/sync/sync_backend.dart';
+import 'package:datakollecta/services/sync/api_client.dart';
+import 'package:datakollecta/services/sync/record_uploader.dart';
+import 'package:datakollecta/services/sync/sync_backend.dart';
 
 void main() {
   final uploader = RecordUploader(batchSize: 2, maxConsecutiveFailures: 3);

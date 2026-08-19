@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/services/sync/http_sync_backend.dart';
+import 'package:datakollecta/services/sync/http_sync_backend.dart';
 
 void main() {
   group('resolveLocalFilename', () {

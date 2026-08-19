@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/survey_navigation_service.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/survey_navigation_service.dart';
 
 void main() {
   group('SurveyNavigationService.clearAnswersInRange', () {

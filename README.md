@@ -1,4 +1,7 @@
-# GiSTX
+# DataKollecta
+
+This repository builds two separately-branded products — **GiSTX** and
+**DataKollecta** — from one codebase; see below.
 
 **`main` is the only branch to work on.** There was previously a separate
 `burkinafaso` branch for the French/SFTP variant; it silently drifted from
@@ -40,7 +43,7 @@ repository — they are kept with the keystore backup.
 
 ## Overview
 
-GiSTX is a cross-platform offline survey and data collection application built with Flutter. It enables researchers and data collectors to administer XML-based questionnaires in field settings without requiring internet connectivity.
+GiSTX and DataKollecta are cross-platform offline survey and data collection applications built with Flutter from this one codebase. They enable researchers and data collectors to administer XML-based questionnaires in field settings without requiring internet connectivity — GiSTX syncs over FTP/SFTP, DataKollecta over Supabase/HTTP (see the product table above).
 
 ## Key Features
 

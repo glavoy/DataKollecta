@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/services/id_generator.dart';
+import 'package:datakollecta/services/id_generator.dart';
 
 void main() {
   // Mirrors the AVERT survey config: country(1) + deviceid(3) + mrc(3),

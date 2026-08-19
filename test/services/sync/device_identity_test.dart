@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/services/sync/device_identity.dart';
+import 'package:datakollecta/services/sync/device_identity.dart';
 
 void main() {
   test('a non-empty native id is returned as-is, without touching storage',

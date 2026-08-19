@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/auto_fields.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/auto_fields.dart';
 
 /// A checkbox answer is stored as a List<String>, not a String -- radio,
 /// text and date answers are plain Strings. A calculation reading a field's

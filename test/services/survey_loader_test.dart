@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/config/app_config.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/app_strings.dart';
-import 'package:GiSTX/services/survey_loader.dart';
+import 'package:datakollecta/config/app_config.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/app_strings.dart';
+import 'package:datakollecta/services/survey_loader.dart';
 
 /// Run under both flavors to cover the end-of-survey wording:
 ///

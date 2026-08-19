@@ -126,7 +126,7 @@ When cutting a release, update `ChangeLog.md` (Added/Changed/Fixed/Housekeeping 
 
 ## Architecture
 
-GiSTX is an offline-first Flutter survey/data-collection app. Surveys are defined in XML and rendered as dynamic multi-page questionnaires; all responses are stored locally in SQLite. There is no bundled `assets/surveys` folder — surveys are downloaded/side-loaded as zip packages and extracted at runtime (see below), which is a departure from `md/TECHNICAL_README.md` (that doc describes an older, asset-bundled version of the app and is stale on this point; treat it as a conceptual reference for skip/logic/validation semantics, not as ground truth for survey loading or storage paths).
+GiSTX and DataKollecta are offline-first Flutter survey/data-collection apps built from this one codebase (see "Product flavors" above). Surveys are defined in XML and rendered as dynamic multi-page questionnaires; all responses are stored locally in SQLite. There is no bundled `assets/surveys` folder — surveys are downloaded/side-loaded as zip packages and extracted at runtime (see below), which is a departure from `md/TECHNICAL_README.md` (that doc describes an older, asset-bundled version of the app and is stale on this point; treat it as a conceptual reference for skip/logic/validation semantics, not as ground truth for survey loading or storage paths).
 
 ### Survey packaging and multi-survey storage (`SurveyConfigService`)
 

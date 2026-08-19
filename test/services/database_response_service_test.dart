@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/database_response_service.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/database_response_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

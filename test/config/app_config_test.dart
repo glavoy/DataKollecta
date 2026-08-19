@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/config/app_config.dart';
+import 'package:datakollecta/config/app_config.dart';
 
 /// The country is fixed when the app is built. These assertions hold for
 /// whichever flavor the suite is run under, so a broken --dart-define or a

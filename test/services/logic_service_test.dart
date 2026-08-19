@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/logic_service.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/logic_service.dart';
 
 Question _checkboxQuestion(String condition, {String message = 'Invalid'}) {
   return Question(

@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/widgets/question_views.dart';
+import 'package:datakollecta/widgets/question_views.dart';
 
 /// A `text_decimal` field must accept digits and a single decimal point and
 /// nothing else — height, weight and muac are collected this way.

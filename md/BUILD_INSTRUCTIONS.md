@@ -1,6 +1,6 @@
-# GiSTX Build Instructions
+# Build Instructions
 
-This document provides step-by-step instructions for building GiSTX for different platforms.
+This document provides step-by-step instructions for building GiSTX and DataKollecta — the two products built from this repository — for different platforms.
 
 ## Prerequisites
 

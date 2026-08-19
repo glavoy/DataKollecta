@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/services/numeric_validation_service.dart';
+import 'package:datakollecta/services/numeric_validation_service.dart';
 
 void main() {
   group('NumericValidationService.hasTrailingDecimalSeparator', () {

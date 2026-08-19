@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/config/app_config.dart';
-import 'package:GiSTX/services/app_strings.dart';
-import 'package:GiSTX/services/ftp_service.dart';
+import 'package:datakollecta/config/app_config.dart';
+import 'package:datakollecta/services/app_strings.dart';
+import 'package:datakollecta/services/ftp_service.dart';
 
 /// Upload diagnostics reach the interviewer through errorUploading, so the
 /// prose follows the build language while the stage name stays English.

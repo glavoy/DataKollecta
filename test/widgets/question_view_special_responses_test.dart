@@ -1,7 +1,7 @@
-import 'package:GiSTX/config/app_config.dart';
-import 'package:GiSTX/models/question.dart';
-import 'package:GiSTX/services/csv_data_service.dart';
-import 'package:GiSTX/widgets/question_views.dart';
+import 'package:datakollecta/config/app_config.dart';
+import 'package:datakollecta/models/question.dart';
+import 'package:datakollecta/services/csv_data_service.dart';
+import 'package:datakollecta/widgets/question_views.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/services/field_comparator.dart';
+import 'package:datakollecta/services/field_comparator.dart';
 
 /// This is the primary correctness net for comparison logic shared by skip,
 /// logic_check, and calculations -- coverage that used to be scattered

@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:GiSTX/widgets/question_views.dart';
+import 'package:datakollecta/widgets/question_views.dart';
 
 /// A `hourmin` field collects a 24-hour time as `hh:mm`. The separator is
 /// inserted by the app, so the interviewer only ever presses digits.

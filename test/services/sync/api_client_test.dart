@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:GiSTX/services/sync/api_client.dart';
-import 'package:GiSTX/services/sync/sync_backend.dart';
+import 'package:datakollecta/services/sync/api_client.dart';
+import 'package:datakollecta/services/sync/sync_backend.dart';
 
 void main() {
   test('login sends exactly the fields the deployed app-login function expects',
