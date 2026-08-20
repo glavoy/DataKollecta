@@ -1,18 +1,41 @@
-; GiSTX Inno Setup Installation Script
-; This script creates a Windows installer for the GiSTX application
+; Inno Setup installation script for both products built from this codebase.
+;
+; Which product it packages is NOT chosen here -- it comes from
+; windows\installer_config.iss, which `dart run tool/build.dart windows
+; [--product datakollecta]` rewrites on every build, along with the version.
+; So the sequence is always: build, then compile this script. Packaging without
+; building first cannot work anyway, since there would be no .exe to collect.
+;
+;   dart run tool/build.dart windows                          -> GiSTX
+;   dart run tool/build.dart windows --product datakollecta    -> DataKollecta
+;
+#include "windows\installer_config.iss"
 
-#define MyAppName "GiSTX"
-; MyAppVersion and MyAppVersionFile come from pubspec.yaml, written here by
-; `dart run tool/build.dart windows`. Build before packaging -- there is no exe
-; to package otherwise, so this can never be meaningfully out of date.
-#include "windows\installer_version.iss"
 #define MyAppPublisher "Geoff Lavoy"
 #define MyAppURL "https://www.geofflavoy.com"
-#define MyAppExeName "gistx.exe"
+
+#if MyProduct == "datakollecta"
+  #define MyAppName "DataKollecta"
+  #define MyAppExeName "datakollecta.exe"
+  #define MyAppIcon "assets\branding\datakollecta.ico"
+#else
+  #define MyAppName "GiSTX"
+  #define MyAppExeName "gistx.exe"
+  #define MyAppIcon "assets\branding\gistx.ico"
+#endif
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
+; GiSTX and DataKollecta are two separate applications and must never share an
+; AppId -- Windows identifies an installation by it, so a shared value would
+; make installing one upgrade and replace the other, exactly as a shared
+; applicationId would on Android. Neither may ever be changed once shipped:
+; changing an AppId orphans every existing installation's uninstall entry.
+#if MyProduct == "datakollecta"
+AppId={{0C203832-5C03-4935-9610-DD07C8442579}}
+#else
 AppId={{899ec069-8c97-4a3d-9d2b-712a290b6675}}
+#endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -27,14 +50,14 @@ DefaultGroupName={#MyAppName}
 ;LicenseFile=LICENSE.txt
 ; Output directory and filename
 OutputDir=installer_output
-OutputBaseFilename=GiSTX-Setup-{#MyAppVersionFile}
+OutputBaseFilename={#MyAppName}-Setup-{#MyAppVersionFile}
 ; Compression settings
 Compression=lzma2
 SolidCompression=yes
 ; Modern look
 WizardStyle=modern
 ; Icon for the installer (uses your app icon)
-SetupIconFile=assets\branding\gistx.ico
+SetupIconFile={#MyAppIcon}
 ; Uninstall icon
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Architecture

@@ -144,8 +144,21 @@ what matters, not density.
 The build number is visible in three places, which is what makes a test build identifiable in
 the field: the Settings screen (`v1.3.0+9`), the `swver` field on every collected record
 (`DataKollecta 1.3.0+9`), and the artifact filename (`datakollecta-1.3.0-build9.apk`).
-`windows/installer_version.iss` is generated from `pubspec.yaml` on every Windows build and
-`#include`d by `installer.iss`, so the installer's version cannot drift from the app's.
+`windows/installer_config.iss` is generated on every Windows build and `#include`d by
+`installer.iss`, carrying both the version and which product was built, so the installer
+cannot drift from the app or package the wrong product. It is deliberately *not* one of the
+`_applyProductConfigs` files, which are reverted to GiSTX defaults in a `finally`: the
+installer is compiled after `build.dart` exits, so a reverted value would silently package a
+DataKollecta build as GiSTX. Always build, then compile `installer.iss`:
+
+```bash
+dart run tool/build.dart windows --product datakollecta    # then run Inno Setup
+```
+
+GiSTX and DataKollecta carry **different Inno `AppId` values**, for the same reason they carry
+different `applicationId`s on Android — Windows identifies an installation by `AppId`, so a
+shared value would make installing one replace the other. Neither may be changed once
+shipped.
 
 Accumulate changes in `ChangeLog.md` under a `## [UNRELEASED] - TBD` heading
 (Added/Changed/Fixed/Housekeeping sections); rename it to `## [X.Y.Z+B] - <date>` when the
