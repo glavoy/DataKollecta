@@ -149,43 +149,55 @@ is why `--bump` is opt-in rather than automatic.
 
 #### Release flow
 
-**Cutting a release** — bump once, then build everything on that one number:
+Three phases, in order. Phase 2 repeats as often as you like; the release name does **not**
+move while it does.
 
-```bash
-dart run tool/update_version.dart                       # e.g. 1.3.0+11 -> 1.3.0+12
-# rename ChangeLog.md's `## [UNRELEASED] - TBD` heading to `## [1.3.0+12] - <date>`
-dart run tool/build.dart apk --product datakollecta      # no --bump
-dart run tool/build.dart apk                             # no --bump
-git commit -am "Release 1.3.0+12"
-git tag v1.3.0+12
-```
-
-**Immediately after a release**, hand-edit `pubspec.yaml` to the version now being worked
-toward — the *name* only, leaving `+B` where the release left it — and commit that alone:
+**1 — Start the cycle** (once, immediately after shipping a release). Hand-edit
+`pubspec.yaml` to the version now being worked toward — the *name* only, leaving `+B` where
+the release left it — and commit that on its own:
 
 ```bash
 # pubspec.yaml: 1.3.0+12 -> 1.4.0+12   (MINOR for new capability, PATCH for fixes only)
 git commit -m "Start 1.4.0" pubspec.yaml
 ```
 
-Do **not** build here. Building now would produce an artifact identical to the release on a
-fresh number, and leave `pubspec.yaml` naming a binary nobody has.
+Do **not** build here. Building would produce an artifact identical to the release it just
+followed, on a fresh number, and leave `pubspec.yaml` naming a binary nobody has. Ordinary
+work is then committed and pushed as usual — commits do not get version numbers.
 
-**A test build for the field** — this is the only step that advances the counter, and the
-first of the new cycle produces `1.4.0+13`:
+**2 — Cut a test build** (as often as wanted). This is the only step that advances the
+counter. `1.4.0` stays put; successive test builds are `+13`, `+14`, `+15`:
 
 ```bash
-dart run tool/build.dart apk --product datakollecta --bump
+dart run tool/update_version.dart                        # 1.4.0+12 -> 1.4.0+13
+dart run tool/build.dart apk --product datakollecta       # datakollecta-1.4.0-build13.apk
 git commit -m "Build $(grep '^version:' pubspec.yaml | cut -d' ' -f2) for field testing" pubspec.yaml
 ```
 
+`dart run tool/build.dart apk --product datakollecta --bump` collapses the first two commands
+into one, but only for a single product — building two products for the same test round needs
+the bump separated out as above, or they land on different numbers.
+
 Commit the bumped `pubspec.yaml` every time, so the counter lives in git and a fresh clone
-cannot reuse a number. Committing it on its own — rather than folded into feature work —
-keeps a clean record of which build numbers actually went to the field, which is what you
-will be searching when a tester reports a problem. On Windows, add
+cannot reuse a number. Committing it on its own — rather than folded into feature work — is
+what gives a searchable record of which builds actually went to the field, which is what you
+will be looking for when a tester reports a problem. On Windows, add
 `windows/installer_config.iss` to that commit; the build rewrites it too.
 
-Between releases `X.Y.Z` does not move; only `+B` advances.
+**3 — Release.** Same shape as a test build, plus the changelog and a tag. Bump once, then
+build every product and flavor **without** `--bump` so they all carry that one number:
+
+```bash
+dart run tool/update_version.dart                        # 1.4.0+15 -> 1.4.0+16
+# rename ChangeLog.md's `## [UNRELEASED] - TBD` heading to `## [1.4.0+16] - <date>`
+dart run tool/build.dart apk --product datakollecta       # no --bump
+dart run tool/build.dart apk                              # no --bump
+git commit -am "Release 1.4.0+16"
+git tag v1.4.0+16
+```
+
+Then, and only then, go back to phase 1: `1.4.0+16` -> `1.5.0+16`. A test build never
+changes the name — between releases `X.Y.Z` does not move, only `+B` advances.
 
 The build number is visible in three places, which is what makes a test build identifiable in
 the field: the Settings screen (`v1.3.0+9`), the `swver` field on every collected record
