@@ -131,4 +131,75 @@ void main() {
           '0');
     });
   });
+
+  group('yy / ddd reserved auto fields', () {
+    /// No `calculation` at all -- deliberately. See _computeTwoDigitYear's
+    /// doc comment in auto_fields.dart for why these are plain registry
+    /// fields rather than `calc:` fields: it's what gives them the same
+    /// unconditional preserve-on-edit protection as starttime/startdate,
+    /// without depending on a `preserve: true` flag a survey author could
+    /// forget to set (and which SurveyGen has no way to emit today anyway).
+    Question yyQuestion() =>
+        Question(type: QuestionType.automatic, fieldName: 'yy', fieldType: 'text');
+    Question dddQuestion() =>
+        Question(type: QuestionType.automatic, fieldName: 'ddd', fieldType: 'text');
+
+    String expectedTwoDigitYear() =>
+        (DateTime.now().year % 100).toString().padLeft(2, '0');
+
+    String expectedDayOfYear() {
+      final now = DateTime.now();
+      return (now.difference(DateTime(now.year, 1, 1)).inDays + 1)
+          .toString()
+          .padLeft(3, '0');
+    }
+
+    test('yy is the current two-digit year', () async {
+      final result = await AutoFields.compute({}, yyQuestion());
+
+      expect(result, expectedTwoDigitYear());
+      expect(RegExp(r'^\d{2}$').hasMatch(result), isTrue);
+    });
+
+    test('ddd is today\'s ordinal day, zero-padded to three digits', () async {
+      final result = await AutoFields.compute({}, dddQuestion());
+
+      expect(result, expectedDayOfYear());
+      expect(int.parse(result), inInclusiveRange(1, 366));
+      expect(RegExp(r'^\d{3}$').hasMatch(result), isTrue,
+          reason: 'expected a 3-digit zero-padded number, got "$result"');
+    });
+
+    test('editing an existing record preserves a stale yy/ddd unconditionally',
+        () async {
+      // The scenario the whole design exists to prevent: editing a record
+      // on a later day (or in a later year, for yy) must not silently mint
+      // a new subject ID. Values well outside what "today" could produce
+      // prove this is the stored value surviving, not a coincidental match.
+      final answers = {'yy': '19', 'ddd': '045'};
+
+      expect(await AutoFields.compute(answers, yyQuestion(), isEditMode: true),
+          '19');
+      expect(
+          await AutoFields.compute(answers, dddQuestion(), isEditMode: true),
+          '045');
+    });
+
+    test('a stale value is preserved even outside edit mode', () async {
+      // compute()'s preserve rule for a no-calculation field is unconditional
+      // on isEditMode -- it fires whenever a non-empty value is already
+      // present, which is also what keeps yy/ddd stable if an interviewer
+      // navigates back and forth within one still-in-progress interview.
+      final answers = {'yy': '19', 'ddd': '045'};
+
+      expect(await AutoFields.compute(answers, yyQuestion()), '19');
+      expect(await AutoFields.compute(answers, dddQuestion()), '045');
+    });
+
+    test('a brand new record with no stored value computes fresh', () async {
+      final result = await AutoFields.compute({}, dddQuestion());
+
+      expect(result, expectedDayOfYear());
+    });
+  });
 }

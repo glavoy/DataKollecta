@@ -39,6 +39,8 @@ class AutoFields {
     'lastmod': _computeLastModified,
     'swver': _computeSoftwareVersion,
     'survey_id': _computeSurveyId,
+    'yy': _computeTwoDigitYear,
+    'ddd': _computeDayOfYear,
 
     // Add more automatic variables here ...
   };
@@ -462,6 +464,50 @@ class AutoFields {
       AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
     // In edit mode, preserve existing startdate (handled in compute method)
     return DateTime.now().toIso8601String().split('T')[0];
+  }
+
+  /// Two-digit calendar year (`"26"` for 2026), and [_computeDayOfYear]
+  /// below, exist for one purpose: composing a subject ID that survives an
+  /// app reinstall wiping the local database. `IdGenerator`'s increment
+  /// counter is a MAX() over the survey's own SQLite table, which is deleted
+  /// entirely on Android uninstall -- so it silently restarts at 1 and can
+  /// collide with IDs already generated (and possibly already synced) before
+  /// the wipe. Folding the interviewer code, year and day-of-year into the
+  /// ID's base fields means that counter only has to stay collision-free
+  /// *within one interviewer's one calendar day*, since it naturally resets
+  /// whenever any of those change -- see ChangeLog.md for the full design.
+  ///
+  /// Deliberately a plain registry field, not a `calc:` field: preservation
+  /// on edit then falls out of `compute`'s existing generic rule -- once a
+  /// field with no calculation has a non-empty stored value, `compute`
+  /// returns it unchanged rather than recomputing, in edit mode or not (see
+  /// the `if (existing is String && existing.isNotEmpty) return existing;`
+  /// check below the calculation branch). A `calc:` field's equivalent
+  /// protection (`preserve: true`) has to be set correctly by every survey
+  /// author, for every survey, forever; this can't be forgotten, because
+  /// there's no flag to forget -- exactly how `starttime`/`startdate` are
+  /// already protected. Without it, editing an existing record on a later
+  /// day (or in the next calendar year, for `yy`) would recompute a
+  /// different value, `IdGenerator.hasBaseIdChanged` would see the ID's
+  /// base fields as changed, and the app would mint a new subject ID for
+  /// the same person while the interviewer was only fixing an unrelated
+  /// typo.
+  static String _computeTwoDigitYear(
+      AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
+    return (DateTime.now().year % 100).toString().padLeft(2, '0');
+  }
+
+  /// Ordinal day within the current calendar year, zero-padded to three
+  /// digits (Jan 1 = `"001"`, Dec 31 = `"365"` or `"366"` in a leap year).
+  /// Dart's `DateTime` has no such property, so it's the day count since
+  /// Jan 1 of the same year, inclusive. See [_computeTwoDigitYear] for why
+  /// this is a registry field rather than a `calc:` field.
+  static String _computeDayOfYear(
+      AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
+    final now = DateTime.now();
+    return (now.difference(DateTime(now.year, 1, 1)).inDays + 1)
+        .toString()
+        .padLeft(3, '0');
   }
 
   static String _computeStopTime(

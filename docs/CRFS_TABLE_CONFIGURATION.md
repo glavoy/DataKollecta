@@ -296,6 +296,45 @@ Use increments of 10 (10, 20, 30...) to leave room for future insertions
 - `05` = village (5 padded to length 2)
 - `001`, `002`, `003` = increment
 
+### **`yy` / `ddd`: date fields that survive an app reinstall**
+
+`incrementLength`'s counter only looks at *this device's* local data. Reinstalling the app
+deletes that data, so the counter silently restarts at 1 and a freshly generated ID can
+collide with one already generated (and possibly already synced) before the reinstall.
+
+Two special field names shrink that risk: `yy` (two-digit year, e.g. `26`) and `ddd`
+(day of year, `001`–`366`). Fold them into `idconfig.fields` alongside an
+interviewer/device code, and the counter only has to stay collision-free **within one
+interviewer's one calendar day** — not for the life of the study.
+
+```json
+{
+  "prefix": "GX",
+  "fields": [
+    {"name": "nn", "length": 2},
+    {"name": "yy", "length": 2},
+    {"name": "ddd", "length": 3}
+  ],
+  "incrementLength": 2
+}
+```
+→ `GX07260451` (interviewer `07`, year `26`, day-of-year `045`, increment `01`, resetting
+daily since the base ID changes every day).
+
+**These take no `calc:` configuration and must not be given one.** The app computes `yy`/
+`ddd` itself, the same way it already computes `startdate` — declare them in the survey's
+`_dd` worksheet as ordinary `automatic`-type rows with a **blank** `Responses` column, and
+reference them in `idconfig.fields`. That's what exempts them from needing a calculation.
+A hand-built `calc:constant value:NOW_YEAR`-style field would NOT be safe here: it has no
+protection against being recomputed when an old record is edited on a later day, and could
+silently generate a **new** subject ID for the same person mid-edit. `yy`/`ddd` avoid this
+because, like `starttime`/`startdate`, the app preserves an already-stored value
+unconditionally — see `DataKollecta-SurveyGen/README.md`'s `idconfig` reference for the full
+design rationale.
+
+This reduces risk; it does not eliminate it — a reinstall followed by continued interviewing
+on the *same* day can still collide.
+
 ---
 
 ## Recommended Spreadsheet Column Order
