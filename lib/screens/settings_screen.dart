@@ -54,7 +54,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final packageInfo = await PackageInfo.fromPlatform();
     if (mounted) {
       setState(() {
-        _appVersion = packageInfo.version;
+        // The build number is what separates two test builds of the same
+        // unreleased version, so it belongs on the screen an interviewer reads
+        // out when reporting a problem -- not just in pubspec.yaml.
+        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
       });
     }
   }

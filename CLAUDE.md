@@ -115,14 +115,41 @@ dart run tool/build.dart windows                         # -> build/windows/runn
 dart run tool/build.dart macos                           # -> installer_output/GiSTX-<version>.dmg
 ```
 
-The build script **never changes the version** — both flavors of a release must carry the
-same version, and test builds should not consume version numbers. Bump deliberately when
-cutting a release, by hand-editing `version:` in `pubspec.yaml`. `tool/update_version.dart`
-only ever increments the patch digit, which understates a release that adds real functionality
-rather than just fixing bugs — semver's MINOR is for that, and the script has no path to it. Do
-not run `tool/update_version.dart`; choose the version bump yourself instead.
+### Versioning
 
-When cutting a release, update `ChangeLog.md` (Added/Changed/Fixed/Housekeeping sections per version) alongside the version bump.
+`version: X.Y.Z+B` in `pubspec.yaml` is two independent things:
+
+| | Meaning | Changes when |
+|---|---|---|
+| `X.Y.Z` | The **release**, by semver: MAJOR breaking, MINOR new capability, PATCH fixes only | A release is cut — **hand-edit `pubspec.yaml`** |
+| `+B` | One specific **binary**. Monotonic, never reused | Every artifact handed to anyone, test builds included — `dart run tool/update_version.dart` |
+
+`tool/update_version.dart` bumps `+B` only and never touches `X.Y.Z`; a release number is a
+judgement call, a build counter is bookkeeping. The build script never changes either on its
+own, because a release is built once per product and flavor and all those artifacts must
+share one build number — `--bump` is opt-in for the test-build case.
+
+**Bump immediately before each build**, so the version in `pubspec.yaml` at rest always names
+the last binary that actually exists:
+
+```bash
+dart run tool/build.dart apk --product datakollecta --bump   # or bump, then build
+```
+
+Between releases, `X.Y.Z` names the version being *worked toward* and does not move; only
+`+B` advances. Commit the bumped `pubspec.yaml` so the counter lives in git and a fresh clone
+cannot reuse a number. A failed build still consumes a number — that is fine, monotonicity is
+what matters, not density.
+
+The build number is visible in three places, which is what makes a test build identifiable in
+the field: the Settings screen (`v1.3.0+9`), the `swver` field on every collected record
+(`DataKollecta 1.3.0+9`), and the artifact filename (`datakollecta-1.3.0-build9.apk`).
+`windows/installer_version.iss` is generated from `pubspec.yaml` on every Windows build and
+`#include`d by `installer.iss`, so the installer's version cannot drift from the app's.
+
+Accumulate changes in `ChangeLog.md` under a `## [UNRELEASED] - TBD` heading
+(Added/Changed/Fixed/Housekeeping sections); rename it to `## [X.Y.Z+B] - <date>` when the
+release is cut. Commits between releases do not get version numbers.
 
 ## Architecture
 

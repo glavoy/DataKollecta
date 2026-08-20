@@ -2,7 +2,10 @@
 ; This script creates a Windows installer for the GiSTX application
 
 #define MyAppName "GiSTX"
-#define MyAppVersion "1.0.3+2"
+; MyAppVersion and MyAppVersionFile come from pubspec.yaml, written here by
+; `dart run tool/build.dart windows`. Build before packaging -- there is no exe
+; to package otherwise, so this can never be meaningfully out of date.
+#include "windows\installer_version.iss"
 #define MyAppPublisher "Geoff Lavoy"
 #define MyAppURL "https://www.geofflavoy.com"
 #define MyAppExeName "gistx.exe"
@@ -24,7 +27,7 @@ DefaultGroupName={#MyAppName}
 ;LicenseFile=LICENSE.txt
 ; Output directory and filename
 OutputDir=installer_output
-OutputBaseFilename=GiSTX-Setup-{#MyAppVersion}
+OutputBaseFilename=GiSTX-Setup-{#MyAppVersionFile}
 ; Compression settings
 Compression=lzma2
 SolidCompression=yes

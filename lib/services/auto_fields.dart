@@ -52,7 +52,11 @@ class AutoFields {
     if (_cachedVersion == null) {
       try {
         final packageInfo = await PackageInfo.fromPlatform();
-        _cachedVersion = '${AppConfig.appName} ${packageInfo.version}';
+        // Includes the build number: a record collected on a field-test build
+        // has to be traceable to the exact binary that produced it, and two
+        // test builds share a version name until the release is cut.
+        _cachedVersion = '${AppConfig.appName} '
+            '${packageInfo.version}+${packageInfo.buildNumber}';
       } catch (e) {
         debugPrint('[AutoFields] Error loading version from pubspec.yaml: $e');
         _cachedVersion = '${AppConfig.appName} unknown';
