@@ -73,7 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final surveyorId = await _settingsService.surveyorId;
     final String? username;
     final String? password;
     if (AppConfig.isDataKollecta) {
@@ -81,13 +80,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       password = await _settingsService.apiPassword;
       _projectCodeController.text = await _settingsService.projectCode ?? '';
     } else {
+      final surveyorId = await _settingsService.surveyorId;
+      _surveyorIdController.text = surveyorId ?? '';
       username = await _settingsService.ftpUsername;
       password = await _settingsService.ftpPassword;
     }
 
     if (mounted) {
       setState(() {
-        _surveyorIdController.text = surveyorId ?? '';
         _ftpUsernameController.text = username ?? '';
         _ftpPasswordController.text = password ?? '';
         _isLoading = false;
@@ -99,7 +99,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_formKey.currentState!.validate()) {
       try {
         if (AppConfig.isDataKollecta) {
-          await _settingsService.setSurveyorId(_surveyorIdController.text.trim());
           await _settingsService.setApiUsername(_ftpUsernameController.text.trim());
           await _settingsService.setApiPassword(_ftpPasswordController.text);
           await _settingsService.setProjectCode(_projectCodeController.text.trim());
@@ -215,21 +214,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _surveyorIdController,
-                      decoration: InputDecoration(
-                        labelText: _s.surveyorId,
-                        hintText: _s.enterSurveyorId,
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.person),
+                    // Surveyor ID only feeds GiSTX's FTP upload filename (see
+                    // sync_screen.dart) -- DataKollecta's HTTP sync never
+                    // reads it, so it's not shown on that product.
+                    if (!AppConfig.isDataKollecta) ...[
+                      TextFormField(
+                        controller: _surveyorIdController,
+                        decoration: InputDecoration(
+                          labelText: _s.surveyorId,
+                          hintText: _s.enterSurveyorId,
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.person),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return _s.surveyorIdRequired;
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return _s.surveyorIdRequired;
-                        }
-                        return null;
-                      },
-                    ),
+                    ],
                     // The country is fixed when the app is built, so there is
                     // nothing to choose. Shown only on country-specific builds
                     // so a mis-built APK is obvious; the plain build shows

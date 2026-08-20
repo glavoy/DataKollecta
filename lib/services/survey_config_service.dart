@@ -416,13 +416,16 @@ class SurveyConfigService {
 
   /// Check if all required settings are configured
   Future<bool> areSettingsConfigured() async {
-    final surveyorId = await _settingsService.surveyorId;
     final activeSurvey = await _settingsService.activeSurvey;
+    if (activeSurvey == null || activeSurvey.isEmpty) return false;
 
-    return surveyorId != null &&
-        surveyorId.isNotEmpty &&
-        activeSurvey != null &&
-        activeSurvey.isNotEmpty;
+    // Surveyor ID is never read on DataKollecta -- it only feeds GiSTX's FTP
+    // upload filename (see sync_screen.dart) -- so it isn't part of what
+    // "configured" means for this product.
+    if (AppConfig.isDataKollecta) return true;
+
+    final surveyorId = await _settingsService.surveyorId;
+    return surveyorId != null && surveyorId.isNotEmpty;
   }
 
   /// Clear the manifest cache
