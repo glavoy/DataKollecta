@@ -60,7 +60,7 @@ and its own signing key (`android/key-datakollecta.properties`, gitignored like
 **The product axis is driven by generated per-product config files, not Gradle flavors
 either** — flavors would force `--flavor` onto every Android command permanently, and
 Windows has no flavor concept at all. `tool/build.dart` copies
-`tool/product/<platform>/<product>.*` over four native project files immediately before
+`tool/product/<platform>/<product>.*` over five native project files immediately before
 each build, then restores them to their committed GiSTX-default content in a `finally`
 block once the build finishes (success or failure):
 
@@ -70,10 +70,14 @@ block once the build finishes (success or failure):
 | `windows/product.cmake` | Windows | `windows/CMakeLists.txt` (`BINARY_NAME`, via `include()` so CMake reconfigures automatically) |
 | `windows/runner/product_strings.h` | Windows | `main.cpp` (window title) and `Runner.rc` (the six `StringFileInfo` values) |
 | `macos/Runner/Configs/AppInfo.xcconfig` | macOS | Already Xcode's single source of truth for `PRODUCT_NAME`/`PRODUCT_BUNDLE_IDENTIFIER`/`PRODUCT_COPYRIGHT`; this generated file *is* that file, not a separate indirection |
+| `macos/Runner/Assets.xcassets/AppIcon.appiconset/` | macOS | Xcode's app icon asset catalog, compiled into the .app and shown in the Dock/Finder. A whole directory (`Contents.json` + one PNG per size), pre-generated per product via `flutter_launcher_icons` from that product's `assets/branding/<product>.png` and checked in under `tool/product/macos/<product>-AppIcon.appiconset`, not regenerated at build time |
 
-**Never hand-edit any of those four files directly** — edit the matching template under
-`tool/product/` instead. Their committed content in the repo is always the GiSTX product, so
-a fresh checkout or a build that skipped the tool stays buildable, and `git status` stays
+**Never hand-edit any of those five files/directories directly** — edit the matching
+template under `tool/product/` instead (for the app icon, regenerate it from
+`assets/branding/<product>.png` with `flutter_launcher_icons` and re-save the output under
+`tool/product/macos/<product>-AppIcon.appiconset`, since it's pre-generated rather than
+templated by hand). Their committed content in the repo is always the GiSTX product, so a
+fresh checkout or a build that skipped the tool stays buildable, and `git status` stays
 clean between builds.
 
 ```bash
@@ -318,4 +322,4 @@ New DataKollecta-only UI copy lives in `app_strings_http_sync.dart` (`HttpSyncSt
 - Desktop (Windows/Linux/macOS) uses `sqflite_common_ffi`; mobile uses native `sqflite`. Any DB code must work under both.
 - File-system base directories differ per platform (see `SurveyConfigService._getBaseDir()` and the equivalent logic in `DbService`/`FtpService`) — Android uses external storage, Windows uses `%LOCALAPPDATA%`, macOS/Linux use application support dir. The path segment under that base dir is `AppConfig.storageFolder` (`'GiSTX'` or `'DataKollecta'`) — per-product, never per-country, since the two country flavors share one storage folder on purpose.
 - macOS keychain entitlements conflict with local ad-hoc signing, hence the `shared_preferences` fallback in `SettingsService` for macOS/Linux.
-- The four generated build-config files (see "Product flavors" above) are native project files, not Dart — they aren't covered by `flutter analyze`/`flutter test`. Verify a product's build directly (`dart run tool/build.dart apk --product datakollecta`, etc.) rather than assuming the Dart test suite catches a mistake in them.
+- The five generated build-config files/directories (see "Product flavors" above) are native project files, not Dart — they aren't covered by `flutter analyze`/`flutter test`. Verify a product's build directly (`dart run tool/build.dart apk --product datakollecta`, etc.) rather than assuming the Dart test suite catches a mistake in them.

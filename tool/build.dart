@@ -218,6 +218,14 @@ void _applyProductConfigs(String productId) {
       'windows/runner/resources/app_icon.ico');
   _copyProductFile('tool/product/macos/$productId.xcconfig',
       'macos/Runner/Configs/AppInfo.xcconfig');
+  // Unlike the Windows .ico (one file), Xcode reads an app icon as a whole
+  // asset-catalog directory -- Contents.json plus one PNG per size -- so the
+  // whole directory is the build input here. Each is pre-generated (via
+  // `flutter_launcher_icons` pointed at that product's assets/branding
+  // artwork) and checked in under tool/product/macos rather than generated at
+  // build time, so a build doesn't depend on that package being present.
+  _copyProductDir('tool/product/macos/$productId-AppIcon.appiconset',
+      'macos/Runner/Assets.xcassets/AppIcon.appiconset');
 }
 
 /// Restores every generated file to its committed, GiSTX-default content --
@@ -231,6 +239,18 @@ void _copyProductFile(String from, String to) {
     _fail('Missing product config template: $from');
   }
   source.copySync(to);
+}
+
+void _copyProductDir(String from, String to) {
+  final source = Directory(from);
+  if (!source.existsSync()) {
+    _fail('Missing product config template: $from');
+  }
+  for (final entity in source.listSync()) {
+    if (entity is File) {
+      entity.copySync('$to/${entity.uri.pathSegments.last}');
+    }
+  }
 }
 
 Future<void> _copyApk(String binaryName, String suffix, String version) async {
