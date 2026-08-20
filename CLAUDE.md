@@ -160,6 +160,15 @@ different `applicationId`s on Android — Windows identifies an installation by 
 shared value would make installing one replace the other. Neither may be changed once
 shipped.
 
+**Windows icons.** `assets/branding/<product>.ico` is the single source for both the
+executable's icon and the installer's, per product. `build.dart` copies it over
+`windows/runner/resources/app_icon.ico` as part of `_applyProductConfigs` (it is compiled
+into the exe by `Runner.rc`, so it must be swapped before building and reverted after), and
+`installer.iss` reads the same file for `SetupIconFile`. `app_icon.ico` is therefore a build
+output that happens to be committed with the GiSTX default; edit the `.ico` in
+`assets/branding`, never that file. `flutter_launcher_icons`' Windows generation is switched
+off in `pubspec.yaml` for the same reason.
+
 Accumulate changes in `ChangeLog.md` under a `## [UNRELEASED] - TBD` heading
 (Added/Changed/Fixed/Housekeeping sections); rename it to `## [X.Y.Z+B] - <date>` when the
 release is cut. Commits between releases do not get version numbers.

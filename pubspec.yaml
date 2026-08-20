@@ -50,9 +50,14 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/branding/gistx.png"
   min_sdk_android: 21
+  # Windows icon generation is off: tool/build.dart copies
+  # assets/branding/<product>.ico over windows/runner/resources/app_icon.ico on
+  # every build, so that file is a build output, not a source. Leaving this on
+  # would overwrite it with a GiSTX-only, single-size 256 icon and make
+  # `git status` dirty for no reason. To change a Windows icon, replace the
+  # product's .ico in assets/branding -- installer.iss reads the same file.
   windows:
-    generate: true
-    icon_size: 256
+    generate: false
     icon_file: "assets/branding/gistx.png"
   macos:
     generate: true

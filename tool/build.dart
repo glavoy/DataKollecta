@@ -208,6 +208,14 @@ void _applyProductConfigs(String productId) {
       'tool/product/windows/$productId.cmake', 'windows/product.cmake');
   _copyProductFile('tool/product/windows/$productId.h',
       'windows/runner/product_strings.h');
+  // The Windows executable's own icon is compiled in from a fixed path by
+  // Runner.rc, so it has to be swapped per product like any other build input.
+  // Its source is assets/branding rather than tool/product: it is brand
+  // artwork, it already lives there, and installer.iss reads the same file for
+  // SetupIconFile -- so each product has exactly one icon serving both its
+  // executable and its installer.
+  _copyProductFile('assets/branding/$productId.ico',
+      'windows/runner/resources/app_icon.ico');
   _copyProductFile('tool/product/macos/$productId.xcconfig',
       'macos/Runner/Configs/AppInfo.xcconfig');
 }
