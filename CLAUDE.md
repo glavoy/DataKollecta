@@ -192,9 +192,13 @@ dart run tool/update_version.dart                        # 1.4.0+15 -> 1.4.0+16
 # rename ChangeLog.md's `## [UNRELEASED] - TBD` heading to `## [1.4.0+16] - <date>`
 dart run tool/build.dart apk --product datakollecta       # no --bump
 dart run tool/build.dart apk                              # no --bump
-git commit -am "Release 1.4.0+16"
+git commit -m "Release 1.4.0+16" pubspec.yaml ChangeLog.md   # + windows/installer_config.iss if Windows was built
 git tag v1.4.0+16
 ```
+
+Name the files explicitly here rather than `git commit -am` or `git add .` — a release commit
+should contain exactly the version-carrying files that just changed, not whatever else is sitting
+in the working tree.
 
 Then, and only then, go back to phase 1: `1.4.0+16` -> `1.5.0+16`. A test build never
 changes the name — between releases `X.Y.Z` does not move, only `+B` advances.
