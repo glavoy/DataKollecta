@@ -223,6 +223,38 @@ Use increments of 10 (10, 20, 30...) to leave room for future insertions
 
 ---
 
+## Computed Automatic Variables (yy, ddd)
+
+Two `FieldName`s the app already knows how to compute, the same way it computes `startdate`
+— but unlike a truly reserved variable, **nothing writes these in for you.** You have to
+declare a row for each one yourself, exactly where you want it in the questionnaire. That's
+deliberate: their most common use is sitting immediately before a specific `idconfig`
+field they feed (see the worked example below), a position the generator has no way to infer
+on its own — but they aren't idconfig-specific, and can be declared on any worksheet, for any
+reason a survey wants "today."
+
+| FieldName | What it computes | Format |
+|-----------|-------------------|--------|
+| `yy` | the current two-digit year | `year % 100`, zero-padded to 2 — `2026` → `"26"` |
+| `ddd` | the ordinal day within the current calendar year | zero-padded to 3 — `"001"` (Jan 1) through `"365"`/`"366"` (Dec 31) |
+
+**Worked examples:** `2001` → `"01"`; Feb 1 → day 32 → `"032"`.
+
+**A given `yy` repeats every century** — `2000` and `2100` are both `"00"`. A real ambiguity,
+not a bug: acceptable because no study spans a century.
+
+**Declare them as ordinary `automatic`-type rows with a blank `Responses` column** — no
+`calc:` block, on any worksheet, not only a table that references them in its own `idconfig`.
+**Do not build these with `calc:constant value:NOW_YEAR` or similar**: a `calc:` field is
+only protected from being recomputed mid-edit if its survey explicitly marks it
+`preserve: true`, which nothing in the generator currently emits. Without that, editing an
+existing record on a later day (or year) could silently mint a *new* subject ID for the same
+person. `yy`/`ddd` avoid that because, like `starttime`/`startdate`, the app preserves an
+already-stored value unconditionally, with no flag to forget — see
+`DataKollecta-SurveyGen/README.md`'s `idconfig` reference for the full design rationale.
+
+---
+
 ## `idconfig` JSON Configuration
 
 ### **Structure:**
@@ -296,23 +328,7 @@ Use increments of 10 (10, 20, 30...) to leave room for future insertions
 - `05` = village (5 padded to length 2)
 - `001`, `002`, `003` = increment
 
-### **`yy` / `ddd`: date fields that survive an app reinstall**
-
-`incrementLength`'s counter only looks at *this device's* local data. Reinstalling the app
-deletes that data, so the counter silently restarts at 1 and a freshly generated ID can
-collide with one already generated (and possibly already synced) before the reinstall.
-
-Two special field names shrink that risk: `yy` (two-digit year) and `ddd` (day of year,
-zero-padded to three digits). Fold them into `idconfig.fields` alongside an
-interviewer/device code, and the counter only has to stay collision-free **within one
-interviewer's one calendar day** — not for the life of the study.
-
-**Exact format**, both zero-padded, no other formatting applied:
-- `yy` = `year % 100` — `2026` → `"26"`, `2001` → `"01"`. **Repeats every century**
-  (`2000` and `2100` are both `"00"`) — a real ambiguity, not a bug; acceptable because no
-  study spans a century.
-- `ddd` = the ordinal day within the calendar year, `"001"` (Jan 1) through `"365"`/`"366"`
-  (Dec 31) — e.g. Feb 1 is day 32 → `"032"`.
+**Example 3: A reinstall-resilient ID, using `yy` / `ddd`**
 
 ```json
 {
@@ -326,24 +342,10 @@ interviewer's one calendar day** — not for the life of the study.
 }
 ```
 → `GX07260451` (interviewer `07`, year `26`, day-of-year `045`, increment `01`, resetting
-daily since the base ID changes every day).
-
-**These take no `calc:` configuration and must not be given one.** The app computes `yy`/
-`ddd` itself, the same way it already computes `startdate` — declare them in the survey's
-`_dd` worksheet as ordinary `automatic`-type rows with a **blank** `Responses` column, and
-reference them in `idconfig.fields` wherever you want them in the ID. The generator
-recognizes `yy`/`ddd` by field name alone and exempts them from needing a calculation **on
-any worksheet** — not only the table whose own `idconfig` references them, so a `yy`/`ddd`
-row is equally valid on a repeating child form with no `idconfig` of its own.
-A hand-built `calc:constant value:NOW_YEAR`-style field would NOT be safe here: it has no
-protection against being recomputed when an old record is edited on a later day, and could
-silently generate a **new** subject ID for the same person mid-edit. `yy`/`ddd` avoid this
-because, like `starttime`/`startdate`, the app preserves an already-stored value
-unconditionally — see `DataKollecta-SurveyGen/README.md`'s `idconfig` reference for the full
-design rationale.
-
-This reduces risk; it does not eliminate it — a reinstall followed by continued interviewing
-on the *same* day can still collide.
+daily since the base ID changes every day — see
+[Computed Automatic Variables](#computed-automatic-variables-yy-ddd) above for how to
+declare `yy`/`ddd`, their exact format, and why this shrinks a reinstall's collision window
+without eliminating it).
 
 ---
 
