@@ -125,21 +125,67 @@ dart run tool/build.dart macos                           # -> installer_output/G
 | `+B` | One specific **binary**. Monotonic, never reused | Every artifact handed to anyone, test builds included — `dart run tool/update_version.dart` |
 
 `tool/update_version.dart` bumps `+B` only and never touches `X.Y.Z`; a release number is a
-judgement call, a build counter is bookkeeping. The build script never changes either on its
-own, because a release is built once per product and flavor and all those artifacts must
-share one build number — `--bump` is opt-in for the test-build case.
-
-**Bump immediately before each build**, so the version in `pubspec.yaml` at rest always names
-the last binary that actually exists:
+judgement call, a build counter is bookkeeping. `build.dart` changes neither on its own:
 
 ```bash
-dart run tool/build.dart apk --product datakollecta --bump   # or bump, then build
+dart run tool/build.dart apk                  # builds; version untouched
+dart run tool/build.dart apk --bump           # bumps +B, then builds
 ```
 
-Between releases, `X.Y.Z` names the version being *worked toward* and does not move; only
-`+B` advances. Commit the bumped `pubspec.yaml` so the counter lives in git and a fresh clone
-cannot reuse a number. A failed build still consumes a number — that is fine, monotonicity is
-what matters, not density.
+**Bump immediately before each build**, so the version in `pubspec.yaml` at rest always names
+the last binary that actually exists. A failed build still consumes a number — that is fine,
+monotonicity is what matters, not density.
+
+**There is one counter, shared by every product and flavor.** `pubspec.yaml` has a single
+`version:` field, so `apk --product datakollecta --bump` followed by `apk --bump` yields `+9`
+and `+10`. The two products' sequences interleave and never collide, which is all that is
+required: the product name travels with the number everywhere it is shown (`swver`, the
+Settings screen, the artifact filename), and Play only requires the number to increase within
+a listing, not to be dense.
+
+The one place it matters is a release, which is built once per product and flavor and whose
+artifacts must all carry the *same* number — so bump once, then build without `--bump`. That
+is why `--bump` is opt-in rather than automatic.
+
+#### Release flow
+
+**Cutting a release** — bump once, then build everything on that one number:
+
+```bash
+dart run tool/update_version.dart                       # e.g. 1.3.0+11 -> 1.3.0+12
+# rename ChangeLog.md's `## [UNRELEASED] - TBD` heading to `## [1.3.0+12] - <date>`
+dart run tool/build.dart apk --product datakollecta      # no --bump
+dart run tool/build.dart apk                             # no --bump
+git commit -am "Release 1.3.0+12"
+git tag v1.3.0+12
+```
+
+**Immediately after a release**, hand-edit `pubspec.yaml` to the version now being worked
+toward — the *name* only, leaving `+B` where the release left it — and commit that alone:
+
+```bash
+# pubspec.yaml: 1.3.0+12 -> 1.4.0+12   (MINOR for new capability, PATCH for fixes only)
+git commit -m "Start 1.4.0" pubspec.yaml
+```
+
+Do **not** build here. Building now would produce an artifact identical to the release on a
+fresh number, and leave `pubspec.yaml` naming a binary nobody has.
+
+**A test build for the field** — this is the only step that advances the counter, and the
+first of the new cycle produces `1.4.0+13`:
+
+```bash
+dart run tool/build.dart apk --product datakollecta --bump
+git commit -m "Build $(grep '^version:' pubspec.yaml | cut -d' ' -f2) for field testing" pubspec.yaml
+```
+
+Commit the bumped `pubspec.yaml` every time, so the counter lives in git and a fresh clone
+cannot reuse a number. Committing it on its own — rather than folded into feature work —
+keeps a clean record of which build numbers actually went to the field, which is what you
+will be searching when a tester reports a problem. On Windows, add
+`windows/installer_config.iss` to that commit; the build rewrites it too.
+
+Between releases `X.Y.Z` does not move; only `+B` advances.
 
 The build number is visible in three places, which is what makes a test build identifiable in
 the field: the Settings screen (`v1.3.0+9`), the `swver` field on every collected record
