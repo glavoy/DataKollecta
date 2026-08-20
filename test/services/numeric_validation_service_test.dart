@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:datakollecta/models/question.dart';
 import 'package:datakollecta/services/numeric_validation_service.dart';
 
 void main() {
@@ -65,6 +66,47 @@ void main() {
     test('a plain text field with no range check is left alone', () {
       // A trailing full stop is ordinary punctuation in a free-text answer.
       expect(incomplete('text', 'Apac Rd.'), isFalse);
+    });
+  });
+
+  group('NumericValidationService.isWithinRange', () {
+    const nmembers =
+        NumericCheck(minValue: 1, maxValue: 30, otherValues: '1');
+
+    test('accepts values inside the declared range', () {
+      expect(NumericValidationService.isWithinRange(nmembers, 1), isTrue);
+      expect(NumericValidationService.isWithinRange(nmembers, 6), isTrue);
+      expect(NumericValidationService.isWithinRange(nmembers, 30), isTrue);
+    });
+
+    test('rejects values below LowerRange', () {
+      expect(NumericValidationService.isWithinRange(nmembers, 0), isFalse);
+      expect(NumericValidationService.isWithinRange(nmembers, -1), isFalse);
+    });
+
+    test('rejects values above UpperRange', () {
+      expect(NumericValidationService.isWithinRange(nmembers, 31), isFalse);
+    });
+
+    test('accepts an out-of-range value listed in other_values', () {
+      const withDontKnow =
+          NumericCheck(minValue: 1, maxValue: 30, otherValues: '99, 88');
+      expect(NumericValidationService.isWithinRange(withDontKnow, 99), isTrue);
+      expect(NumericValidationService.isWithinRange(withDontKnow, 88), isTrue);
+      expect(NumericValidationService.isWithinRange(withDontKnow, 31), isFalse);
+    });
+
+    test('a half-declared range only constrains the end it declares', () {
+      expect(
+        NumericValidationService.isWithinRange(
+            const NumericCheck(minValue: 1), 900),
+        isTrue,
+      );
+      expect(
+        NumericValidationService.isWithinRange(
+            const NumericCheck(maxValue: 30), 0),
+        isTrue,
+      );
     });
   });
 }

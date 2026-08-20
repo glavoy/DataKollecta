@@ -1,5 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import 'package:path/path.dart' as p;
+
 import '../models/question.dart';
+import 'survey_config_service.dart';
 import 'survey_loader.dart';
 
 /// Service to cache question definitions from all XML files for a survey
@@ -107,5 +114,50 @@ class QuestionCacheService {
   /// Check if questions are loaded for a survey
   bool isLoadedForSurvey(String surveyId) {
     return _cachedSurveyId == surveyId && _questionCache.isNotEmpty;
+  }
+
+  /// Seeds the cache directly, so question-dependent logic can be tested
+  /// without a survey folder on disk.
+  @visibleForTesting
+  void seedForTest(String surveyId, List<Question> questions) {
+    _questionCache
+      ..clear()
+      ..addEntries(questions.map((q) => MapEntry(q.fieldName, q)));
+    _cachedSurveyId = surveyId;
+  }
+
+  /// Loads the active survey's questions if they are not cached already.
+  ///
+  /// Every caller needs the same three steps -- check the cache, read the
+  /// manifest for its `xmlFiles`, then locate the survey folder whose manifest
+  /// carries this `surveyId` -- so they live here rather than being repeated
+  /// at each call site.
+  Future<void> ensureLoadedForSurvey(String surveyId) async {
+    if (isLoadedForSurvey(surveyId)) return;
+
+    final surveyConfig = SurveyConfigService();
+    final manifest = await surveyConfig.getActiveSurveyManifest();
+    if (manifest == null) return;
+
+    final xmlFiles = (manifest['xmlFiles'] as List?)?.cast<String>() ?? [];
+
+    final surveysDir = await surveyConfig.getSurveysDirectory();
+    final entities = await surveysDir.list().toList();
+    for (final entity in entities) {
+      if (entity is! Directory) continue;
+
+      final manifestFile = File(p.join(entity.path, 'survey_manifest.gistx'));
+      if (!await manifestFile.exists()) continue;
+
+      final dirManifest = jsonDecode(await manifestFile.readAsString());
+      if (dirManifest['surveyId'] != surveyId) continue;
+
+      await loadQuestionsForSurvey(
+        surveyId: surveyId,
+        surveyDirectory: entity.path,
+        xmlFiles: xmlFiles,
+      );
+      return;
+    }
   }
 }

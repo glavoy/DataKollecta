@@ -289,60 +289,111 @@ class DbService {
     _log('Imported ${rows.length} rows into $tableName');
   }
 
+  /// The `crfs` schema, column by column, so that creating the table and
+  /// migrating an older one cannot disagree about what it should contain.
+  static const Map<String, String> _crfsColumns = {
+    'display_order': 'INTEGER DEFAULT 0',
+    'tablename': 'TEXT',
+    'primarykey': 'TEXT',
+    'displayname': 'TEXT',
+    'isbase': 'INTEGER DEFAULT 0',
+    'linkingfield': 'TEXT',
+    'parenttable': 'TEXT',
+    'incrementfield': 'TEXT',
+    'requireslink': 'INTEGER DEFAULT 0',
+    'idconfig': 'TEXT',
+    'repeat_count_field': 'TEXT',
+    'auto_start_repeat': 'INTEGER',
+    'repeat_enforce_count': 'INTEGER',
+    'display_fields': 'TEXT',
+    'entry_condition': 'TEXT',
+  };
+
+  /// Public to allow the create-vs-migrate schema path to be verified
+  /// without initializing the application's survey database registry.
+  @visibleForTesting
+  static Future<void> syncCrfsTableForTesting(
+          String surveyId, Database db, Map<String, dynamic> manifest) =>
+      _syncCrfsTable(surveyId, db, manifest);
+
+  /// Brings the `crfs` form-configuration table in line with the manifest.
+  ///
+  /// The table is the app's list of questionnaires: if it ends up empty the
+  /// survey has no forms and is unusable, so both halves of this are written
+  /// to fail safe. Missing columns are added by `ALTER TABLE` before anything
+  /// is written -- a device carrying a `crfs` table from an older build must
+  /// not be bricked by a manifest that names a column it has never heard of --
+  /// and the clear-and-repopulate runs in a transaction, so a row that will
+  /// not insert rolls the whole thing back to the previous configuration
+  /// rather than leaving no configuration at all.
   static Future<void> _syncCrfsTable(
       String surveyId, Database db, Map<String, dynamic> manifest) async {
-    // Check if table exists
-    final tableExists = await _tableExists(db, 'crfs');
-
-    if (!tableExists) {
+    if (!await _tableExists(db, 'crfs')) {
       _log('Creating crfs table for $surveyId...');
-      // User specified schema
-      await db.execute('''
-        CREATE TABLE crfs (
-          display_order INTEGER DEFAULT 0, 
-          tablename TEXT,
-          primarykey TEXT,
-          displayname TEXT,
-          isbase INTEGER DEFAULT 0,
-          linkingfield TEXT,
-          parenttable TEXT,
-          incrementfield TEXT,
-          requireslink INTEGER DEFAULT 0,
-          idconfig TEXT,
-          repeat_count_field TEXT,
-          auto_start_repeat INTEGER, 
-          repeat_enforce_count INTEGER,
-          display_fields TEXT,
-          entry_condition TEXT
-        )
-      ''');
+      final colDefs =
+          _crfsColumns.entries.map((e) => '${e.key} ${e.value}').join(', ');
+      await db.execute('CREATE TABLE crfs ($colDefs)');
+    } else {
+      final existingColumns = await _getTableColumns(db, 'crfs');
+      for (final entry in _crfsColumns.entries) {
+        if (existingColumns.contains(entry.key)) continue;
+        try {
+          await db.execute(
+              'ALTER TABLE crfs ADD COLUMN ${entry.key} ${entry.value}');
+          _log('Added ${entry.key} column to crfs for $surveyId');
+        } catch (e) {
+          _logError('Failed to add ${entry.key} column to crfs: $e');
+        }
+      }
     }
 
-    // Populate from Manifest JSON
-    // We always try to sync/update the metadata
     final crfsList = manifest['crfs'] as List?;
-    if (crfsList != null) {
-      try {
-        // Clear existing data to ensure fresh sync
-        await db.delete('crfs');
+    if (crfsList == null) {
+      _logError('No "crfs" section found in manifest for $surveyId');
+      return;
+    }
+
+    final columns = (await _getTableColumns(db, 'crfs')).toSet();
+
+    try {
+      await db.transaction((txn) async {
+        await txn.delete('crfs');
 
         for (final item in crfsList) {
-          if (item is Map<String, dynamic>) {
-            final Map<String, dynamic> rowData = Map.from(item);
+          if (item is! Map<String, dynamic>) continue;
 
-            // Handle idconfig: if it's a Map, convert to JSON string
-            if (rowData['idconfig'] is Map) {
-              rowData['idconfig'] = json.encode(rowData['idconfig']);
+          final rowData = <String, dynamic>{};
+          for (final entry in item.entries) {
+            if (!columns.contains(entry.key.toLowerCase())) {
+              // A manifest written for a newer app than this one. The column
+              // cannot be stored and this build has no use for it, so the rest
+              // of the row is kept rather than failing the whole survey.
+              _logError('Ignoring unknown crfs column "${entry.key}" '
+                  'for ${item['tablename']} in $surveyId');
+              continue;
             }
-
-            await db.insert('crfs', rowData);
+            // idconfig arrives as a nested object and is stored as JSON text.
+            rowData[entry.key] = entry.value is Map
+                ? json.encode(entry.value)
+                : entry.value;
           }
+
+          await txn.insert('crfs', rowData);
         }
-      } catch (e) {
-        _logError('Error populating crfs table from manifest: $e');
-      }
-    } else {
-      _logError('No "crfs" section found in manifest for $surveyId');
+      });
+    } catch (e) {
+      _logError('Error populating crfs table from manifest for $surveyId -- '
+          'the previous configuration has been kept: $e');
+      return;
+    }
+
+    final rowCount =
+        Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM crfs')) ??
+            0;
+    if (rowCount == 0) {
+      _logError('crfs table for $surveyId is empty after syncing '
+          '${crfsList.length} manifest entries -- no questionnaires will be '
+          'listed for this survey');
     }
   }
 
@@ -518,6 +569,23 @@ class DbService {
   /// Public method to get database for queries (used by DatabaseResponseService)
   static Future<Database> getDatabaseForQueries(String surveyId) async {
     return await _getDbOrThrow(surveyId);
+  }
+
+  /// Registers an already-open database under [surveyId] so the public API can
+  /// be exercised against an in-memory database, without the survey folder,
+  /// manifest and XML files a real initialization needs.
+  @visibleForTesting
+  static void registerDatabaseForTest(String surveyId, Database db) {
+    _databases[surveyId] = db;
+    _initializedSurveys.add(surveyId);
+  }
+
+  /// Undoes [registerDatabaseForTest]. Does not close the database -- the test
+  /// that opened it owns its lifetime.
+  @visibleForTesting
+  static void unregisterDatabaseForTest(String surveyId) {
+    _databases.remove(surveyId);
+    _initializedSurveys.remove(surveyId);
   }
 
   static Future<void> saveInterview({
@@ -823,16 +891,7 @@ class DbService {
         final oldValueStr = _valueToString(oldValue);
         final newValueStr = _valueToString(newValue);
 
-        if (oldValueStr != newValueStr) {
-          // Check for numeric equality (e.g. "4" vs "04")
-          if (oldValueStr != null && newValueStr != null) {
-            final n1 = num.tryParse(oldValueStr);
-            final n2 = num.tryParse(newValueStr);
-            if (n1 != null && n2 != null && n1 == n2) {
-              continue; // Logically the same numeric value
-            }
-          }
-
+        if (!_isSameStoredValue(oldValueStr, newValueStr)) {
           await db.insert('formchanges', {
             'tablename': tableName,
             'fieldname': fieldName,
@@ -934,6 +993,45 @@ class DbService {
     }
   }
 
+  /// Reads a single column from the first row matching [where].
+  ///
+  /// The read-side counterpart to [updateField]; returns null when the table,
+  /// the column or the row is missing, all of which are indistinguishable from
+  /// a stored NULL to the caller by design -- callers that must tell a skipped
+  /// question from an absent row check the row separately.
+  static Future<dynamic> getFieldValue({
+    required String surveyId,
+    required String tableName,
+    required String field,
+    required String where,
+    required List<dynamic> whereArgs,
+  }) async {
+    try {
+      final db = await _getDbOrThrow(surveyId);
+      if (!await _tableExists(db, tableName)) return null;
+
+      final rows = await db.query(tableName,
+          where: where, whereArgs: whereArgs, limit: 1);
+      if (rows.isEmpty) return null;
+
+      final normalized =
+          rows.first.map((k, v) => MapEntry(k.toLowerCase(), v));
+      return normalized[field.toLowerCase()];
+    } catch (e) {
+      _logError('Error reading field $field from $tableName: $e');
+      return null;
+    }
+  }
+
+  /// Writes a single column on every row matching [where].
+  ///
+  /// Goes through the same bookkeeping as a full save rather than writing the
+  /// column alone: `synced_at` is cleared so an already-uploaded row is sent
+  /// again with the corrected value, `lastmod` is refreshed so the row still
+  /// wins in [collapseDuplicateUniqueIds], and a `formchanges` row is written
+  /// so a value the app changed on the interviewer's behalf is as auditable as
+  /// one they typed. A write that would not change the stored value is skipped
+  /// entirely, so it never manufactures a spurious re-upload.
   static Future<void> updateField({
     required String surveyId,
     required String tableName,
@@ -941,21 +1039,89 @@ class DbService {
     required dynamic value,
     required String where,
     required List<dynamic> whereArgs,
+    bool recordChange = true,
   }) async {
     try {
       final db = await _getDbOrThrow(surveyId);
       if (!await _tableExists(db, tableName)) return;
 
-      await db.update(
-        tableName,
-        {field: value},
-        where: where,
-        whereArgs: whereArgs,
-      );
-      _log('Updated $tableName.$field to $value where $where');
+      final columns = await _getTableColumns(db, tableName);
+      if (!columns.contains(field.toLowerCase())) {
+        _logError('Cannot update $tableName.$field: no such column');
+        return;
+      }
+
+      final rows =
+          await db.query(tableName, where: where, whereArgs: whereArgs);
+      if (rows.isEmpty) return;
+
+      final newValueStr = _valueToString(value);
+      // The audit trail is a nice-to-have; the corrected value is not. A
+      // settings read that fails must not cost us the write itself.
+      String? surveyorId;
+      if (recordChange) {
+        try {
+          surveyorId = await SettingsService().surveyorId;
+        } catch (e) {
+          _logError('Could not read surveyor id for change log: $e');
+        }
+      }
+      final now = DateTime.now().toIso8601String();
+
+      for (final row in rows) {
+        final normalized = row.map((k, v) => MapEntry(k.toLowerCase(), v));
+        final oldValueStr = _valueToString(normalized[field.toLowerCase()]);
+
+        if (_isSameStoredValue(oldValueStr, newValueStr)) continue;
+
+        final rowData = <String, dynamic>{field: value};
+        // Mirrors _prepareRowData: an edit has to re-upload even if an earlier
+        // version of this row was already sent.
+        if (columns.contains('synced_at')) rowData['synced_at'] = null;
+        if (columns.contains('lastmod')) rowData['lastmod'] = now;
+
+        final uniqueId = normalized['uniqueid']?.toString();
+        if (uniqueId == null) {
+          // No uniqueid to address rows individually (only legacy tables), so
+          // the whole match is written in one statement and the loop is done.
+          await db.update(tableName, rowData,
+              where: where, whereArgs: whereArgs);
+          _log('Updated $tableName.$field to $newValueStr where $where');
+          return;
+        }
+
+        await db.update(tableName, rowData,
+            where: 'uniqueid = ?', whereArgs: [uniqueId]);
+
+        if (recordChange && await _tableExists(db, 'formchanges')) {
+          await db.insert('formchanges', {
+            'tablename': tableName,
+            'fieldname': field,
+            'uniqueid': uniqueId,
+            'oldvalue': oldValueStr,
+            'newvalue': newValueStr,
+            'changed_at': now,
+            'changeuniqueid': const Uuid().v4(),
+            'surveyor_id': surveyorId,
+          });
+        }
+
+        _log('Updated $tableName.$field from $oldValueStr to $newValueStr');
+      }
     } catch (e) {
       _logError('Error updating field $field in $tableName: $e');
     }
+  }
+
+  /// True when two stored values are the same answer -- including the "4" vs
+  /// "04" case, which SQLite keeps distinct but the dictionary does not.
+  static bool _isSameStoredValue(String? oldValue, String? newValue) {
+    if (oldValue == newValue) return true;
+    if (oldValue == null || newValue == null) return false;
+
+    final oldNum = num.tryParse(oldValue);
+    final newNum = num.tryParse(newValue);
+    return oldNum != null && newNum != null && oldNum == newNum;
   }
 
   // --- Helpers ---

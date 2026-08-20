@@ -309,4 +309,130 @@ void main() {
 
     expect(result.length, 2);
   });
+
+  group('crfs table sync', () {
+    Future<Database> openDb() async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      return db;
+    }
+
+    Map<String, dynamic> manifest() => {
+          'crfs': [
+            {
+              'display_order': 1,
+              'tablename': 'hh_info',
+              'displayname': 'Household Information',
+              'isbase': 1,
+              'primarykey': 'hhid',
+              'linkingfield': 'hhid',
+              'idconfig': {
+                'prefix': '',
+                'fields': [
+                  {'name': 'hhnum', 'length': 4}
+                ],
+                'incrementLength': 0,
+              },
+            },
+            {
+              'display_order': 3,
+              'tablename': 'hh_members',
+              'displayname': 'Household Members',
+              'isbase': 0,
+              'primarykey': 'hhid,linenum',
+              'linkingfield': 'hhid',
+              'parenttable': 'hh_info',
+              'repeat_count_field': 'nmembers',
+              'auto_start_repeat': 2,
+              'repeat_enforce_count': 3,
+            },
+          ]
+        };
+
+    test('a fresh install creates the table and loads every form', () async {
+      final db = await openDb();
+
+      await DbService.syncCrfsTableForTesting('s1', db, manifest());
+
+      final rows = await db.query('crfs', orderBy: 'display_order ASC');
+      expect(rows, hasLength(2));
+      expect(rows.first['tablename'], 'hh_info');
+      expect(rows.last['repeat_enforce_count'], 3);
+      // A nested idconfig object is stored as JSON text, not Dart's toString.
+      expect(rows.first['idconfig'], startsWith('{"prefix"'));
+    });
+
+    test('a table from an older build gains the columns it is missing',
+        () async {
+      final db = await openDb();
+      // The schema as an earlier release wrote it: no auto-repeat columns.
+      await db.execute('''
+        CREATE TABLE crfs (
+          display_order INTEGER DEFAULT 0,
+          tablename TEXT,
+          primarykey TEXT,
+          displayname TEXT,
+          isbase INTEGER DEFAULT 0,
+          linkingfield TEXT,
+          parenttable TEXT,
+          incrementfield TEXT,
+          requireslink INTEGER DEFAULT 0,
+          idconfig TEXT,
+          display_fields TEXT
+        )
+      ''');
+      await db.insert('crfs', {'tablename': 'hh_info'});
+
+      await DbService.syncCrfsTableForTesting('s1', db, manifest());
+
+      // The survey is still usable -- this is the case that used to empty the
+      // table and leave the app with no questionnaires at all.
+      final rows = await db.query('crfs', orderBy: 'display_order ASC');
+      expect(rows, hasLength(2));
+      expect(rows.last['repeat_count_field'], 'nmembers');
+      expect(rows.last['repeat_enforce_count'], 3);
+      expect(rows.last['entry_condition'], isNull);
+    });
+
+    test('a manifest naming a column this build does not know keeps the rest',
+        () async {
+      final db = await openDb();
+      final withUnknown = manifest();
+      (withUnknown['crfs'] as List)[1]['some_future_column'] = 'x';
+
+      await DbService.syncCrfsTableForTesting('s1', db, withUnknown);
+
+      final rows = await db.query('crfs', orderBy: 'display_order ASC');
+      expect(rows, hasLength(2));
+      expect(rows.last['tablename'], 'hh_members');
+      expect(rows.last['repeat_enforce_count'], 3);
+    });
+
+    test('a failed repopulate keeps the previous configuration', () async {
+      final db = await openDb();
+      await DbService.syncCrfsTableForTesting('s1', db, manifest());
+      expect(await db.query('crfs'), hasLength(2));
+
+      // A row SQLite will refuse: display_order is INTEGER, and a nested list
+      // is not a value sqflite can bind at all.
+      final broken = manifest();
+      (broken['crfs'] as List)[1]['display_order'] = ['not', 'a', 'number'];
+
+      await DbService.syncCrfsTableForTesting('s1', db, broken);
+
+      final rows = await db.query('crfs', orderBy: 'display_order ASC');
+      expect(rows, hasLength(2), reason: 'the table must not be left empty');
+      expect(rows.last['tablename'], 'hh_members');
+    });
+
+    test('a manifest with no crfs section leaves the table alone', () async {
+      final db = await openDb();
+      await DbService.syncCrfsTableForTesting('s1', db, manifest());
+
+      await DbService.syncCrfsTableForTesting('s1', db, {'xmlFiles': []});
+
+      expect(await db.query('crfs'), hasLength(2));
+    });
+  });
 }

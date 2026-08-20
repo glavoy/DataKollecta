@@ -1,3 +1,5 @@
+import '../models/question.dart';
+
 class NumericValidationService {
   /// Returns true when a decimal separator is the final non-space character.
   ///
@@ -28,5 +30,29 @@ class NumericValidationService {
       return false;
     }
     return hasTrailingDecimalSeparator(value);
+  }
+
+  /// Returns the values a [NumericCheck] accepts outside its range -- the
+  /// `other_values` exception list (e.g. a "don't know" sentinel such as 99).
+  static Set<String> rangeExceptions(NumericCheck nc) {
+    return (nc.otherValues ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+  }
+
+  /// Returns true when [value] satisfies the question's declared
+  /// `LowerRange`/`UpperRange`, or is one of its `other_values` exceptions.
+  ///
+  /// This is the single definition of "a number this question would accept".
+  /// The interviewer's typed answer and any value the app writes on their
+  /// behalf (an auto-synced repeat count, say) both go through here, so the
+  /// database can never end up holding a value the form itself would reject.
+  static bool isWithinRange(NumericCheck nc, num value) {
+    if (rangeExceptions(nc).contains(value.toString())) return true;
+    if (nc.minValue != null && value < nc.minValue!) return false;
+    if (nc.maxValue != null && value > nc.maxValue!) return false;
+    return true;
   }
 }

@@ -116,6 +116,10 @@ These fields control how the app automatically launches child surveys based on a
     *   `2`: **Force**. Strict enforcement. The app prevents the user from exiting the loop until the exact number of records are created.
     *   `3`: **Auto-Sync**. Silent enforcement. The app automatically updates the parent record's count field to match the actual number of records entered.
 
+    Modes `1` and `3` reconcile the count both when the auto-repeat loop ends and whenever a child record is saved on its own -- added later from the questionnaire menu, or edited. Mode `2` applies only inside the loop.
+
+    No mode ever writes a count that falls outside the `LowerRange`/`UpperRange` declared on the count question itself, and none fills in a count question that was skipped (stored as NULL). To require at least N children, set `LowerRange` on the count question.
+
 ### Example Workflow
 **Scenario**: Household Survey (`household`) asks "How many members?" (`mem_count`). We want to automatically start the Member Form (`members`).
 

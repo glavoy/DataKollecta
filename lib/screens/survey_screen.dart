@@ -15,6 +15,7 @@ import '../services/csv_data_service.dart';
 import '../services/change_summary_service.dart';
 import '../services/app_strings.dart';
 import '../services/numeric_validation_service.dart';
+import '../services/repeat_count_service.dart';
 
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
@@ -489,25 +490,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
           final parsed = num.tryParse(raw);
           if (q.numericCheck != null && parsed != null) {
             final nc = q.numericCheck!;
-            final exceptions = (nc.otherValues ?? '')
-                .split(',')
-                .map((s) => s.trim())
-                .where((s) => s.isNotEmpty)
-                .toSet();
-
-            if (!exceptions.contains(parsed.toString())) {
-              if ((nc.minValue != null && parsed < nc.minValue!) ||
-                  (nc.maxValue != null && parsed > nc.maxValue!)) {
-                // The generator writes this sentence in English whatever the
-                // build, so the app supplies the wording. A message the author
-                // wrote is already in the dictionary's language: use it as-is.
-                final ownWording = _s.numberMustBeBetween(
-                    nc.minValue ?? '', nc.maxValue ?? '');
-                _logicError =
-                    SurveyLoader.isGeneratedNumericRangeMessage(nc.message)
-                        ? ownWording
-                        : (nc.message ?? ownWording);
-              }
+            if (!NumericValidationService.isWithinRange(nc, parsed)) {
+              // The generator writes this sentence in English whatever the
+              // build, so the app supplies the wording. A message the author
+              // wrote is already in the dictionary's language: use it as-is.
+              final ownWording =
+                  _s.numberMustBeBetween(nc.minValue ?? '', nc.maxValue ?? '');
+              _logicError =
+                  SurveyLoader.isGeneratedNumericRangeMessage(nc.message)
+                      ? ownWording
+                      : (nc.message ?? ownWording);
             }
           }
         }
@@ -755,16 +747,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         final parsed = num.tryParse(raw);
         if (parsed == null) return false;
 
-        final nc = q.numericCheck!;
-        final exceptions = (nc.otherValues ?? '')
-            .split(',')
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toSet();
-
-        if (!exceptions.contains(parsed.toString())) {
-          if (nc.minValue != null && parsed < nc.minValue!) return false;
-          if (nc.maxValue != null && parsed > nc.maxValue!) return false;
+        if (!NumericValidationService.isWithinRange(q.numericCheck!, parsed)) {
+          return false;
         }
       }
     }
@@ -1395,6 +1379,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // dialog is about to pop this screen. Clearing it here would leave the
     // Finish button live on a screen whose record has already been inserted.
     if (saveSuccessful) {
+      // A child record saved outside the auto-repeat loop -- one added later
+      // from the questionnaire menu, or edited -- still changes how many
+      // children the parent has, so the parent's count is reconciled here too.
+      // Inside the loop the reconciliation happens once at the end instead.
+      if (widget.repeatIndex == null) {
+        await _reconcileCountOnParentOfThisForm(context);
+        if (!mounted) return;
+      }
+
       // Check if we should start auto-repeat for child surveys (only for new records, not modifications)
       if (widget.uniqueId == null) {
         await _checkAndStartAutoRepeat(context);
@@ -1405,6 +1398,34 @@ class _SurveyScreenState extends State<SurveyScreen> {
     } else {
       // Error dialog
       _showSaveErrorDialog(context, errorMessage);
+    }
+  }
+
+  /// Reconcile the count on this form's parent, if this form is a counted
+  /// repeating child.
+  ///
+  /// The auto-repeat loop only runs when a parent is saved, so without this a
+  /// household member added weeks later would never be counted -- the parent
+  /// would keep the number declared at enrolment forever.
+  Future<void> _reconcileCountOnParentOfThisForm(BuildContext context) async {
+    try {
+      final tableName =
+          widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+
+      final surveyId = await SurveyConfigService().getActiveSurveyId();
+      if (surveyId == null) return;
+
+      final crf = await DbService.getCrfConfig(surveyId, tableName);
+      final linkingField = crf?['linkingfield']?.toString();
+      if (linkingField == null || linkingField.isEmpty) return;
+
+      final linkingValue = _answers[linkingField]?.toString();
+      if (linkingValue == null || linkingValue.isEmpty) return;
+
+      if (!mounted) return;
+      await _reconcileRepeatCount(context, tableName, linkingValue);
+    } catch (e) {
+      debugPrint('Error reconciling parent count: $e');
     }
   }
 
@@ -1563,8 +1584,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
     Map<String, dynamic> crfConfig,
   ) async {
     final repeatCountField = crfConfig['repeat_count_field']?.toString();
-    final enforceCountMode = (crfConfig['repeat_enforce_count'] as int?) ??
-        1; // Default to warn mode
+    final enforceCountMode =
+        RepeatCountService.parseEnforceMode(crfConfig['repeat_enforce_count']);
 
     int completedCount = 0;
 
@@ -1612,29 +1633,33 @@ class _SurveyScreenState extends State<SurveyScreen> {
           // In force mode, dialog will always return true (user can only click Continue)
           i--; // Retry this iteration
           continue;
-        } else {
-          // User can exit, but we'll check count at the end
-          break;
         }
+
+        // Leaving early is allowed in every other mode -- but not below the
+        // floor the count question itself declares. A household cannot have
+        // zero members, so the interviewer must not be able to walk out of
+        // the loop leaving a count the form would have rejected.
+        if (await _isBelowDeclaredMinimum(
+            childTableName, linkingValue, entityName)) {
+          if (!mounted) break;
+          i--; // Retry this iteration
+          continue;
+        }
+
+        // User can exit, but we'll check count at the end
+        break;
       }
     }
 
     if (!mounted) return;
 
-    // After loop, check if count matches
-    // Note: This will handle the mismatch but NOT show success dialog yet
-    // We need to check for more repeating sections first
-    await _handleRepeatCountMismatch(
-      context,
-      childTableName,
-      displayName,
-      linkingField,
-      linkingValue,
-      repeatCount,
-      completedCount,
-      enforceCountMode,
-      repeatCountField,
-    );
+    // After loop, reconcile the parent's count with what was actually entered.
+    // This does not show the success dialog -- more repeating sections may
+    // still follow.
+    debugPrint('Repeat loop for $childTableName finished: '
+        '$completedCount of $repeatCount entered '
+        '(count field $repeatCountField, enforce mode $enforceCountMode)');
+    await _reconcileRepeatCount(context, childTableName, linkingValue);
   }
 
   /// Show dialog when user must complete all entities
@@ -1669,92 +1694,133 @@ class _SurveyScreenState extends State<SurveyScreen> {
     return result ?? true;
   }
 
-  /// Handle repeat count mismatch (without showing success dialog)
-  /// Returns true if everything is ok, false if there was an issue
-  Future<bool> _handleRepeatCountMismatch(
-    BuildContext context,
+  /// True when fewer child records exist than the count question's declared
+  /// `LowerRange` allows -- and, when so, tells the interviewer they have to
+  /// keep going.
+  ///
+  /// This is the same range check that gates the interviewer's own typed
+  /// answer, so the loop can never be abandoned in a state that would force an
+  /// impossible count onto the parent record.
+  Future<bool> _isBelowDeclaredMinimum(
     String childTableName,
-    String displayName,
-    String linkingField,
     String linkingValue,
-    int expectedCount,
-    int completedCount,
-    int enforceCountMode,
-    String? repeatCountField,
+    String entityName,
   ) async {
     final surveyId = await SurveyConfigService().getActiveSurveyId();
     if (surveyId == null) return false;
 
-    // Get actual count from database
-    final actualCount = await DbService.getRecordCount(
+    final reconciliation = await RepeatCountService.evaluate(
       surveyId: surveyId,
-      tableName: childTableName,
-      where: '$linkingField = ?',
-      whereArgs: [linkingValue],
+      childTableName: childTableName,
+      linkingValue: linkingValue,
+    );
+    if (reconciliation == null ||
+        reconciliation.outcome != RepeatCountOutcome.belowMinimum) {
+      return false;
+    }
+
+    if (!mounted) return true;
+
+    final minimum = reconciliation.minimum!.toInt();
+    final entityNamePlural =
+        entityName.endsWith('s') ? entityName : '${entityName}s';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_s.mustEnterAtLeast(minimum, entityNamePlural)),
+        content: Text(_s.mustEnterAtLeastMessage(
+            minimum, entityNamePlural, reconciliation.actualCount)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_s.continueLabel),
+          ),
+        ],
+      ),
     );
 
-    if (actualCount == expectedCount) {
-      // Perfect match
-      return true;
-    }
-
-    // Mismatch detected
-    debugPrint('Count mismatch: expected=$expectedCount, actual=$actualCount');
-
-    if (enforceCountMode == 0) {
-      // Flexible mode - allow any count
-      return true;
-    } else if (enforceCountMode == 1) {
-      // Warn mode - show dialog with options
-      final action = await _showCountMismatchDialog(
-        context,
-        displayName,
-        expectedCount,
-        actualCount,
-      );
-
-      if (action == 'update' && repeatCountField != null) {
-        // Update the parent record's count field
-        final parentTableName =
-            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-        final parentLinkingValue = _answers[linkingField];
-
-        await DbService.updateField(
-          surveyId: surveyId,
-          tableName: parentTableName,
-          field: repeatCountField,
-          value: actualCount,
-          where: '$linkingField = ?',
-          whereArgs: [parentLinkingValue],
-        );
-
-        debugPrint(
-            'Updated $parentTableName.$repeatCountField to $actualCount');
-      }
-      return true;
-    } else if (enforceCountMode == 3) {
-      // Auto-sync mode - silently update parent record
-      if (repeatCountField != null) {
-        final parentTableName =
-            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-        final parentLinkingValue = _answers[linkingField];
-
-        await DbService.updateField(
-          surveyId: surveyId,
-          tableName: parentTableName,
-          field: repeatCountField,
-          value: actualCount,
-          where: '$linkingField = ?',
-          whereArgs: [parentLinkingValue],
-        );
-
-        debugPrint(
-            'Auto-synced $parentTableName.$repeatCountField to $actualCount');
-      }
-      return true;
-    }
-
     return true;
+  }
+
+  /// Reconcile the parent's repeat count with the children actually entered.
+  ///
+  /// Delegates the decision to [RepeatCountService] so that the auto-repeat
+  /// loop and an ad-hoc child added later from the questionnaire menu apply
+  /// exactly the same rules; this method only supplies the dialogs.
+  Future<bool> _reconcileRepeatCount(
+    BuildContext context,
+    String childTableName,
+    String linkingValue,
+  ) async {
+    final surveyId = await SurveyConfigService().getActiveSurveyId();
+    if (surveyId == null) return false;
+
+    final reconciliation = await RepeatCountService.evaluate(
+      surveyId: surveyId,
+      childTableName: childTableName,
+      linkingValue: linkingValue,
+    );
+    if (reconciliation == null) return true;
+
+    switch (reconciliation.outcome) {
+      case RepeatCountOutcome.updateSilently:
+        await RepeatCountService.applyCount(
+          surveyId: surveyId,
+          reconciliation: reconciliation,
+        );
+        debugPrint('Auto-synced ${reconciliation.parentTable}.'
+            '${reconciliation.countField} to ${reconciliation.actualCount}');
+        return true;
+
+      case RepeatCountOutcome.askToUpdate:
+        if (!mounted) return true;
+        final action = await _showCountMismatchDialog(
+          context,
+          reconciliation.displayName,
+          reconciliation.declaredCount ?? 0,
+          reconciliation.actualCount,
+        );
+        if (action == 'update') {
+          await RepeatCountService.applyCount(
+            surveyId: surveyId,
+            reconciliation: reconciliation,
+          );
+        }
+        return true;
+
+      case RepeatCountOutcome.aboveMaximum:
+        if (!mounted) return true;
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(_s.incompleteData),
+            content: Text(_s.countExceedsMaximum(
+              reconciliation.actualCount,
+              reconciliation.displayName,
+              reconciliation.maximum!.toInt(),
+            )),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_s.ok),
+              ),
+            ],
+          ),
+        );
+        return false;
+
+      case RepeatCountOutcome.belowMinimum:
+      case RepeatCountOutcome.countNotDeclared:
+      case RepeatCountOutcome.forceModeHandledInLoop:
+      case RepeatCountOutcome.noEnforcement:
+      case RepeatCountOutcome.inSync:
+        debugPrint('Repeat count for ${reconciliation.childTable} left as is: '
+            '${reconciliation.outcome}');
+        return true;
+    }
   }
 
   /// Show count mismatch warning dialog

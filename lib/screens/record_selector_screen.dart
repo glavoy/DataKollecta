@@ -1,7 +1,4 @@
-import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import '../services/db_service.dart';
 import 'survey_screen.dart';
 import '../services/survey_config_service.dart';
@@ -70,37 +67,7 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
           displayFieldsStr?.split(',').map((s) => s.trim()).toList() ?? [];
 
       // Load question cache for label lookups
-      final questionCache = QuestionCacheService();
-      if (!questionCache.isLoadedForSurvey(surveyId)) {
-        final manifest = await surveyConfig.getActiveSurveyManifest();
-        if (manifest != null) {
-          final xmlFiles =
-              (manifest['xmlFiles'] as List?)?.cast<String>() ?? [];
-
-          // Find the survey directory
-          final surveysDir = await surveyConfig.getSurveysDirectory();
-          final entities = await surveysDir.list().toList();
-          for (final entity in entities) {
-            if (entity is Directory) {
-              final manifestPath = p.join(entity.path, 'survey_manifest.gistx');
-              final manifestFile = File(manifestPath);
-              if (await manifestFile.exists()) {
-                // Check if this is the right survey directory
-                final dirManifest =
-                    jsonDecode(await manifestFile.readAsString());
-                if (dirManifest['surveyId'] == surveyId) {
-                  await questionCache.loadQuestionsForSurvey(
-                    surveyId: surveyId,
-                    surveyDirectory: entity.path,
-                    xmlFiles: xmlFiles,
-                  );
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
+      await QuestionCacheService().ensureLoadedForSurvey(surveyId);
 
       final idConfig = crfConfig?['idconfig']?.toString();
 

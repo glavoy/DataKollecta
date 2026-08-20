@@ -62,7 +62,7 @@ CREATE TABLE crfs (
 | `repeat_count_field` | TEXT | Field in parent table containing the repeat count | `num_people`, `num_nets` |
 | `repeat_count_source` | TEXT | Table to read the repeat count from | `household` |
 | `auto_start_repeat` | INTEGER | `0`=disabled, `1`=prompt user, `2`=force auto-start | `1` (prompt) |
-| `repeat_enforce_count` | INTEGER | `0`=flexible, `1`=warn on mismatch, `2`=force complete, `3`=auto-sync | `1` (warn) |
+| `repeat_enforce_count` | INTEGER | `0`=flexible, `1`=warn on mismatch, `2`=force complete, `3`=auto-sync. Never writes a count outside the count question's `LowerRange`/`UpperRange`. | `1` (warn) |
 
 ### **Display Configuration**
 
@@ -200,8 +200,23 @@ INSERT INTO crfs (
 ### **`repeat_enforce_count` Options:**
 - `0` = **Flexible** - Allow any count, no warnings
 - `1` = **Warn** - Show warning if count doesn't match (RECOMMENDED)
-- `2` = **Force** - Must complete all N members
+- `2` = **Force** - Must complete all N members (no "Exit Anyway" escape)
 - `3` = **Auto-sync** - Silently update parent record count
+
+**When reconciliation runs.** Modes `1` and `3` reconcile the parent's count both when the
+auto-repeat loop ends *and* whenever a child record is saved on its own — added later from
+the questionnaire menu, or edited. Mode `2` only applies inside the loop. With
+`auto_start_repeat = 0` there is no loop, so the count is reconciled only on those
+standalone child saves.
+
+**The count question's range is never violated.** Before writing, the actual number of
+children is checked against the `LowerRange`/`UpperRange` declared on the count question in
+the parent's `_dd` worksheet — the same check the interviewer's typed answer passes. Nothing
+is written when the count would fall below `LowerRange` (inside the loop the interviewer is
+held there until it does not), when it would exceed `UpperRange` (they are warned instead),
+or when the count question was skipped and its value is NULL. To require at least N children
+of a form, set `LowerRange` on its count question; there is deliberately no separate minimum
+column here.
 
 ### **`display_order` Best Practice:**
 Use increments of 10 (10, 20, 30...) to leave room for future insertions

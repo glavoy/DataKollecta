@@ -406,6 +406,19 @@ class AppStrings {
   String updateCountTo(int actual) => isFrench
       ? 'Mettre à jour le compte à $actual'
       : 'Update Count to $actual';
+  String mustEnterAtLeast(int minimum, String entityNamePlural) => isFrench
+      ? 'Au moins $minimum $entityNamePlural'
+      : 'At Least $minimum $entityNamePlural Required';
+  String mustEnterAtLeastMessage(
+          int minimum, String entityNamePlural, int actual) =>
+      isFrench
+          ? 'Ce questionnaire exige au moins $minimum $entityNamePlural. Vous en avez saisi $actual.\n\nVeuillez continuer.'
+          : 'This questionnaire requires at least $minimum $entityNamePlural. You have entered $actual.\n\nPlease continue.';
+  String countExceedsMaximum(
+          int actual, String displayName, int maximum) =>
+      isFrench
+          ? 'Il y a maintenant $actual enregistrements pour $displayName, mais le maximum autorisé est $maximum.\n\nLe compte n\'a pas été mis à jour -- veuillez corriger les données.'
+          : 'There are now $actual records for $displayName, but the declared maximum is $maximum.\n\nThe count was not updated -- please correct the data.';
   String get allDone => isFrench ? 'Terminé!' : 'All done!';
   String get recordUpdatedSuccess => isFrench
       ? 'Merci! Enregistrement mis à jour avec succès.'
