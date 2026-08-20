@@ -302,10 +302,17 @@ Use increments of 10 (10, 20, 30...) to leave room for future insertions
 deletes that data, so the counter silently restarts at 1 and a freshly generated ID can
 collide with one already generated (and possibly already synced) before the reinstall.
 
-Two special field names shrink that risk: `yy` (two-digit year, e.g. `26`) and `ddd`
-(day of year, `001`–`366`). Fold them into `idconfig.fields` alongside an
+Two special field names shrink that risk: `yy` (two-digit year) and `ddd` (day of year,
+zero-padded to three digits). Fold them into `idconfig.fields` alongside an
 interviewer/device code, and the counter only has to stay collision-free **within one
 interviewer's one calendar day** — not for the life of the study.
+
+**Exact format**, both zero-padded, no other formatting applied:
+- `yy` = `year % 100` — `2026` → `"26"`, `2001` → `"01"`. **Repeats every century**
+  (`2000` and `2100` are both `"00"`) — a real ambiguity, not a bug; acceptable because no
+  study spans a century.
+- `ddd` = the ordinal day within the calendar year, `"001"` (Jan 1) through `"365"`/`"366"`
+  (Dec 31) — e.g. Feb 1 is day 32 → `"032"`.
 
 ```json
 {
@@ -324,7 +331,10 @@ daily since the base ID changes every day).
 **These take no `calc:` configuration and must not be given one.** The app computes `yy`/
 `ddd` itself, the same way it already computes `startdate` — declare them in the survey's
 `_dd` worksheet as ordinary `automatic`-type rows with a **blank** `Responses` column, and
-reference them in `idconfig.fields`. That's what exempts them from needing a calculation.
+reference them in `idconfig.fields` wherever you want them in the ID. The generator
+recognizes `yy`/`ddd` by field name alone and exempts them from needing a calculation **on
+any worksheet** — not only the table whose own `idconfig` references them, so a `yy`/`ddd`
+row is equally valid on a repeating child form with no `idconfig` of its own.
 A hand-built `calc:constant value:NOW_YEAR`-style field would NOT be safe here: it has no
 protection against being recomputed when an old record is edited on a later day, and could
 silently generate a **new** subject ID for the same person mid-edit. `yy`/`ddd` avoid this
