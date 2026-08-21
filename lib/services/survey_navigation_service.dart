@@ -17,6 +17,15 @@ class SurveyNavigationService {
     'stoptime',
   };
 
+  /// The web designer's "End of Form" skip target. Not a real fieldname --
+  /// `_findQuestionByFieldName` would never match it, which is exactly the
+  /// bug this constant exists to fix: a skip targeting this literal string
+  /// used to silently do nothing (index -1 always fails `> currentIndex`).
+  static const String endOfFormSkipTarget = 'end';
+
+  static bool _isEndOfForm(String target) =>
+      target.trim().toLowerCase() == endOfFormSkipTarget;
+
   /// Advances from a displayed question, applying its postskip before traversing
   /// automatic questions and preskips.
   static Future<int> advanceFromQuestion({
@@ -32,6 +41,17 @@ class SurveyNavigationService {
         SkipService.evaluateSkips(questions[currentIndex].postSkips, answers);
 
     if (postSkipTarget != null) {
+      if (_isEndOfForm(postSkipTarget)) {
+        return _advanceToEnd(
+          questions: questions,
+          answers: answers,
+          startIndex: currentIndex + 1,
+          processAutomaticQuestion: processAutomaticQuestion,
+          primaryKeyFields: primaryKeyFields,
+          isEditMode: isEditMode,
+        );
+      }
+
       final targetIndex = _findQuestionByFieldName(questions, postSkipTarget);
       if (targetIndex > currentIndex) {
         clearAnswersInRange(
@@ -75,6 +95,17 @@ class SurveyNavigationService {
           SkipService.evaluateSkips(question.preSkips, answers);
 
       if (preSkipTarget != null) {
+        if (_isEndOfForm(preSkipTarget)) {
+          return _advanceToEnd(
+            questions: questions,
+            answers: answers,
+            startIndex: index,
+            processAutomaticQuestion: processAutomaticQuestion,
+            primaryKeyFields: primaryKeys,
+            isEditMode: isEditMode,
+          );
+        }
+
         final targetIndex = _findQuestionByFieldName(questions, preSkipTarget);
         if (targetIndex > index) {
           clearAnswersInRange(
@@ -98,6 +129,53 @@ class SurveyNavigationService {
       }
 
       return index;
+    }
+
+    return questions.isEmpty ? 0 : questions.length - 1;
+  }
+
+  /// Walks every remaining question to the very end of the survey.
+  ///
+  /// Unlike an ordinary skip -- which jumps straight to a target index and
+  /// clears the whole range in one shot -- "end of form" cannot use that
+  /// shortcut: the range being skipped over almost always still contains
+  /// automatic fields (custom calculations, and always the trailing system
+  /// fields: uniqueid, swver, survey_id, lastmod, stoptime) that must be
+  /// *computed*, not cleared. So this walks question by question instead:
+  /// every automatic question is processed exactly as it would be if
+  /// navigation reached it normally, and every other question has just its
+  /// own answer cleared (via the same protections `clearAnswersInRange`
+  /// already applies -- primary keys, protected system fields, and
+  /// information screens are left alone) without ever being displayed.
+  static Future<int> _advanceToEnd({
+    required List<Question> questions,
+    required AnswerMap answers,
+    required int startIndex,
+    required AutomaticQuestionProcessor processAutomaticQuestion,
+    Iterable<String> primaryKeyFields = const [],
+    bool isEditMode = false,
+  }) async {
+    final primaryKeys =
+        primaryKeyFields.map((field) => field.toLowerCase()).toSet();
+    var index = startIndex < 0 ? 0 : startIndex;
+
+    while (index < questions.length) {
+      final question = questions[index];
+      final isHiddenPrimaryKey =
+          isEditMode && primaryKeys.contains(question.fieldName.toLowerCase());
+
+      if (question.type == QuestionType.automatic || isHiddenPrimaryKey) {
+        await processAutomaticQuestion(question);
+      } else {
+        clearAnswersInRange(
+          questions: questions,
+          answers: answers,
+          startIndex: index,
+          endIndex: index + 1,
+          primaryKeyFields: primaryKeys,
+        );
+      }
+      index++;
     }
 
     return questions.isEmpty ? 0 : questions.length - 1;

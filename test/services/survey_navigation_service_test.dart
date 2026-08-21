@@ -312,6 +312,156 @@ void main() {
       expect(answers['age_in_range_bf'], 'calculated');
     });
 
+    test(
+        'postskip "end" computes every remaining automatic field instead of '
+        'clearing them', () async {
+      // Mirrors the shape a web-designer survey actually produces: a
+      // postskip to "end" fires partway through a run of automatic fields,
+      // including the trailing system ones. The naive fix (jump straight to
+      // the last index and clear the whole range) would null every one of
+      // these out instead of computing them.
+      final questions = <Question>[
+        _question(
+          'severity',
+          QuestionType.radio,
+          postSkips: [_skip('severity', '=', '0', 'end')],
+        ),
+        _question(
+          'risk_level',
+          QuestionType.automatic,
+          calculation: CalculationConfig(type: 'constant', value: 'unused'),
+        ),
+        _question('uniqueid', QuestionType.automatic),
+        _question('swver', QuestionType.automatic),
+        _question('survey_id', QuestionType.automatic),
+        _question('lastmod', QuestionType.automatic),
+        _question('stoptime', QuestionType.automatic),
+        _question('end_of_questions', QuestionType.information),
+      ];
+      final answers = <String, dynamic>{'severity': '0'};
+      final processed = <String>[];
+
+      final nextIndex = await SurveyNavigationService.advanceFromQuestion(
+        questions: questions,
+        currentIndex: 0,
+        answers: answers,
+        processAutomaticQuestion: (question) async {
+          processed.add(question.fieldName);
+          answers[question.fieldName] = 'computed';
+        },
+      );
+
+      expect(nextIndex, questions.length - 1);
+      expect(processed, [
+        'risk_level',
+        'uniqueid',
+        'swver',
+        'survey_id',
+        'lastmod',
+        'stoptime',
+      ]);
+      for (final field in processed) {
+        expect(answers[field], 'computed', reason: field);
+      }
+    });
+
+    test('postskip "end" clears real questions in between without showing them',
+        () async {
+      final questions = <Question>[
+        _question(
+          'severity',
+          QuestionType.radio,
+          postSkips: [_skip('severity', '=', '0', 'end')],
+        ),
+        _question('followup_detail', QuestionType.text),
+        _question('followup_notes', QuestionType.text),
+        _question(
+          'risk_level',
+          QuestionType.automatic,
+          calculation: CalculationConfig(type: 'constant', value: 'unused'),
+        ),
+      ];
+      final answers = <String, dynamic>{
+        'severity': '0',
+        'followup_detail': 'stale',
+        'followup_notes': 'stale',
+      };
+
+      final nextIndex = await SurveyNavigationService.advanceFromQuestion(
+        questions: questions,
+        currentIndex: 0,
+        answers: answers,
+        processAutomaticQuestion: (question) async {
+          answers[question.fieldName] = 'computed';
+        },
+      );
+
+      expect(nextIndex, questions.length - 1);
+      expect(answers['followup_detail'], isNull);
+      expect(answers['followup_notes'], isNull);
+      expect(answers['risk_level'], 'computed');
+    });
+
+    test('preskip "end" is matched case-insensitively and with whitespace',
+        () async {
+      final questions = <Question>[
+        _question(
+          'gate',
+          QuestionType.radio,
+          preSkips: [_skip('route', '=', '1', ' End ')],
+        ),
+        _question('later', QuestionType.text),
+        _question(
+          'stoptime',
+          QuestionType.automatic,
+          calculation: CalculationConfig(type: 'constant', value: 'unused'),
+        ),
+      ];
+      final answers = <String, dynamic>{'route': '1', 'later': 'stale'};
+
+      final nextIndex = await SurveyNavigationService.findNextDisplayedQuestion(
+        questions: questions,
+        startIndex: 0,
+        answers: answers,
+        processAutomaticQuestion: (question) async {
+          answers[question.fieldName] = 'computed';
+        },
+      );
+
+      expect(nextIndex, questions.length - 1);
+      expect(answers['later'], isNull);
+      expect(answers['stoptime'], 'computed');
+    });
+
+    test('postskip "end" preserves primary keys in an existing record',
+        () async {
+      final questions = <Question>[
+        _question(
+          'route',
+          QuestionType.radio,
+          postSkips: [_skip('route', '=', '1', 'end')],
+        ),
+        _question('record_key', QuestionType.text),
+        _question('later', QuestionType.text),
+      ];
+      final answers = <String, dynamic>{
+        'route': '1',
+        'record_key': 'existing-key',
+      };
+
+      final nextIndex = await SurveyNavigationService.advanceFromQuestion(
+        questions: questions,
+        currentIndex: 0,
+        answers: answers,
+        processAutomaticQuestion: (_) async {},
+        primaryKeyFields: const ['RECORD_KEY'],
+        isEditMode: true,
+      );
+
+      expect(nextIndex, questions.length - 1);
+      expect(answers['record_key'], 'existing-key');
+    });
+
     test('clears every jump in a chained preskip route', () async {
       final questions = <Question>[
         _question('route', QuestionType.radio),
