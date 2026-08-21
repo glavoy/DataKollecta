@@ -43,19 +43,42 @@ repository — they are kept with the keystore backup.
 
 ## Overview
 
-GiSTX and DataKollecta are cross-platform offline survey and data collection applications built with Flutter from this one codebase. They enable researchers and data collectors to administer XML-based questionnaires in field settings without requiring internet connectivity — GiSTX syncs over FTP/SFTP, DataKollecta over Supabase/HTTP (see the product table above).
+GiSTX and DataKollecta are offline-first survey and data collection applications built with
+Flutter from this one codebase. They administer XML-based questionnaires in field settings
+without requiring internet connectivity, then sync collected data back — GiSTX over FTP/SFTP
+(with an SFTP/French variant for Burkina Faso), DataKollecta over Supabase/HTTP with
+incremental per-record upload (see the product table above).
+
+Survey XML is normally not hand-written. It's generated from an Excel data dictionary by a
+sibling tool, [`DataKollecta-SurveyGen`](../DataKollecta-SurveyGen), which also emits the
+reserved system variables (`starttime`, `subjid`, `swver`, etc.) and validates the dictionary
+before anything is built. This repo trusts that generated XML as-is — it doesn't re-derive or
+re-validate what SurveyGen already decided.
+
+For how the pieces fit together — the survey rendering pipeline, the SQLite schema-sync
+layer, ID generation, the two sync backends, reserved/computed system variables — see
+[CLAUDE.md](CLAUDE.md), which is the maintained architecture reference for this codebase.
 
 ## Key Features
 
-- **Offline-First Architecture**: All data is stored locally in SQLite database, perfect for field research in remote locations
-- **XML-Based Surveys**: Define questionnaires using simple XML files with support for multiple question types (text, radio, checkbox, date, etc.)
-- **Hierarchical Data Collection**: Support for parent-child survey relationships (e.g., household enrollment followed by household member surveys)
-- **Auto-Repeat Surveys**: Automatically loop through child surveys based on count fields (e.g., survey N household members)
-- **Dynamic ID Generation**: Configurable unique ID generation with custom prefixes and field-based composition
-- **Smart Navigation**: Intuitive record selection and modification with descriptive display fields
-- **Data Validation**: Built-in support for numeric ranges, date ranges, logic checks, and unique value validation
-- **Dynamic Text Replacement**: Insert previously answered values into question text using `[[fieldname]]` placeholders
-- **Auto-Increment Fields**: Automatic line number generation for repeated records
+- **Offline-First Architecture**: All data is stored locally in SQLite, with schema
+  automatically reconciled against the survey XML on load (new fields get added as columns;
+  nothing is ever dropped)
+- **XML-Based Surveys**: Multi-page questionnaires with static, CSV-backed, and DB-backed
+  response options; text, radio, checkbox, combobox, date/datetime, and computed
+  ("automatic") question types
+- **Hierarchical Data Collection**: Parent-child survey relationships (e.g., household
+  enrollment followed by household member surveys), with auto-repeat looping driven by a
+  count field on the parent record
+- **Skip and Logic Rules**: Pre/post-answer skip conditions and cross-field logic checks
+  (`AND`/`OR`, parentheses, field references), evaluated during navigation
+- **Configurable ID Generation**: Subject/record IDs composed from survey fields, fixed
+  strings, and an auto-incrementing counter — including an opt-in family of computed
+  date-part fields (`yyyy`/`yy`/`mm`/`dd`/`doy`) designers can fold into an ID to shrink the
+  collision window after a device reinstall resets its local counter
+- **Dynamic Text Replacement**: Insert previously answered values into question text via
+  `[[fieldname]]` placeholders
+- **Data Validation**: Numeric/date range checks, logic checks, and unique-value validation
 
 ## Use Cases
 
@@ -67,6 +90,11 @@ GiSTX and DataKollecta are cross-platform offline survey and data collection app
 ## Technical Stack
 
 - **Framework**: Flutter/Dart
-- **Database**: SQLite with automatic schema synchronization
-- **Platforms**: Windows, macOS, Linux, Android, iOS
-- **Survey Definition**: XML
+- **Database**: SQLite (`sqflite` on Android, `sqflite_common_ffi` on desktop) with
+  automatic schema synchronization, one database per survey
+- **Platforms actually built by `tool/build.dart`**: Android (APK), Windows, macOS. The repo
+  also carries scaffold `ios/` and `linux/` directories from `flutter create`, but neither is
+  a wired-up build target today.
+- **Survey Definition**: XML, normally generated from an Excel data dictionary by
+  `DataKollecta-SurveyGen`
+- **Sync**: FTP/SFTP (GiSTX) or Supabase edge functions over HTTP (DataKollecta)
