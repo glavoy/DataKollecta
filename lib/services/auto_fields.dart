@@ -39,8 +39,11 @@ class AutoFields {
     'lastmod': _computeLastModified,
     'swver': _computeSoftwareVersion,
     'survey_id': _computeSurveyId,
-    'yy': _computeTwoDigitYear,
-    'ddd': _computeDayOfYear,
+    'yyyy': _computeYyyy,
+    'yy': _computeYy,
+    'mm': _computeMm,
+    'dd': _computeDd,
+    'doy': _computeDoy,
 
     // Add more automatic variables here ...
   };
@@ -323,6 +326,25 @@ class AutoFields {
           return _calculateDateDiff(startDate, endDate, config.unit ?? 'd')
               .toString();
 
+        case 'date_part':
+          // Extracts a component (yyyy/yy/mm/dd/doy) from any date field the
+          // survey names, unlike the fixed yy/yyyy/mm/dd/doy registry fields
+          // above, which only ever mean "today" and never recompute. This
+          // recomputes whenever compute() would normally recompute it --
+          // correct here, since the whole point is tracking a source field
+          // that can change; a survey wanting it frozen sets `preserve: true`
+          // on the calculation itself, same as any other calc field.
+          final fieldName = _sanitizeField(config.field);
+          DateTime? sourceDate;
+          if (fieldName == 'today') {
+            sourceDate = DateTime.now();
+          } else if (fieldName != null) {
+            final val = _answerText(answers, fieldName);
+            if (val.isNotEmpty) sourceDate = DateTime.tryParse(val);
+          }
+          if (sourceDate == null) return '';
+          return _formatDatePart(sourceDate, (config.unit ?? '').toLowerCase());
+
         default:
           return '';
       }
@@ -466,19 +488,30 @@ class AutoFields {
     return DateTime.now().toIso8601String().split('T')[0];
   }
 
-  /// Two-digit calendar year (`"26"` for 2026), and [_computeDayOfYear]
-  /// below, exist for one purpose: composing a subject ID that survives an
-  /// app reinstall wiping the local database. `IdGenerator`'s increment
-  /// counter is a MAX() over the survey's own SQLite table, which is deleted
-  /// entirely on Android uninstall -- so it silently restarts at 1 and can
-  /// collide with IDs already generated (and possibly already synced) before
-  /// the wipe. Folding the interviewer code, year and day-of-year into the
-  /// ID's base fields means that counter only has to stay collision-free
-  /// *within one interviewer's one calendar day*, since it naturally resets
-  /// whenever any of those change -- see ChangeLog.md for the full design.
+  /// `yyyy`/`yy`/`mm`/`dd`/`doy` -- date components computed from *today*,
+  /// zero-padded, never recomputed once set. They exist for two overlapping
+  /// reasons: any survey field that just wants "today" split into its parts
+  /// (a month for a seasonal skip, a year for a label), and specifically
+  /// composing a subject ID that survives an app reinstall wiping the local
+  /// database -- `IdGenerator`'s increment counter is a MAX() over the
+  /// survey's own SQLite table, which is deleted entirely on Android
+  /// uninstall, so it silently restarts at 1 and can collide with IDs
+  /// already generated (and possibly already synced) before the wipe.
+  /// Folding an interviewer code, `yy` and `doy` into the ID's base fields
+  /// means that counter only has to stay collision-free *within one
+  /// interviewer's one calendar day*, since it naturally resets whenever any
+  /// of those change -- see ChangeLog.md for the full design.
   ///
-  /// Deliberately a plain registry field, not a `calc:` field: preservation
-  /// on edit then falls out of `compute`'s existing generic rule -- once a
+  /// For extracting a date component from a field *other* than today --
+  /// `dob`, an appointment date, anything the survey itself collects -- use
+  /// the `date_part` calculation type instead (see `_executeCalculation`'s
+  /// `'date_part'` case below), which shares [_formatDatePart] with these but
+  /// recomputes whenever its source field does, unless the survey marks it
+  /// `preserve: true`. These five fields never recompute at all, which is
+  /// what the paragraph below is about.
+  ///
+  /// Deliberately plain registry fields, not `calc:` fields: preservation on
+  /// edit then falls out of `compute`'s existing generic rule -- once a
   /// field with no calculation has a non-empty stored value, `compute`
   /// returns it unchanged rather than recomputing, in edit mode or not (see
   /// the `if (existing is String && existing.isNotEmpty) return existing;`
@@ -487,28 +520,48 @@ class AutoFields {
   /// author, for every survey, forever; this can't be forgotten, because
   /// there's no flag to forget -- exactly how `starttime`/`startdate` are
   /// already protected. Without it, editing an existing record on a later
-  /// day (or in the next calendar year, for `yy`) would recompute a
-  /// different value, `IdGenerator.hasBaseIdChanged` would see the ID's
-  /// base fields as changed, and the app would mint a new subject ID for
-  /// the same person while the interviewer was only fixing an unrelated
-  /// typo.
-  static String _computeTwoDigitYear(
-      AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
-    return (DateTime.now().year % 100).toString().padLeft(2, '0');
+  /// day (or in a later year, for `yy`/`yyyy`) would recompute a different
+  /// value, `IdGenerator.hasBaseIdChanged` would see the ID's base fields as
+  /// changed, and the app would mint a new subject ID for the same person
+  /// while the interviewer was only fixing an unrelated typo.
+  static String _formatDatePart(DateTime date, String part) {
+    switch (part) {
+      case 'yyyy':
+        return date.year.toString().padLeft(4, '0');
+      case 'yy':
+        return (date.year % 100).toString().padLeft(2, '0');
+      case 'mm':
+        return date.month.toString().padLeft(2, '0');
+      case 'dd':
+        return date.day.toString().padLeft(2, '0');
+      case 'doy':
+        return (date.difference(DateTime(date.year, 1, 1)).inDays + 1)
+            .toString()
+            .padLeft(3, '0');
+      default:
+        return '';
+    }
   }
 
-  /// Ordinal day within the current calendar year, zero-padded to three
-  /// digits (Jan 1 = `"001"`, Dec 31 = `"365"` or `"366"` in a leap year).
-  /// Dart's `DateTime` has no such property, so it's the day count since
-  /// Jan 1 of the same year, inclusive. See [_computeTwoDigitYear] for why
-  /// this is a registry field rather than a `calc:` field.
-  static String _computeDayOfYear(
-      AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
-    final now = DateTime.now();
-    return (now.difference(DateTime(now.year, 1, 1)).inDays + 1)
-        .toString()
-        .padLeft(3, '0');
-  }
+  static String _computeYyyy(
+          AnswerMap answers, Question q, bool isEditMode, String? surveyId) =>
+      _formatDatePart(DateTime.now(), 'yyyy');
+
+  static String _computeYy(
+          AnswerMap answers, Question q, bool isEditMode, String? surveyId) =>
+      _formatDatePart(DateTime.now(), 'yy');
+
+  static String _computeMm(
+          AnswerMap answers, Question q, bool isEditMode, String? surveyId) =>
+      _formatDatePart(DateTime.now(), 'mm');
+
+  static String _computeDd(
+          AnswerMap answers, Question q, bool isEditMode, String? surveyId) =>
+      _formatDatePart(DateTime.now(), 'dd');
+
+  static String _computeDoy(
+          AnswerMap answers, Question q, bool isEditMode, String? surveyId) =>
+      _formatDatePart(DateTime.now(), 'doy');
 
   static String _computeStopTime(
       AnswerMap answers, Question q, bool isEditMode, String? surveyId) {

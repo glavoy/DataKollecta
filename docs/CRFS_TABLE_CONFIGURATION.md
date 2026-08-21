@@ -223,35 +223,52 @@ Use increments of 10 (10, 20, 30...) to leave room for future insertions
 
 ---
 
-## Computed Automatic Variables (yy, ddd)
+## Computed Automatic Variables (yyyy, yy, mm, dd, doy)
 
-Two `FieldName`s the app already knows how to compute, the same way it computes `startdate`
+Five `FieldName`s the app already knows how to compute, the same way it computes `startdate`
 — but unlike a truly reserved variable, **nothing writes these in for you.** You have to
-declare a row for each one yourself, exactly where you want it in the questionnaire. That's
-deliberate: their most common use is sitting immediately before a specific `idconfig`
-field they feed (see the worked example below), a position the generator has no way to infer
-on its own — but they aren't idconfig-specific, and can be declared on any worksheet, for any
-reason a survey wants "today."
+declare a row for each one yourself, exactly where you want it in the questionnaire. Each is
+computed once, from *today's* date, and never recomputed. That's deliberate: one common use
+is sitting immediately before a specific `idconfig` field they feed (see the worked example
+below), a position the generator has no way to infer on its own — but they aren't
+idconfig-specific, and can be declared on any worksheet, for any reason a survey wants
+"today."
 
 | FieldName | What it computes | Format |
 |-----------|-------------------|--------|
+| `yyyy` | the current four-digit year | zero-padded to 4 — `"2026"` |
 | `yy` | the current two-digit year | `year % 100`, zero-padded to 2 — `2026` → `"26"` |
-| `ddd` | the ordinal day within the current calendar year | zero-padded to 3 — `"001"` (Jan 1) through `"365"`/`"366"` (Dec 31) |
+| `mm` | the current month | zero-padded to 2 — `"01"`–`"12"` |
+| `dd` | the current day of the month | zero-padded to 2 — `"01"`–`"31"` |
+| `doy` | the ordinal day within the current calendar year | zero-padded to 3 — `"001"` (Jan 1) through `"365"`/`"366"` (Dec 31) |
 
-**Worked examples:** `2001` → `"01"`; Feb 1 → day 32 → `"032"`.
+**Worked examples:** `2001` → `yy` `"01"`; Feb 1 → `doy` `"032"`.
 
 **A given `yy` repeats every century** — `2000` and `2100` are both `"00"`. A real ambiguity,
 not a bug: acceptable because no study spans a century.
 
+**Called `doy`, not `ddd`** — `ddd` for day-of-year isn't a convention anywhere (POSIX uses
+`%j`; R uses `yday()`), and it collides with Excel's own custom date-format meaning for
+`ddd`: abbreviated weekday name, not day-of-year, in the exact tool used to author these
+dictionaries.
+
 **Declare them as ordinary `automatic`-type rows with a blank `Responses` column** — no
-`calc:` block, on any worksheet, not only a table that references them in its own `idconfig`.
+`calc:` block, on any worksheet, not only a table that references one in its own `idconfig`.
 **Do not build these with `calc:constant value:NOW_YEAR` or similar**: a `calc:` field is
 only protected from being recomputed mid-edit if its survey explicitly marks it
-`preserve: true`, which nothing in the generator currently emits. Without that, editing an
-existing record on a later day (or year) could silently mint a *new* subject ID for the same
-person. `yy`/`ddd` avoid that because, like `starttime`/`startdate`, the app preserves an
-already-stored value unconditionally, with no flag to forget — see
-`DataKollecta-SurveyGen/README.md`'s `idconfig` reference for the full design rationale.
+`preserve: true`, which the generator currently has no way to author from Excel at all (a
+pre-existing gap, not specific to these fields). Without that, editing an existing record on
+a later day (or year) could silently mint a *new* subject ID for the same person. These
+fields avoid that because, like `starttime`/`startdate`, the app preserves an already-stored
+value unconditionally, with no flag to forget — see `DataKollecta-SurveyGen/README.md`'s
+`idconfig` reference for the full design rationale.
+
+**Want a component from a date *other* than today** — `dob`, an appointment date? These
+fields can't do that; use the `date_part` calculation type instead (`calc:date_part`,
+documented in `DataKollecta-SurveyGen/README.md`'s Automatic Calculations section). It shares
+the same five unit tokens but extracts from a named field and recomputes on every edit
+(the `preserve` gap above applies to it too) — the opposite default from this section, and
+correct for that use case.
 
 ---
 
@@ -328,7 +345,7 @@ already-stored value unconditionally, with no flag to forget — see
 - `05` = village (5 padded to length 2)
 - `001`, `002`, `003` = increment
 
-**Example 3: A reinstall-resilient ID, using `yy` / `ddd`**
+**Example 3: A reinstall-resilient ID, using `yy` / `doy`**
 
 ```json
 {
@@ -336,16 +353,16 @@ already-stored value unconditionally, with no flag to forget — see
   "fields": [
     {"name": "nn", "length": 2},
     {"name": "yy", "length": 2},
-    {"name": "ddd", "length": 3}
+    {"name": "doy", "length": 3}
   ],
   "incrementLength": 2
 }
 ```
 → `GX07260451` (interviewer `07`, year `26`, day-of-year `045`, increment `01`, resetting
 daily since the base ID changes every day — see
-[Computed Automatic Variables](#computed-automatic-variables-yy-ddd) above for how to
-declare `yy`/`ddd`, their exact format, and why this shrinks a reinstall's collision window
-without eliminating it).
+[Computed Automatic Variables](#computed-automatic-variables-yyyy-yy-mm-dd-doy) above for how
+to declare `yy`/`doy`, their exact format, and why this shrinks a reinstall's collision
+window without eliminating it).
 
 ---
 

@@ -132,74 +132,202 @@ void main() {
     });
   });
 
-  group('yy / ddd reserved auto fields', () {
-    /// No `calculation` at all -- deliberately. See _computeTwoDigitYear's
-    /// doc comment in auto_fields.dart for why these are plain registry
-    /// fields rather than `calc:` fields: it's what gives them the same
+  group('Computed Automatic Variables (yyyy/yy/mm/dd/doy)', () {
+    /// No `calculation` at all -- deliberately. See _formatDatePart's doc
+    /// comment in auto_fields.dart for why these are plain registry fields
+    /// rather than `calc:` fields: it's what gives them the same
     /// unconditional preserve-on-edit protection as starttime/startdate,
     /// without depending on a `preserve: true` flag a survey author could
-    /// forget to set (and which SurveyGen has no way to emit today anyway).
-    Question yyQuestion() =>
-        Question(type: QuestionType.automatic, fieldName: 'yy', fieldType: 'text');
-    Question dddQuestion() =>
-        Question(type: QuestionType.automatic, fieldName: 'ddd', fieldType: 'text');
+    /// forget to set (and which SurveyGen has no way to emit for these
+    /// anyway -- they're never declared with a calc: block at all).
+    Question computedQuestion(String fieldName) => Question(
+        type: QuestionType.automatic, fieldName: fieldName, fieldType: 'text');
 
-    String expectedTwoDigitYear() =>
-        (DateTime.now().year % 100).toString().padLeft(2, '0');
-
-    String expectedDayOfYear() {
+    String expected(String part) {
       final now = DateTime.now();
-      return (now.difference(DateTime(now.year, 1, 1)).inDays + 1)
-          .toString()
-          .padLeft(3, '0');
+      switch (part) {
+        case 'yyyy':
+          return now.year.toString().padLeft(4, '0');
+        case 'yy':
+          return (now.year % 100).toString().padLeft(2, '0');
+        case 'mm':
+          return now.month.toString().padLeft(2, '0');
+        case 'dd':
+          return now.day.toString().padLeft(2, '0');
+        case 'doy':
+          return (now.difference(DateTime(now.year, 1, 1)).inDays + 1)
+              .toString()
+              .padLeft(3, '0');
+        default:
+          throw ArgumentError(part);
+      }
     }
 
-    test('yy is the current two-digit year', () async {
-      final result = await AutoFields.compute({}, yyQuestion());
+    const widths = {'yyyy': 4, 'yy': 2, 'mm': 2, 'dd': 2, 'doy': 3};
 
-      expect(result, expectedTwoDigitYear());
-      expect(RegExp(r'^\d{2}$').hasMatch(result), isTrue);
-    });
+    for (final part in widths.keys) {
+      test('$part is today\'s value, zero-padded to ${widths[part]} digits',
+          () async {
+        final result = await AutoFields.compute({}, computedQuestion(part));
 
-    test('ddd is today\'s ordinal day, zero-padded to three digits', () async {
-      final result = await AutoFields.compute({}, dddQuestion());
+        expect(result, expected(part));
+        expect(RegExp('^\\d{${widths[part]}}\$').hasMatch(result), isTrue,
+            reason: 'expected ${widths[part]} digits, got "$result"');
+      });
+    }
 
-      expect(result, expectedDayOfYear());
-      expect(int.parse(result), inInclusiveRange(1, 366));
-      expect(RegExp(r'^\d{3}$').hasMatch(result), isTrue,
-          reason: 'expected a 3-digit zero-padded number, got "$result"');
-    });
+    test(
+        'editing an existing record preserves stale values unconditionally,'
+        ' for every field', () async {
+      // The scenario the whole design exists to prevent: editing a record on
+      // a later day (or in a later year/month) must not silently mint a new
+      // subject ID. Values well outside what "today" could produce prove
+      // this is the stored value surviving, not a coincidental match.
+      final answers = {
+        'yyyy': '1999',
+        'yy': '19',
+        'mm': '01',
+        'dd': '01',
+        'doy': '045',
+      };
 
-    test('editing an existing record preserves a stale yy/ddd unconditionally',
-        () async {
-      // The scenario the whole design exists to prevent: editing a record
-      // on a later day (or in a later year, for yy) must not silently mint
-      // a new subject ID. Values well outside what "today" could produce
-      // prove this is the stored value surviving, not a coincidental match.
-      final answers = {'yy': '19', 'ddd': '045'};
-
-      expect(await AutoFields.compute(answers, yyQuestion(), isEditMode: true),
-          '19');
-      expect(
-          await AutoFields.compute(answers, dddQuestion(), isEditMode: true),
-          '045');
+      for (final entry in answers.entries) {
+        expect(
+            await AutoFields.compute(answers, computedQuestion(entry.key),
+                isEditMode: true),
+            entry.value);
+      }
     });
 
     test('a stale value is preserved even outside edit mode', () async {
       // compute()'s preserve rule for a no-calculation field is unconditional
       // on isEditMode -- it fires whenever a non-empty value is already
-      // present, which is also what keeps yy/ddd stable if an interviewer
-      // navigates back and forth within one still-in-progress interview.
-      final answers = {'yy': '19', 'ddd': '045'};
+      // present, which is also what keeps these fields stable if an
+      // interviewer navigates back and forth within one in-progress
+      // interview.
+      final answers = {
+        'yyyy': '1999',
+        'yy': '19',
+        'mm': '01',
+        'dd': '01',
+        'doy': '045',
+      };
 
-      expect(await AutoFields.compute(answers, yyQuestion()), '19');
-      expect(await AutoFields.compute(answers, dddQuestion()), '045');
+      for (final entry in answers.entries) {
+        expect(await AutoFields.compute(answers, computedQuestion(entry.key)),
+            entry.value);
+      }
     });
 
     test('a brand new record with no stored value computes fresh', () async {
-      final result = await AutoFields.compute({}, dddQuestion());
+      for (final part in widths.keys) {
+        final result = await AutoFields.compute({}, computedQuestion(part));
+        expect(result, expected(part));
+      }
+    });
+  });
 
-      expect(result, expectedDayOfYear());
+  group('date_part calculation', () {
+    Question datePartQuestion(String field, String unit,
+            {bool preserve = false}) =>
+        Question(
+          type: QuestionType.automatic,
+          fieldName: 'result',
+          fieldType: 'text',
+          calculation: CalculationConfig(
+            type: 'date_part',
+            field: field,
+            unit: unit,
+            preserve: preserve,
+          ),
+        );
+
+    test('extracts each unit from a named date field', () async {
+      final answers = {'dob': '1990-03-05'};
+
+      expect(await AutoFields.compute(answers, datePartQuestion('dob', 'yyyy')),
+          '1990');
+      expect(
+          await AutoFields.compute(answers, datePartQuestion('dob', 'yy')),
+          '90');
+      expect(
+          await AutoFields.compute(answers, datePartQuestion('dob', 'mm')),
+          '03');
+      expect(
+          await AutoFields.compute(answers, datePartQuestion('dob', 'dd')),
+          '05');
+      expect(
+          await AutoFields.compute(answers, datePartQuestion('dob', 'doy')),
+          '064');
+    });
+
+    test('unit is matched case-insensitively', () async {
+      final answers = {'dob': '1990-03-05'};
+
+      expect(await AutoFields.compute(answers, datePartQuestion('dob', 'MM')),
+          '03');
+    });
+
+    test('field:today behaves like the equivalent Computed Automatic Variable',
+        () async {
+      final now = DateTime.now();
+      final expectedMm = now.month.toString().padLeft(2, '0');
+
+      final result =
+          await AutoFields.compute({}, datePartQuestion('today', 'mm'));
+
+      expect(result, expectedMm);
+    });
+
+    test('an unanswered source field produces an empty result', () async {
+      final result =
+          await AutoFields.compute({}, datePartQuestion('dob', 'mm'));
+
+      expect(result, '');
+    });
+
+    test('an unparseable date value produces an empty result', () async {
+      final answers = {'dob': 'not a date'};
+
+      final result =
+          await AutoFields.compute(answers, datePartQuestion('dob', 'mm'));
+
+      expect(result, '');
+    });
+
+    test('an unrecognized unit produces an empty result', () async {
+      final answers = {'dob': '1990-03-05'};
+
+      final result =
+          await AutoFields.compute(answers, datePartQuestion('dob', 'hh'));
+
+      expect(result, '');
+    });
+
+    test(
+        'without preserve, editing recomputes from a changed source field --'
+        ' the contrast with the Computed Automatic Variable flavor',
+        () async {
+      final answers = {'dob': '1990-03-05', 'result': '01'};
+
+      final result = await AutoFields.compute(
+          answers, datePartQuestion('dob', 'mm'),
+          isEditMode: true);
+
+      expect(result, '03',
+          reason: 'a date_part field with no preserve:true must track its '
+              'source field even in edit mode, unlike yy/yyyy/mm/dd/doy');
+    });
+
+    test('preserve:true keeps the stored value even if the source changes',
+        () async {
+      final answers = {'dob': '1990-03-05', 'result': '01'};
+
+      final result = await AutoFields.compute(
+          answers, datePartQuestion('dob', 'mm', preserve: true),
+          isEditMode: true);
+
+      expect(result, '01');
     });
   });
 }
