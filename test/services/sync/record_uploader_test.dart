@@ -284,6 +284,34 @@ void main() {
       final rows = await db.query('enrollee');
       expect(rows.every((r) => r['synced_at'] != null), isTrue);
     });
+
+    test(
+        'a formchanges row is uploaded and marked synced, not skipped as '
+        'malformed (regression test for the changeid/rowid column collision: '
+        "formchanges' own INTEGER PRIMARY KEY is named changeid, not rowid, "
+        'so SELECT rowid, * used to report the alias under the name '
+        '"changeid" -- identical to the real changeid column from *, which '
+        'silently swallowed the rowid key and made every row look malformed)',
+        () async {
+      await db.insert('formchanges', {
+        'tablename': 'enrollee',
+        'fieldname': 'nmembers',
+        'uniqueid': 'u1',
+        'oldvalue': '2',
+        'newvalue': '1',
+        'changed_at': 't1',
+        'changeuniqueid': 'c1',
+        'surveyor_id': 's1',
+      });
+
+      final uploader = RecordUploader(apiClient: _FakeApiClient());
+      final outcome = await uploader.uploadSurvey(
+          db: db, token: 't', deviceId: 'd');
+
+      expect(outcome.syncedCount, 1);
+      final rows = await db.query('formchanges');
+      expect(rows.single['synced_at'], isNotNull);
+    });
   });
 }
 

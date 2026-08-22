@@ -228,14 +228,21 @@ class RecordUploader {
   Future<List<UploadRow>> _fetchTableBatch(
       Database db, String tableName, int afterRowId, int limit) async {
     final rows = await db.rawQuery(
-      'SELECT rowid, * FROM $tableName '
+      // Aliased, not bare `rowid` -- a table declaring its own
+      // `INTEGER PRIMARY KEY` (formchanges does: `changeid`) makes SQLite
+      // report the bare rowid column's *name* as that underlying column,
+      // not "rowid", so it collides with the identical column `*` already
+      // expands. sqflite turns duplicate-named columns into one Map key,
+      // last write wins, silently discarding the intended rowid --
+      // exactly the "every row is malformed" failure this alias prevents.
+      'SELECT rowid AS uploader_rowid, * FROM $tableName '
       'WHERE synced_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
       [afterRowId, limit],
     );
     final result = <UploadRow>[];
     for (final row in rows) {
       final data = Map<String, dynamic>.from(row);
-      final rowId = data.remove('rowid');
+      final rowId = data.remove('uploader_rowid');
       final wireId = data['uniqueid'];
       // Defensive, not expected: every row here came straight out of a
       // rowid table's own rowid pseudo-column, which SQLite never leaves
@@ -285,14 +292,18 @@ class RecordUploader {
   Future<List<UploadRow>> _fetchFormchangesBatch(
       Database db, int afterRowId, int limit) async {
     final rows = await db.rawQuery(
-      'SELECT rowid, * FROM formchanges WHERE changeuniqueid IS NOT NULL '
+      // See the comment in _fetchTableBatch -- formchanges is the actual
+      // table this collision hits, since it declares
+      // `changeid INTEGER PRIMARY KEY AUTOINCREMENT`.
+      'SELECT rowid AS uploader_rowid, * FROM formchanges '
+      'WHERE changeuniqueid IS NOT NULL '
       'AND synced_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
       [afterRowId, limit],
     );
     final result = <UploadRow>[];
     for (final row in rows) {
       final data = Map<String, dynamic>.from(row);
-      final rowId = data.remove('rowid');
+      final rowId = data.remove('uploader_rowid');
       final wireId = data['changeuniqueid'];
       if (rowId is! int || wireId is! String) {
         debugPrint(
