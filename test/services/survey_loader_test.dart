@@ -284,4 +284,48 @@ void main() {
       );
     });
   });
+
+  group('<optional>', () {
+    // Replaces the old hardcoded 'comments' fieldname special-case: any
+    // text question can now be optional, and 'comments' is no longer
+    // special by name at all.
+    const xml = '''
+<?xml version = '1.0' encoding = 'utf-8'?>
+<survey>
+	<question type = 'text' fieldname = 'comments' fieldtype = 'text'>
+		<text>Any comments?</text>
+		<maxCharacters>80</maxCharacters>
+		<optional>1</optional>
+	</question>
+	<question type = 'text' fieldname = 'notes' fieldtype = 'text'>
+		<text>Notes</text>
+		<maxCharacters>80</maxCharacters>
+	</question>
+</survey>
+''';
+
+    late Directory tempDir;
+
+    setUp(() => tempDir = Directory.systemTemp.createTempSync('survey_loader_optional'));
+    tearDown(() => tempDir.deleteSync(recursive: true));
+
+    Future<List<Question>> loadOptional() async {
+      final file = File('${tempDir.path}/demo.xml')..writeAsStringSync(xml);
+      return SurveyLoader.loadFromFile(file);
+    }
+
+    test('a question with <optional> is parsed as optional', () async {
+      final questions = await loadOptional();
+      final comments = questions.firstWhere((q) => q.fieldName == 'comments');
+
+      expect(comments.optional, isTrue);
+    });
+
+    test('a question without <optional> is not optional', () async {
+      final questions = await loadOptional();
+      final notes = questions.firstWhere((q) => q.fieldName == 'notes');
+
+      expect(notes.optional, isFalse);
+    });
+  });
 }

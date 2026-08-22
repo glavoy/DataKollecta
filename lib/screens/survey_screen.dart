@@ -690,8 +690,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   bool _isAnswered(Question q) {
-    // Special case: 'comments' field is always optional
-    if (q.fieldName.toLowerCase() == 'comments') {
+    // A question the dictionary marked <optional> may be left blank -- the
+    // Next button stays enabled with no answer. Replaces the old hardcoded
+    // 'comments' fieldname special-case, which applied regardless of what
+    // the XML actually declared and gave every survey exactly one skippable
+    // field, always named 'comments'.
+    if (q.optional) {
       return true;
     }
 

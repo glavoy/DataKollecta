@@ -168,6 +168,11 @@ class Question {
   final UniqueCheck? uniqueCheck;
   final CalculationConfig? calculation;
   final String? mask;
+  // From <optional>1</optional> -- a 'text' question that may be left
+  // blank; the Next button stays enabled with no answer. Replaces the old
+  // 'comments' fieldname special-case, which applied to every QuestionType
+  // regardless of what this XML actually declared.
+  final bool optional;
 
   Question({
     required this.type,
@@ -190,6 +195,7 @@ class Question {
     this.uniqueCheck,
     this.calculation,
     this.mask,
+    this.optional = false,
   });
 
   /// Check if this question depends on another field (via filters, calculations, or logic)

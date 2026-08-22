@@ -4,6 +4,19 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [UNRELEASED] - TBD
+
+### Changed
+- **A `comments` field is no longer optional by name.** `_isAnswered` hardcoded
+  `fieldname.toLowerCase() == 'comments'` as always-skippable, for any QuestionType, regardless
+  of what the survey XML actually declared -- the only way to get a skippable text field at all.
+  A question is now optional only when the XML explicitly says so
+  (`<optional>1</optional>`, from the data dictionary's new `Optional` column), which any text
+  question can now use, not just one hardcoded name. **Any existing survey package with a
+  `comments` field must be regenerated with `Optional` set before this version reaches the
+  field**, or that field becomes mandatory and an interview cannot be finished without typing
+  something into it.
+
 ## [1.3.1+9] - 2026-08-22
 
 ### Added

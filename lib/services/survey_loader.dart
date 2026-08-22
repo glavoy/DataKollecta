@@ -243,6 +243,11 @@ class SurveyLoader {
       final maskNode = q.getElement('mask');
       final mask = maskNode?.getAttribute('value');
 
+      // <optional> is only ever written when true (see the generator), so
+      // its mere presence is the flag -- matching how <dont_know>/<refuse>
+      // are read above.
+      final optional = q.getElement('optional') != null;
+
       questions.add(
         Question(
           type: type,
@@ -265,6 +270,7 @@ class SurveyLoader {
           uniqueCheck: uniqueCheck,
           calculation: calculation,
           mask: mask,
+          optional: optional,
         ),
       );
     }
@@ -340,6 +346,7 @@ class SurveyLoader {
         uniqueCheck: q.uniqueCheck,
         calculation: q.calculation,
         mask: q.mask,
+        optional: q.optional,
       );
 
   static String? _sanitizeField(String? field) {
