@@ -4,7 +4,7 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
-## [UNRELEASED] - TBD
+## [1.3.1+9] - 2026-08-22
 
 ### Added
 - **`yyyy`/`yy`/`mm`/`dd`/`doy`: five new automatic fields, and a `date_part` calculation to match.** `idconfig`'s auto-increment counter is a `MAX()` over the survey's own local SQLite table, which Android deletes entirely on uninstall — so the counter silently restarts at 1 and can issue a subject ID that collides with one already generated (and possibly already synced) before the reinstall. A survey can fold `yy` and `doy` (day of year, `001`–`366`) into `idconfig.fields` alongside an interviewer/device code, so the ID's base changes every calendar day and the counter only has to stay collision-free within one interviewer's one day, not for the life of the study — a real, if partial, risk reduction rather than a guarantee (a same-day reinstall-and-continue can still collide). The other three (`yyyy`, `mm`, `dd`) exist for the same reason `yy`/`doy` are useful beyond ID composition: a survey wanting just the current month for a seasonal skip, or a year for a label, shouldn't need to invent one. (This started as just `yy`/`ddd`, narrowly scoped to the ID use case; broadened here to the full, obvious set once it was clear the narrower framing undersold them.)
