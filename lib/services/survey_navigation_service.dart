@@ -138,15 +138,26 @@ class SurveyNavigationService {
   ///
   /// Unlike an ordinary skip -- which jumps straight to a target index and
   /// clears the whole range in one shot -- "end of form" cannot use that
-  /// shortcut: the range being skipped over almost always still contains
-  /// automatic fields (custom calculations, and always the trailing system
-  /// fields: uniqueid, swver, survey_id, lastmod, stoptime) that must be
-  /// *computed*, not cleared. So this walks question by question instead:
-  /// every automatic question is processed exactly as it would be if
-  /// navigation reached it normally, and every other question has just its
-  /// own answer cleared (via the same protections `clearAnswersInRange`
-  /// already applies -- primary keys, protected system fields, and
-  /// information screens are left alone) without ever being displayed.
+  /// shortcut: the range being skipped over always contains the trailing
+  /// system fields (uniqueid, swver, survey_id, lastmod, stoptime), which
+  /// must be *computed*, not cleared -- every record needs them regardless
+  /// of how the interview ended. So this walks question by question instead.
+  ///
+  /// A *custom* `calc:` field in that range is nulled, not computed --
+  /// matching `clearAnswersInRange`'s rule for an ordinary skip (see its own
+  /// doc comment). Computing it here would mean evaluating a calculation
+  /// whose declared inputs the interview may never have reached, silently
+  /// producing a value from missing data (e.g. a `math` calculation treats
+  /// an unanswered operand as 0, not blank -- see `_answerText` in
+  /// auto_fields.dart). A survey author who wants a calculation to always
+  /// have a value must place it before any skip that could bypass it; this
+  /// service does not try to guess which calculations are "safe" to run
+  /// with incomplete inputs.
+  ///
+  /// Every other question has just its own answer cleared (via the same
+  /// protections `clearAnswersInRange` already applies -- primary keys,
+  /// protected system fields, and information screens are left alone)
+  /// without ever being displayed.
   static Future<int> _advanceToEnd({
     required List<Question> questions,
     required AnswerMap answers,
@@ -164,8 +175,16 @@ class SurveyNavigationService {
       final isHiddenPrimaryKey =
           isEditMode && primaryKeys.contains(question.fieldName.toLowerCase());
 
-      if (question.type == QuestionType.automatic || isHiddenPrimaryKey) {
+      if (isHiddenPrimaryKey) {
         await processAutomaticQuestion(question);
+      } else if (question.type == QuestionType.automatic) {
+        final isCustomCalculation = question.calculation != null &&
+            !protectedAutomaticFields.contains(question.fieldName.toLowerCase());
+        if (isCustomCalculation) {
+          answers[question.fieldName] = null;
+        } else {
+          await processAutomaticQuestion(question);
+        }
       } else {
         clearAnswersInRange(
           questions: questions,

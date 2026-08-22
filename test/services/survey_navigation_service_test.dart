@@ -313,13 +313,17 @@ void main() {
     });
 
     test(
-        'postskip "end" computes every remaining automatic field instead of '
-        'clearing them', () async {
+        'postskip "end" computes the trailing system fields but nulls a '
+        'custom calculation', () async {
       // Mirrors the shape a web-designer survey actually produces: a
       // postskip to "end" fires partway through a run of automatic fields,
-      // including the trailing system ones. The naive fix (jump straight to
-      // the last index and clear the whole range) would null every one of
-      // these out instead of computing them.
+      // including the trailing system ones. The reserved fields (uniqueid,
+      // swver, survey_id, lastmod, stoptime) must always be computed --
+      // every record needs them regardless of how the interview ended. A
+      // custom calc: field like risk_level must NOT be computed: its
+      // declared inputs may sit further down the questionnaire, past the
+      // point the interview actually reached, and evaluating it anyway
+      // would silently fabricate a value from missing data.
       final questions = <Question>[
         _question(
           'severity',
@@ -338,7 +342,10 @@ void main() {
         _question('stoptime', QuestionType.automatic),
         _question('end_of_questions', QuestionType.information),
       ];
-      final answers = <String, dynamic>{'severity': '0'};
+      final answers = <String, dynamic>{
+        'severity': '0',
+        'risk_level': 'stale',
+      };
       final processed = <String>[];
 
       final nextIndex = await SurveyNavigationService.advanceFromQuestion(
@@ -353,7 +360,6 @@ void main() {
 
       expect(nextIndex, questions.length - 1);
       expect(processed, [
-        'risk_level',
         'uniqueid',
         'swver',
         'survey_id',
@@ -363,6 +369,7 @@ void main() {
       for (final field in processed) {
         expect(answers[field], 'computed', reason: field);
       }
+      expect(answers['risk_level'], isNull);
     });
 
     test('postskip "end" clears real questions in between without showing them',
@@ -399,7 +406,42 @@ void main() {
       expect(nextIndex, questions.length - 1);
       expect(answers['followup_detail'], isNull);
       expect(answers['followup_notes'], isNull);
-      expect(answers['risk_level'], 'computed');
+      // A custom calc: field is nulled like any other skipped question, not
+      // computed -- see the dedicated test above.
+      expect(answers['risk_level'], isNull);
+    });
+
+    test(
+        'postskip "end" still computes a registry-only automatic field with '
+        'no calculation', () async {
+      // yyyy/yy/mm/dd/doy (and similar) always mean "today" -- they read no
+      // other answer, so there is no missing-input risk the way a custom
+      // calc: field has. clearAnswersInRange already leaves these alone
+      // rather than clearing them; _advanceToEnd computes them, same as it
+      // always has.
+      final questions = <Question>[
+        _question(
+          'severity',
+          QuestionType.radio,
+          postSkips: [_skip('severity', '=', '0', 'end')],
+        ),
+        _question('doy', QuestionType.automatic),
+      ];
+      final answers = <String, dynamic>{'severity': '0'};
+      final processed = <String>[];
+
+      await SurveyNavigationService.advanceFromQuestion(
+        questions: questions,
+        currentIndex: 0,
+        answers: answers,
+        processAutomaticQuestion: (question) async {
+          processed.add(question.fieldName);
+          answers[question.fieldName] = 'computed';
+        },
+      );
+
+      expect(processed, ['doy']);
+      expect(answers['doy'], 'computed');
     });
 
     test('preskip "end" is matched case-insensitively and with whitespace',

@@ -17,6 +17,20 @@
   field**, or that field becomes mandatory and an interview cannot be finished without typing
   something into it.
 
+### Fixed
+- **Skipping to the end of a questionnaire could fabricate a value for a custom calculation.**
+  `_advanceToEnd` (the handler for `skip to end`) computed every automatic question it walked
+  past, including author-declared `calc:` fields, using whatever was in `answers` at that point --
+  and an unanswered input isn't a short-circuit for a calculation, it's read as empty (`auto_fields.dart`'s
+  `_answerText`), which for a `math` calculation becomes `0`, not blank. A calculation whose inputs
+  sat past the point the interview actually reached could silently record a real-looking but
+  fabricated number. It now nulls a custom `calc:` field caught in that range instead of computing
+  it, matching the rule `clearAnswersInRange` already applies to an ordinary skip. The reserved
+  trailing system fields (`uniqueid`/`swver`/`survey_id`/`lastmod`/`stoptime`) and registry-only
+  automatic fields with no `calc:` block (`yyyy`/`yy`/`mm`/`dd`/`doy`, which read no other answer)
+  are unaffected and are still computed. A survey author who needs a calculation to always have a
+  value must place it before any skip that could bypass it.
+
 ## [1.3.1+9] - 2026-08-22
 
 ### Added
