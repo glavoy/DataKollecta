@@ -406,6 +406,11 @@ class AppStrings {
   String updateCountTo(int actual) => isFrench
       ? 'Mettre à jour le compte à $actual'
       : 'Update Count to $actual';
+  String get countAutoUpdated =>
+      isFrench ? 'Compte Mis à Jour' : 'Count Updated';
+  String countAutoUpdatedMessage(int expected, String displayName, int actual) => isFrench
+      ? 'Vous avez indiqué $expected ${expected == 1 ? 'enregistrement' : 'enregistrements'} pour $displayName mais seulement $actual ${actual == 1 ? 'a été ajouté' : 'ont été ajoutés'}.\n\nLe compte a été automatiquement mis à jour à $actual.'
+      : 'You indicated $expected ${expected == 1 ? 'record' : 'records'} for $displayName but only added $actual.\n\nThe count has been automatically updated to $actual.';
   String mustEnterAtLeast(int minimum, String entityNamePlural) => isFrench
       ? 'Au moins $minimum $entityNamePlural'
       : 'At Least $minimum $entityNamePlural Required';

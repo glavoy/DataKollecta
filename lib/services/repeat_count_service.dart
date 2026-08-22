@@ -30,7 +30,10 @@ enum RepeatCountOutcome {
   /// `repeat_enforce_count = 1` -- offer to update the count.
   askToUpdate,
 
-  /// `repeat_enforce_count = 3` -- update the count without asking.
+  /// `repeat_enforce_count = 3` -- update the count without asking, then
+  /// tell the interviewer it happened. There is no choice to offer (the
+  /// write is unconditional), just an acknowledgement so the count on
+  /// screen doesn't change with no explanation.
   updateSilently,
 }
 
@@ -69,8 +72,9 @@ class RepeatCountReconciliation {
   num? get minimum => check?.minValue;
   num? get maximum => check?.maxValue;
 
-  /// True when the count may legitimately be written -- either silently or
-  /// after the interviewer agrees.
+  /// True when the count may legitimately be written -- either unconditionally
+  /// (mode 3, with the interviewer informed after the fact) or after the
+  /// interviewer agrees (mode 1).
   bool get canWrite =>
       outcome == RepeatCountOutcome.updateSilently ||
       outcome == RepeatCountOutcome.askToUpdate;

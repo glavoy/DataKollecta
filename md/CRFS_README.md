@@ -114,7 +114,7 @@ These fields control how the app automatically launches child surveys based on a
     *   `0`: **Flexible**. No enforcement. The user can enter fewer or more records than specified.
     *   `1`: **Warn** (Default). If the count doesn't match, the app warns the user and offers to update the parent record's count field.
     *   `2`: **Force**. Strict enforcement. The app prevents the user from exiting the loop until the exact number of records are created.
-    *   `3`: **Auto-Sync**. Silent enforcement. The app automatically updates the parent record's count field to match the actual number of records entered.
+    *   `3`: **Auto-Sync**. The app automatically updates the parent record's count field to match the actual number of records entered -- no choice offered -- then shows a single acknowledgement dialog telling the interviewer the count was changed and to what.
 
     Modes `1` and `3` reconcile the count both when the auto-repeat loop ends and whenever a child record is saved on its own -- added later from the questionnaire menu, or edited. Mode `2` applies only inside the loop.
 

@@ -201,7 +201,7 @@ INSERT INTO crfs (
 - `0` = **Flexible** - Allow any count, no warnings
 - `1` = **Warn** - Show warning if count doesn't match (RECOMMENDED)
 - `2` = **Force** - Must complete all N members (no "Exit Anyway" escape)
-- `3` = **Auto-sync** - Silently update parent record count
+- `3` = **Auto-sync** - Update parent record count with no choice offered, then show an acknowledgement dialog telling the interviewer it changed
 
 **When reconciliation runs.** Modes `1` and `3` reconcile the parent's count both when the
 auto-repeat loop ends *and* whenever a child record is saved on its own — added later from

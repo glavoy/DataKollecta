@@ -1772,6 +1772,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
         );
         debugPrint('Auto-synced ${reconciliation.parentTable}.'
             '${reconciliation.countField} to ${reconciliation.actualCount}');
+        if (!mounted) return true;
+        // The count is already written by the time this shows -- unlike
+        // _showCountMismatchDialog, there is nothing left to decide, so a
+        // single acknowledgement button is the only action offered.
+        await _showCountAutoUpdatedDialog(
+          context,
+          reconciliation.displayName,
+          reconciliation.declaredCount ?? 0,
+          reconciliation.actualCount,
+        );
         return true;
 
       case RepeatCountOutcome.askToUpdate:
@@ -1845,6 +1855,33 @@ class _SurveyScreenState extends State<SurveyScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, 'update'),
             child: Text(_s.updateCountTo(actual)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show an acknowledgement-only dialog after `repeat_enforce_count = 3`
+  /// has already auto-corrected a mismatched count. Unlike
+  /// [_showCountMismatchDialog], there is no choice to make here -- the
+  /// write already happened -- so this exists purely so the interviewer
+  /// isn't left wondering why the count on screen changed.
+  Future<void> _showCountAutoUpdatedDialog(
+    BuildContext context,
+    String displayName,
+    int expected,
+    int actual,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(_s.countAutoUpdated),
+        content: Text(_s.countAutoUpdatedMessage(expected, displayName, actual)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_s.ok),
           ),
         ],
       ),
