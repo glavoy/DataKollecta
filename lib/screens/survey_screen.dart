@@ -31,6 +31,13 @@ class SurveyScreen extends StatefulWidget {
   final int? repeatTotal; // Total iterations (e.g., 5)
   final String?
       repeatEntityName; // Entity name for repeat surveys (e.g., "Member", "Structure", "Net")
+  final String?
+      repeatEntityNamePlural; // Plural form, for the count-mismatch warning (e.g., "Members")
+  // repeat_enforce_count for this loop -- only set (and only relevant) inside
+  // an auto-repeat child form, so the Cancel dialog can warn about the count
+  // it's about to leave short, per mode.
+  final int? repeatEnforceMode;
+  final int? repeatCompletedSoFar; // Records already saved this loop, before this one
 
   const SurveyScreen({
     super.key,
@@ -45,6 +52,9 @@ class SurveyScreen extends StatefulWidget {
     this.repeatIndex,
     this.repeatTotal,
     this.repeatEntityName,
+    this.repeatEntityNamePlural,
+    this.repeatEnforceMode,
+    this.repeatCompletedSoFar,
   });
 
   @override
@@ -953,11 +963,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
               icon: const Icon(Icons.close),
               tooltip: _s.cancelInterview,
               onPressed: () {
+                final (cancelTitle, cancelMessage) = _cancelDialogContent();
                 showDialog(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: Text(_s.cancelInterview),
-                    content: Text(_s.cancelInterviewMessage),
+                    title: Text(cancelTitle),
+                    content: Text(cancelMessage),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
@@ -1611,6 +1622,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
             repeatIndex: i,
             repeatTotal: repeatCount,
             repeatEntityName: entityName,
+            repeatEntityNamePlural: displayName,
+            repeatEnforceMode: enforceCountMode,
+            repeatCompletedSoFar: completedCount,
           ),
         ),
       );
@@ -1859,6 +1873,44 @@ class _SurveyScreenState extends State<SurveyScreen> {
         ],
       ),
     );
+  }
+
+  /// Title and message for the AppBar's Cancel/X dialog.
+  ///
+  /// Outside a repeat loop this is the plain "Cancel Interview" warning.
+  /// Inside one, confirming only discards *this* record -- the parent and
+  /// any records already saved this loop stay -- so the generic
+  /// "everything will be lost" wording is actively misleading there, and is
+  /// replaced with record-scoped wording. When stopping now would also
+  /// leave the parent's declared count short (modes 1 and 3 only -- mode 2
+  /// cannot reach this dialog with a shortfall, since the loop forces
+  /// completion), the consequence is appended so the interviewer sees it
+  /// before confirming, not as a surprise afterward.
+  (String, String) _cancelDialogContent() {
+    if (widget.repeatIndex == null) {
+      return (_s.cancelInterview, _s.cancelInterviewMessage);
+    }
+
+    final entityName = widget.repeatEntityName ?? _s.repeatEntityFallback;
+    final title = _s.skipRepeatRecordTitle(entityName);
+    var message = _s.skipRepeatRecordMessage;
+
+    final mode = widget.repeatEnforceMode;
+    final completed = widget.repeatCompletedSoFar;
+    final declared = widget.repeatTotal;
+    if ((mode == 1 || mode == 3) &&
+        completed != null &&
+        declared != null &&
+        completed < declared) {
+      message += '\n\n${_s.skipRepeatRecordCountWarning(
+        completed,
+        declared,
+        widget.repeatEntityNamePlural ?? entityName,
+        willAskFirst: mode == 1,
+      )}';
+    }
+
+    return (title, message);
   }
 
   /// Show an acknowledgement-only dialog after `repeat_enforce_count = 3`

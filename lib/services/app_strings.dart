@@ -349,6 +349,41 @@ class AppStrings {
   String get cancelInterviewMessage => isFrench
       ? "Êtes-vous sûr de vouloir annuler l'entretien?\n\nToutes les modifications seront perdues!"
       : 'Are you sure you want to cancel the interview? \n\nAll edits/modifications will be lost!';
+
+  /// Title for the Cancel dialog inside one iteration of an auto-repeat
+  /// child form. Deliberately not "Cancel Interview" -- confirming here only
+  /// discards this one record, not the parent or the records already saved,
+  /// and the generic wording was read as "everything is being discarded."
+  String skipRepeatRecordTitle(String entityName) =>
+      isFrench ? 'Ignorer $entityName?' : 'Skip This $entityName?';
+  /// Fallback entity name when a repeat loop's CRF displayname is missing.
+  String get repeatEntityFallback =>
+      isFrench ? 'enregistrement' : 'Record';
+  String get skipRepeatRecordMessage => isFrench
+      ? "Cet enregistrement ne sera pas sauvegardé. Tout ce que vous avez déjà saisi est conservé."
+      : "This record won't be saved. Anything you've already entered stays.";
+
+  /// Appended to [skipRepeatRecordMessage] when stopping now would leave the
+  /// count short -- so the interviewer sees the consequence before
+  /// confirming, not as a surprise afterward.
+  String skipRepeatRecordCountWarning(
+    int completed,
+    int declared,
+    String entityNamePlural, {
+    required bool willAskFirst,
+  }) {
+    final tail = willAskFirst
+        ? (isFrench
+            ? "on vous demandera si vous voulez mettre à jour le compte à $completed."
+            : "you'll be asked whether to update the count to $completed.")
+        : (isFrench
+            ? 'le compte sera automatiquement mis à jour à $completed.'
+            : 'the count will be automatically updated to $completed.');
+    return isFrench
+        ? 'Vous avez saisi $completed sur $declared $entityNamePlural. Si vous arrêtez maintenant, $tail'
+        : "You've entered $completed of $declared $entityNamePlural. If you stop now, $tail";
+  }
+
   String get no => isFrench ? 'Non' : 'No';
   String get yes => isFrench ? 'Oui' : 'Yes';
   String get duplicateRecord =>
