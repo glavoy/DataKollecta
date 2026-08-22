@@ -4,7 +4,7 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
-## [UNRELEASED] - TBD
+## [1.3.2+10] - 2026-08-22
 
 ### Changed
 - **A `comments` field is no longer optional by name.** `_isAnswered` hardcoded
