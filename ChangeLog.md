@@ -4,6 +4,29 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [1.3.2+12] - 2026-08-24
+
+### Fixed
+- **DataKollecta could hang forever on a blank spinner after the splash screen**, with no
+  crash and no visible error. `MainScreen`'s startup sequence ran unawaited inside `initState`,
+  so an exception during it was silently swallowed by Flutter's default release-mode error
+  handler, leaving `_isLoading` stuck at `true`. Root cause on the device this was found on:
+  Android's Keystore-backed encryption key had stopped matching data already written to disk
+  (`BadPaddingException`/`BAD_DECRYPT`), which `SettingsService` had no handling for. Startup
+  failures now surface a real error screen with a Retry button, and a secure-storage decrypt
+  failure is treated as "nothing stored" and wipes the corrupted store -- one bad key means
+  every entry in that file is equally unreadable, so resetting it lets subsequent reads/writes
+  succeed under a working key instead of failing the same way forever.
+- **Local macOS builds (`dart run tool/build.dart macos`) failed with "No profiles for
+  'com.gistx.gistx' were found"**, needing an Xcode GUI run-then-stop workaround every time.
+  The Runner target's signing had drifted to `Automatic`/Apple Development/a specific team,
+  which needs Xcode to generate a real provisioning profile and stopped resolving; the
+  project's own base signing was already ad-hoc. Reverted Runner to that ad-hoc default and
+  removed the unused `keychain-access-groups` entitlement (macOS never uses Keychain --
+  `SettingsService` already falls back to `shared_preferences` there for exactly this reason),
+  which was the one remaining thing still requiring team-based signing. CLI builds now succeed
+  end to end with no Xcode step required.
+
 ## [1.3.2+10] - 2026-08-24
 
 ### Fixed
