@@ -1,9 +1,5 @@
 import 'dart:io';
 
-import '../../config/app_config.dart';
-import 'ftp_sync_backend.dart';
-import 'http_sync_backend.dart';
-
 /// A survey package available for download from a sync backend's server.
 class RemoteSurvey {
   final String filename;
@@ -36,21 +32,24 @@ class SyncTransferException extends SyncException {
   const SyncTransferException(super.message);
 }
 
-/// Download-only seam shared by every sync backend. Upload is deliberately
-/// NOT part of this interface -- FTP ships one whole-database zip while HTTP
-/// ships incrementally-acknowledged record batches, and forcing both behind
-/// one `Future<void> upload()` would hide that difference rather than
-/// abstract it. Each product's sync screen calls its own upload path
-/// directly instead.
+/// Download-only seam, implemented by [FtpSyncBackend] for the GiSTX
+/// product. Upload is deliberately NOT part of this interface -- FTP ships
+/// one whole-database zip while DataKollecta's HTTP backend ships
+/// incrementally-acknowledged record batches, and forcing both behind one
+/// `Future<void> upload()` would hide that difference rather than abstract
+/// it. Each product's sync screen calls its own upload path directly
+/// instead.
+///
+/// [HttpSyncBackend] (the DataKollecta product) deliberately does NOT
+/// implement this interface: once a device can hold several concurrent
+/// project sessions, `connect(username, password)` has no meaning without
+/// knowing *which* project, and login/download are keyed by project
+/// throughout that backend's own API instead. [SyncException] and its
+/// family are still shared here, since those genuinely are common to both
+/// products.
 abstract class SyncBackend {
   Future<bool> connect(String username, String password);
   Future<List<RemoteSurvey>> listSurveys();
   Future<File?> downloadSurvey(String filename);
   Future<void> disconnect();
 }
-
-/// Compile-time selection, so the unused implementation tree-shakes away --
-/// the GiSTX build carries no HTTP/Supabase code, the DataKollecta build no
-/// ftpconnect/dartssh2 code.
-SyncBackend createSyncBackend() =>
-    AppConfig.isDataKollecta ? HttpSyncBackend() : FtpSyncBackend();

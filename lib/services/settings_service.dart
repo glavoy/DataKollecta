@@ -38,15 +38,6 @@ class SettingsService {
     }
   }
 
-  Future<void> _delete(String key) async {
-    if (_usePrefs) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(key);
-    } else {
-      await _secureStorage.delete(key: key);
-    }
-  }
-
   Future<void> _deleteAll() async {
     if (_usePrefs) {
       final prefs = await SharedPreferences.getInstance();
@@ -63,11 +54,13 @@ class SettingsService {
   static const String _keyFtpPassword = 'ftp_password';
   static const String _keyActiveSurvey = 'active_survey';
   static const String _keyDeviceUuid = 'device_uuid';
-  static const String _keyProjectCode = 'project_code';
-  static const String _keyApiUsername = 'api_username';
-  static const String _keyApiPassword = 'api_password';
-  static const String _keyAuthToken = 'auth_token';
-  static const String _keyAuthTokenExpiresAt = 'auth_token_expires_at';
+
+  /// The encoded ProjectSessionsDocument (see sync/project_sessions.dart) --
+  /// every configured DataKollecta project's credentials/token, plus which
+  /// project each locally-known survey came from. Replaces what used to be
+  /// a single global project_code/api_username/api_password/auth_token set,
+  /// which could only ever represent one project at a time.
+  static const String _keyProjectSessions = 'dk_project_sessions';
 
   // Getters for settings
   Future<String?> get surveyorId async => _read(_keysurveyorId);
@@ -80,23 +73,13 @@ class SettingsService {
   /// device-info APIs have nothing usable to offer (see [DeviceIdentity]).
   Future<String?> get deviceUuid async => _read(_keyDeviceUuid);
 
-  /// The DataKollecta project slug entered in Settings. There is no
-  /// project-switcher UI -- one free-text code per install.
-  Future<String?> get projectCode async => _read(_keyProjectCode);
-  Future<String?> get apiUsername async => _read(_keyApiUsername);
-  Future<String?> get apiPassword async => _read(_keyApiPassword);
-
-  /// The stored bearer token, but only if it hasn't expired -- an expired
-  /// token reads the same as no token at all, so callers never need a
-  /// separate expiry check.
-  Future<String?> get validAuthToken async {
-    final token = await _read(_keyAuthToken);
-    final expiresAtStr = await _read(_keyAuthTokenExpiresAt);
-    if (token == null || expiresAtStr == null) return null;
-    final expiresAt = DateTime.tryParse(expiresAtStr);
-    if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) return null;
-    return token;
-  }
+  /// The raw encoded ProjectSessionsDocument. Read/written through
+  /// ProjectSessionsRepository, never decoded here -- SettingsService stays
+  /// a plain string store, and the document's shape/versioning lives with
+  /// the type that owns it.
+  Future<String?> get projectSessionsRaw async => _read(_keyProjectSessions);
+  Future<void> setProjectSessionsRaw(String value) =>
+      _write(_keyProjectSessions, value);
 
   // Setters for settings
   Future<void> setSurveyorId(String value) => _write(_keysurveyorId, value);
@@ -105,19 +88,6 @@ class SettingsService {
   Future<void> setFtpPassword(String value) => _write(_keyFtpPassword, value);
   Future<void> setActiveSurvey(String value) => _write(_keyActiveSurvey, value);
   Future<void> setDeviceUuid(String value) => _write(_keyDeviceUuid, value);
-  Future<void> setProjectCode(String value) => _write(_keyProjectCode, value);
-  Future<void> setApiUsername(String value) => _write(_keyApiUsername, value);
-  Future<void> setApiPassword(String value) => _write(_keyApiPassword, value);
-
-  Future<void> setAuthToken(String token, DateTime expiresAt) async {
-    await _write(_keyAuthToken, token);
-    await _write(_keyAuthTokenExpiresAt, expiresAt.toIso8601String());
-  }
-
-  Future<void> clearAuthToken() async {
-    await _delete(_keyAuthToken);
-    await _delete(_keyAuthTokenExpiresAt);
-  }
 
   // Bulk save all settings
   Future<void> saveAllSettings({

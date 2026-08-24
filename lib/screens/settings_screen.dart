@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/settings_service.dart';
 import '../services/survey_config_service.dart';
+import '../services/sync/http_sync_backend.dart';
+import '../services/sync/project_sessions.dart';
+import '../services/sync/sync_backend.dart';
 import '../services/theme_service.dart';
 import '../config/app_config.dart';
 import '../services/app_strings.dart';
@@ -19,17 +22,24 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _settingsService = SettingsService();
+  final _syncBackend = HttpSyncBackend();
   late final ThemeService _themeService;
 
-  // Controllers for text fields
+  // Controllers for text fields. Username/password are FTP-only now --
+  // DataKollecta has no single global project credential anymore, each
+  // project's own username/password lives in the projects list below.
   final _surveyorIdController = TextEditingController();
   final _ftpUsernameController = TextEditingController();
   final _ftpPasswordController = TextEditingController();
-  final _projectCodeController = TextEditingController();
 
   bool _isLoading = true;
   bool _obscurePassword = true;
   String _appVersion = '';
+
+  // DataKollecta project list.
+  List<ProjectSession> _projects = [];
+  bool _projectsLoading = false;
+
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
   static const HttpSyncStrings _httpSync = HttpSyncStrings();
 
@@ -67,49 +77,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _surveyorIdController.dispose();
     _ftpUsernameController.dispose();
     _ftpPasswordController.dispose();
-    _projectCodeController.dispose();
     _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
   Future<void> _loadSettings() async {
-    final String? username;
-    final String? password;
     if (AppConfig.isDataKollecta) {
-      username = await _settingsService.apiUsername;
-      password = await _settingsService.apiPassword;
-      _projectCodeController.text = await _settingsService.projectCode ?? '';
+      await _loadProjects();
     } else {
       final surveyorId = await _settingsService.surveyorId;
-      _surveyorIdController.text = surveyorId ?? '';
-      username = await _settingsService.ftpUsername;
-      password = await _settingsService.ftpPassword;
+      final username = await _settingsService.ftpUsername;
+      final password = await _settingsService.ftpPassword;
+      if (mounted) {
+        setState(() {
+          _surveyorIdController.text = surveyorId ?? '';
+          _ftpUsernameController.text = username ?? '';
+          _ftpPasswordController.text = password ?? '';
+        });
+      }
     }
 
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadProjects() async {
+    setState(() => _projectsLoading = true);
+    final doc = await _syncBackend.loadDocument();
     if (mounted) {
       setState(() {
-        _ftpUsernameController.text = username ?? '';
-        _ftpPasswordController.text = password ?? '';
-        _isLoading = false;
+        _projects = doc.sessions.values.toList()
+          ..sort((a, b) => a.projectCode.compareTo(b.projectCode));
+        _projectsLoading = false;
       });
     }
   }
 
+  /// Only the FTP branch has anything left in the staged form -- every
+  /// DataKollecta project is added/removed immediately, the same way the
+  /// dark-mode toggle and survey deletion already are.
   Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       try {
-        if (AppConfig.isDataKollecta) {
-          await _settingsService.setApiUsername(_ftpUsernameController.text.trim());
-          await _settingsService.setApiPassword(_ftpPasswordController.text);
-          await _settingsService.setProjectCode(_projectCodeController.text.trim());
-        } else {
-          await _settingsService.saveAllSettings(
-            surveyorId: _surveyorIdController.text.trim(),
-            ftpHost: '',
-            ftpUsername: _ftpUsernameController.text.trim(),
-            ftpPassword: _ftpPasswordController.text,
-          );
-        }
+        await _settingsService.saveAllSettings(
+          surveyorId: _surveyorIdController.text.trim(),
+          ftpHost: '',
+          ftpUsername: _ftpUsernameController.text.trim(),
+          ftpPassword: _ftpPasswordController.text,
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -131,6 +145,263 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
     }
+  }
+
+  Future<void> _showAddProjectDialog() async {
+    final codeController = TextEditingController();
+    final usernameController = TextEditingController();
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var obscure = true;
+    var submitting = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: !submitting,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(_httpSync.addProject),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: codeController,
+                  decoration: InputDecoration(
+                    labelText: _httpSync.projectCode,
+                    hintText: _httpSync.projectCodeHint,
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? _httpSync.projectCodeRequired
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: usernameController,
+                  decoration: InputDecoration(
+                    labelText: _s.username,
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? _s.error : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    labelText: _s.password,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure
+                          ? Icons.visibility
+                          : Icons.visibility_off),
+                      onPressed: () =>
+                          setDialogState(() => obscure = !obscure),
+                    ),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? _s.error : null,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: submitting
+                  ? null
+                  : () => Navigator.pop(dialogContext),
+              child: Text(_s.cancel),
+            ),
+            FilledButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() => submitting = true);
+                      final projectCode = codeController.text.trim();
+                      try {
+                        await _syncBackend.addProject(
+                          projectCode,
+                          usernameController.text.trim(),
+                          passwordController.text,
+                        );
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content:
+                                  Text(_httpSync.projectAdded(projectCode)),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                        await _loadProjects();
+                      } on SyncConnectionException {
+                        setDialogState(() => submitting = false);
+                        if (!dialogContext.mounted) return;
+                        final saveAnyway = await showDialog<bool>(
+                          context: dialogContext,
+                          builder: (c) => AlertDialog(
+                            content: Text(_httpSync.savingAnywayNoConnection),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(c, false),
+                                child: Text(_s.cancel),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(c, true),
+                                child: Text(_httpSync.saveAnyway),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (saveAnyway == true) {
+                          // Stored without a token; resolveToken will try a
+                          // real login the first time this project's survey
+                          // is uploaded, once back online.
+                          await ProjectSessionsRepository.shared.update(
+                            (d) => d.withSession(ProjectSession(
+                              projectCode: projectCode,
+                              username: usernameController.text.trim(),
+                              password: passwordController.text,
+                            )),
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          await _loadProjects();
+                        }
+                      } on SyncException catch (e) {
+                        setDialogState(() => submitting = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(e.message),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: submitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_s.save),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeProject(ProjectSession session) async {
+    final pendingCount =
+        await _syncBackend.pendingCountForProject(session.projectCode);
+
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_httpSync.removeProject),
+        content: Text(
+            _httpSync.removeProjectWarning(session.projectCode, pendingCount)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_s.cancel),
+          ),
+          if (pendingCount > 0)
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(_httpSync.uploadFirst),
+            ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_httpSync.removeAnyway),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _syncBackend.removeProject(session.projectCode);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_httpSync.projectRemoved(session.projectCode)),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      await _loadProjects();
+    }
+  }
+
+  Widget _buildProjectsSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              _httpSync.projects,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const Spacer(),
+            if (_projectsLoading)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_projects.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              _httpSync.noProjectsConfigured,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          )
+        else
+          Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (final session in _projects)
+                  ListTile(
+                    leading: const Icon(Icons.badge_outlined),
+                    title: Text(session.projectName ?? session.projectCode),
+                    subtitle: Text(session.projectCode),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => _removeProject(session),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _showAddProjectDialog,
+          icon: const Icon(Icons.add),
+          label: Text(_httpSync.addProject),
+        ),
+      ],
+    );
   }
 
   @override
@@ -157,20 +428,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: FilledButton.tonal(
-              onPressed: _saveSettings,
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+          // DataKollecta has nothing left in the staged form -- every
+          // project and the survey list are both immediate-apply -- so the
+          // Save button only makes sense for GiSTX/FTP's surveyor
+          // id/username/password fields.
+          if (!AppConfig.isDataKollecta)
+            Padding(
+              padding: const EdgeInsets.only(right: 12.0),
+              child: FilledButton.tonal(
+                onPressed: _saveSettings,
+                style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
+                child: Text(_s.save),
               ),
-              child: Text(_s.save),
             ),
-          ),
         ],
       ),
       body: SafeArea(
@@ -258,55 +534,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                     const SizedBox(height: 16),
                     if (AppConfig.isDataKollecta) ...[
+                      _buildProjectsSection(context),
+                    ] else ...[
                       TextFormField(
-                        controller: _projectCodeController,
+                        controller: _ftpUsernameController,
                         decoration: InputDecoration(
-                          labelText: _httpSync.projectCode,
-                          hintText: _httpSync.enterProjectCode,
+                          labelText: _s.username,
+                          hintText: _s.enterUsername,
                           border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.badge_outlined),
+                          prefixIcon: const Icon(Icons.account_circle),
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return _httpSync.projectCodeRequired;
-                          }
-                          return null;
-                        },
                       ),
                       const SizedBox(height: 16),
-                    ],
-                    TextFormField(
-                      controller: _ftpUsernameController,
-                      decoration: InputDecoration(
-                        labelText: _s.username,
-                        hintText: _s.enterUsername,
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.account_circle),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _ftpPasswordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: _s.password,
-                        hintText: _s.enterPassword,
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
+                      TextFormField(
+                        controller: _ftpPasswordController,
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: _s.password,
+                          hintText: _s.enterPassword,
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
                         ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 20),
                     const Divider(),
                     const SizedBox(height: 12),

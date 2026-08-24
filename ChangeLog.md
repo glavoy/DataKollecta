@@ -4,7 +4,27 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
-## [1.3.2+10] - 2026-08-22
+## [UNRELEASED] - TBD
+
+### Fixed
+- **DataKollecta could only hold one project's login session at a time.** Logging into a
+  second project silently overwrote the first project's stored token, so uploading a survey
+  from Project A after logging into Project B could send Project A's records under Project
+  B's session -- normally rejected server-side and left pending, but silently misrouted if the
+  two projects happened to reuse the same Survey ID. `SettingsService`'s single
+  `project_code`/`api_username`/`api_password`/`auth_token` set is replaced by a per-project
+  document (`sync/project_sessions.dart`) that remembers every configured project and which
+  project each locally-known survey came from, so upload always routes to the right one and
+  re-logs in silently when a token has expired. A `surveyId`/`databaseName` collision between
+  two projects (both are device-global storage keys) is refused outright rather than allowed to
+  silently share one on-device database.
+
+### Changed
+- **Settings' single Project Code field is now a list.** Add or remove projects individually;
+  "Check for Updates" polls every configured project in one tap, and "Upload" flushes every
+  installed survey, each routed to its own project -- there is still no project switcher.
+
+
 
 ### Changed
 - **A `comments` field is no longer optional by name.** `_isAnswered` hardcoded

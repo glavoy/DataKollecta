@@ -53,6 +53,68 @@ void main() {
     });
   });
 
+  test('login parses the project object and each survey\'s manifest', () async {
+    final client = MockClient((request) async => http.Response(
+          json.encode({
+            'token': 'session-token',
+            'expires_at': '2026-09-13T00:00:00.000Z',
+            'project': {'id': 'proj-uuid', 'name': 'AVERT UG', 'code': 'avert-ug'},
+            'surveys': [
+              {
+                'id': 'survey-1',
+                'name': 'AVERT',
+                'download_url': 'https://x/y.zip',
+                'manifest': {
+                  'surveyId': 'avert_ug_2026',
+                  'surveyName': 'AVERT UG 2026',
+                  'databaseName': 'avert_ug_2026.sqlite',
+                },
+              },
+            ],
+          }),
+          200,
+        ));
+    final api = ApiClient(client: client);
+
+    final session = await api.login(
+      projectCode: 'avert-ug',
+      username: 'alice',
+      password: 'pw',
+      deviceId: 'd',
+      deviceInfo: const {},
+    );
+
+    expect(session.projectName, 'AVERT UG');
+    expect(session.surveys.single.surveyId, 'avert_ug_2026');
+    expect(session.surveys.single.databaseName, 'avert_ug_2026.sqlite');
+  });
+
+  test('login still works when project and manifest are both absent', () async {
+    final client = MockClient((request) async => http.Response(
+          json.encode({
+            'token': 'session-token',
+            'expires_at': '2026-09-13T00:00:00.000Z',
+            'surveys': [
+              {'id': 'survey-1', 'name': 'AVERT'},
+            ],
+          }),
+          200,
+        ));
+    final api = ApiClient(client: client);
+
+    final session = await api.login(
+      projectCode: 'demo',
+      username: 'alice',
+      password: 'pw',
+      deviceId: 'd',
+      deviceInfo: const {},
+    );
+
+    expect(session.projectName, isNull);
+    expect(session.surveys.single.surveyId, isNull);
+    expect(session.surveys.single.databaseName, isNull);
+  });
+
   test('login maps 401 to SyncAuthException', () async {
     final client = MockClient((request) async =>
         http.Response(json.encode({'error': 'Invalid username or password'}), 401));

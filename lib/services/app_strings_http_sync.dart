@@ -23,6 +23,25 @@ class HttpSyncStrings {
       ? 'Uploaded $synced record${synced == 1 ? '' : 's'}.'
       : 'Uploaded $synced record${synced == 1 ? '' : 's'}, $failed failed.';
 
+  /// Summarizes an upload-everything pass across every installed survey:
+  /// how many surveys uploaded cleanly, how many hit some failure while
+  /// uploading, and how many couldn't even be routed to a project.
+  String uploadAllSummary({
+    required int totalSynced,
+    required int surveysWithFailures,
+    required int surveysNotRouted,
+  }) {
+    final parts = <String>['Uploaded $totalSynced record${totalSynced == 1 ? '' : 's'}'];
+    if (surveysWithFailures > 0) {
+      parts.add('$surveysWithFailures survey${surveysWithFailures == 1 ? '' : 's'} had failures');
+    }
+    if (surveysNotRouted > 0) {
+      parts.add(
+          '$surveysNotRouted survey${surveysNotRouted == 1 ? '' : 's'} could not be uploaded (see below)');
+    }
+    return parts.join(', ');
+  }
+
   String get sessionExpired => 'Session expired -- please log in again.';
   String get tooManyFailures =>
       'Upload stopped after repeated failures. Some records were not sent.';
@@ -30,4 +49,49 @@ class HttpSyncStrings {
       'Could not reach the server. Check your connection and try again.';
   String get invalidCredentials =>
       'Invalid project code, username, or password.';
+
+  // -- Multi-project routing (see HttpSyncBackend.RoutingFailure) --
+
+  String get noAssociatedProject =>
+      'This survey isn\'t linked to a project. Add the project it came from '
+      'in Settings, or contact your project administrator.';
+  String get noSessionForProject =>
+      'This survey\'s project was removed from Settings. Add it back to '
+      'upload its records.';
+  String get routingLoginFailed =>
+      'Could not log back in to upload this survey -- check its project\'s '
+      'saved password in Settings.';
+
+  // -- Settings: multi-project management --
+
+  String get projects => 'Projects';
+  String get addProject => 'Add project';
+  String get noProjectsConfigured =>
+      'No projects added yet. Add one to download and sync its surveys.';
+  String get projectCodeHint => 'e.g. prism-css-test-2026';
+  String get savingAnywayNoConnection =>
+      'Could not reach the server. Save this project anyway and verify the '
+      'password once you\'re back online?';
+  String get saveAnyway => 'Save anyway';
+  String get removeProject => 'Remove project';
+  String removeProjectWarning(String projectCode, int pendingCount) =>
+      pendingCount == 0
+          ? 'Remove project "$projectCode"? Its surveys will no longer be able to upload.'
+          : 'Remove project "$projectCode"? It has $pendingCount unsynced '
+              'record${pendingCount == 1 ? '' : 's'} that will be stranded until it\'s '
+              'added back. Upload first, or remove anyway?';
+  String get uploadFirst => 'Upload first';
+  String get removeAnyway => 'Remove anyway';
+  String projectAdded(String projectCode) => 'Added project "$projectCode".';
+  String projectRemoved(String projectCode) => 'Removed project "$projectCode".';
+
+  // -- Check for Updates / download collisions --
+
+  String projectCheckFailed(String projectCode, String reason) =>
+      'Project "$projectCode": $reason';
+  String get noSurveysFromAnyProject =>
+      'No new surveys found across your configured projects.';
+  String downloadCollision(String surveyId, String existingProjectCode) =>
+      'Survey "$surveyId" is already linked to project "$existingProjectCode" '
+      'on this device and cannot also be downloaded from a different project.';
 }

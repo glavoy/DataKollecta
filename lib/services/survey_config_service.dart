@@ -15,6 +15,7 @@ import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import '../config/app_config.dart';
 import 'settings_service.dart';
+import 'sync/project_sessions.dart';
 
 class SurveyConfigService {
   static final SurveyConfigService _instance = SurveyConfigService._internal();
@@ -22,6 +23,7 @@ class SurveyConfigService {
   SurveyConfigService._internal();
 
   final _settingsService = SettingsService();
+  final ProjectSessionsRepository _sessionsRepo = ProjectSessionsRepository.shared;
 
   // Cache for loaded survey manifests
   final Map<String, Map<String, dynamic>> _manifestCache = {};
@@ -58,11 +60,41 @@ class SurveyConfigService {
         // Only extract if target directory doesn't exist
         if (!await targetDir.exists()) {
           try {
-            debugPrint(
-                '[SurveyConfig] Extracting $zipName to ${targetDir.path}');
             final zipData = await entity.readAsBytes();
             final archive = ZipDecoder().decodeBytes(zipData);
 
+            // Peek the manifest before writing anything, so a databaseName
+            // collision with an already-installed, DIFFERENT survey can be
+            // refused before this zip ever becomes a folder on disk. This
+            // matters for DataKollecta because a zip can arrive here via
+            // side-loading (copied straight into the zips/ folder) rather
+            // than through HttpSyncBackend.downloadSurvey, which performs
+            // the equivalent guard before download instead -- surveyId and
+            // databaseName are both device-global keys (the extraction
+            // folder name, DbService's open-database map entry, and the
+            // SQLite file itself), so two different surveys sharing either
+            // would otherwise silently share one physical database.
+            final manifestEntry = _findManifestEntry(archive);
+            if (manifestEntry != null) {
+              final manifest = json.decode(
+                      utf8.decode(manifestEntry.content as List<int>))
+                  as Map<String, dynamic>;
+              final zipSurveyId = manifest['surveyId'] as String?;
+              final databaseName = manifest['databaseName'] as String?;
+              if (zipSurveyId != null && databaseName != null) {
+                final owner =
+                    await findSurveyIdForDatabaseName(databaseName);
+                if (owner != null && owner != zipSurveyId) {
+                  debugPrint(
+                      '[SurveyConfig] Refusing to extract $zipName: databaseName '
+                      '"$databaseName" is already used by survey "$owner".');
+                  continue;
+                }
+              }
+            }
+
+            debugPrint(
+                '[SurveyConfig] Extracting $zipName to ${targetDir.path}');
             for (final file in archive) {
               final filename = file.name;
               if (file.isFile) {
@@ -81,9 +113,6 @@ class SurveyConfigService {
                 }
               }
             }
-
-            // Associate current global credentials with newly extracted survey
-            await _associateCurrentCredentialsWithSurvey(surveyFolderName);
           } catch (e) {
             debugPrint('[SurveyConfig] Failed to extract $zipName: $e');
           }
@@ -94,30 +123,41 @@ class SurveyConfigService {
     }
   }
 
-  /// Associate current global credentials with a survey (used for manually added surveys)
-  Future<void> _associateCurrentCredentialsWithSurvey(String surveyName) async {
-    try {
-      final surveyId = await getSurveyId(surveyName);
-      if (surveyId == null) return;
-
-      // Check if survey already has credentials
-      final existingCreds = await _settingsService.getSurveyUsername(surveyId);
-      if (existingCreds != null) {
-        // Already has credentials, don't overwrite
-        return;
+  ArchiveFile? _findManifestEntry(Archive archive) {
+    for (final file in archive.files) {
+      if (file.isFile && p.basename(file.name) == 'survey_manifest.gistx') {
+        return file;
       }
-
-      // Get current global credentials
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
-
-      if (username != null && password != null) {
-        await _settingsService.setSurveyCredentials(surveyId, username, password);
-        debugPrint('[SurveyConfig] Associated current credentials with survey: $surveyId');
-      }
-    } catch (e) {
-      debugPrint('[SurveyConfig] Error associating credentials: $e');
     }
+    return null;
+  }
+
+  /// The already-installed survey (if any) whose manifest declares
+  /// [databaseName] -- the same physical SQLite file two different
+  /// surveyIds would otherwise silently share. Used to refuse extracting
+  /// or downloading a second survey onto the same database.
+  Future<String?> findSurveyIdForDatabaseName(String databaseName) async {
+    final surveysDir = await getSurveysDirectory();
+    if (!await surveysDir.exists()) return null;
+
+    final entities = await surveysDir.list().toList();
+    for (final entity in entities) {
+      if (entity is Directory) {
+        try {
+          final manifestPath = p.join(entity.path, 'survey_manifest.gistx');
+          final file = File(manifestPath);
+          if (await file.exists()) {
+            final manifest = await _loadManifestFromFile(file);
+            if (manifest['databaseName'] == databaseName) {
+              return manifest['surveyId'] as String?;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    return null;
   }
 
   /// Delete a survey (extracted folder and source zip)
@@ -130,6 +170,7 @@ class SurveyConfigService {
       // Find the survey folder by name
       final entities = await surveysDir.list().toList();
       Directory? surveyFolder;
+      String? surveyId;
 
       for (final entity in entities) {
         if (entity is Directory) {
@@ -139,6 +180,7 @@ class SurveyConfigService {
             final manifest = await _loadManifestFromFile(file);
             if (manifest['surveyName'] == surveyName) {
               surveyFolder = entity;
+              surveyId = manifest['surveyId'] as String?;
               break;
             }
           }
@@ -165,6 +207,16 @@ class SurveyConfigService {
 
         // Clear cache
         _manifestCache.clear();
+
+        // Clear its project association -- fixing, rather than replicating,
+        // the missing-cleanup gap in the old per-survey FTP credential
+        // pattern (getSurveyUsername/setSurveyCredentials never had a
+        // delete). Without this, a re-added survey reusing the same
+        // surveyId would spuriously trip the collision guard against its
+        // own stale binding.
+        if (surveyId != null) {
+          await _sessionsRepo.update((doc) => doc.withoutAssociation(surveyId!));
+        }
 
         // If this was the active survey, clear it from settings
         final activeSurvey = await _settingsService.activeSurvey;

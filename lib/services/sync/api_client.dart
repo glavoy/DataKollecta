@@ -11,16 +11,19 @@ import '../../config/app_config.dart';
 import 'sync_backend.dart';
 
 /// One authenticated session against the DataKollecta Supabase backend: the
-/// bearer token, its expiry, and the surveys the login response listed
-/// (each carrying a signed download URL good for 24 hours).
+/// bearer token, its expiry, the project's own display name, and the
+/// surveys the login response listed (each carrying a signed download URL
+/// good for 24 hours).
 class ApiSession {
   final String token;
   final DateTime expiresAt;
+  final String? projectName;
   final List<ApiSurvey> surveys;
 
   const ApiSession({
     required this.token,
     required this.expiresAt,
+    this.projectName,
     required this.surveys,
   });
 }
@@ -30,7 +33,21 @@ class ApiSurvey {
   final String name;
   final String? downloadUrl;
 
-  const ApiSurvey({required this.id, required this.name, this.downloadUrl});
+  /// From this survey's manifest, which app-login embeds alongside the
+  /// download link -- the authoritative device-global key ([surveyId]) and
+  /// its SQLite filename ([databaseName]), both known *before* the zip is
+  /// ever downloaded. Null only for a survey whose manifest is somehow
+  /// absent/malformed server-side.
+  final String? surveyId;
+  final String? databaseName;
+
+  const ApiSurvey({
+    required this.id,
+    required this.name,
+    this.downloadUrl,
+    this.surveyId,
+    this.databaseName,
+  });
 }
 
 class ApiSyncResult {
@@ -137,16 +154,22 @@ class ApiClient {
     final surveys = surveysJson.map((raw) {
       final map = raw as Map<String, dynamic>;
       final id = map['id'] as String;
+      final manifest = map['manifest'] as Map<String, dynamic>?;
       return ApiSurvey(
         id: id,
         name: (map['name'] as String?) ?? id,
         downloadUrl: map['download_url'] as String?,
+        surveyId: manifest?['surveyId'] as String?,
+        databaseName: manifest?['databaseName'] as String?,
       );
     }).toList();
+
+    final projectJson = body['project'] as Map<String, dynamic>?;
 
     return ApiSession(
       token: token,
       expiresAt: DateTime.parse(expiresAtStr),
+      projectName: projectJson?['name'] as String?,
       surveys: surveys,
     );
   }
