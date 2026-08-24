@@ -23,6 +23,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<String> _availableSurveys = [];
   String _surveyName = 'Select a Survey';
   bool _isLoading = true;
+  Object? _initError;
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   @override
@@ -32,9 +33,19 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initialize() async {
-    await _surveyConfig.initializeSurveys();
-    await _loadAvailableSurveys();
-    await _loadSurveyName();
+    try {
+      await _surveyConfig.initializeSurveys();
+      await _loadAvailableSurveys();
+      await _loadSurveyName();
+    } catch (e, st) {
+      debugPrint('[MainScreen] Startup failed: $e\n$st');
+      if (mounted) {
+        setState(() {
+          _initError = e;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadSurveyName() async {
@@ -130,6 +141,37 @@ class _MainScreenState extends State<MainScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_initError != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Failed to start: $_initError',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _initError = null;
+                      _isLoading = true;
+                    });
+                    _initialize();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
     return Scaffold(

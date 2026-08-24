@@ -5,6 +5,8 @@
 /// on macOS where keychain entitlements conflict with local ad-hoc signing.
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,7 +28,29 @@ class SettingsService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(key);
     }
-    return _secureStorage.read(key: key);
+    try {
+      return await _secureStorage.read(key: key);
+    } on PlatformException catch (e) {
+      // Android's Keystore-backed master key can stop matching the
+      // ciphertext already on disk -- observed live as
+      // "BadPaddingException ... BAD_DECRYPT" on a device where the key
+      // material had gone stale. That failure isn't specific to this key:
+      // the whole EncryptedSharedPreferences file was written under the
+      // same master key, so every other entry is equally undecryptable.
+      // Wiping it (rather than just returning null for this one read)
+      // resets the store to the same clean state a fresh install starts
+      // from, and lets subsequent writes succeed under a working key
+      // instead of failing the same way on every future read.
+      debugPrint('[SettingsService] Secure storage read of "$key" failed '
+          '(${e.message}); resetting the store.');
+      try {
+        await _secureStorage.deleteAll();
+      } catch (_) {
+        // Best-effort -- a failed reset still leaves this read returning
+        // null, which is the right fallback either way.
+      }
+      return null;
+    }
   }
 
   Future<void> _write(String key, String value) async {
