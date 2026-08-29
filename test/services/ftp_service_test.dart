@@ -1,7 +1,43 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ftpconnect/ftpconnect.dart';
 import 'package:datakollecta/config/app_config.dart';
 import 'package:datakollecta/services/app_strings.dart';
 import 'package:datakollecta/services/ftp_service.dart';
+
+class _FakeFtpClient implements FtpClient {
+  _FakeFtpClient(this._connect);
+
+  final Future<bool> Function() _connect;
+  int disconnectCalls = 0;
+
+  @override
+  Future<bool> changeDirectory(String? directory) async => true;
+
+  @override
+  Future<bool> connect() => _connect();
+
+  @override
+  Future<bool> disconnect() async {
+    disconnectCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> downloadFile(String? remoteName, File localFile) async => true;
+
+  @override
+  Future<List<FTPEntry>> listDirectoryContent() async => [];
+
+  @override
+  Future<int> sizeFile(String filename) async => 0;
+
+  @override
+  Future<bool> uploadFile(File file,
+          {String remoteName = '', bool supportIPV6 = true}) async =>
+      true;
+}
 
 /// Upload diagnostics reach the interviewer through errorUploading, so the
 /// prose follows the build language while the stage name stays English.
@@ -64,6 +100,109 @@ void main() {
           expect(message, isNot(contains('serveur')));
         }
       }
+    });
+  });
+
+  group('Uganda FTP host fallback', () {
+    test('uses the controlled hostname first', () async {
+      if (AppConfig.country != 'Uganda') return;
+
+      final attemptedHosts = <String>[];
+      final primary = _FakeFtpClient(() async => true);
+      final service = FtpService(
+        ftpClientFactory: ({
+          required host,
+          required port,
+          required username,
+          required password,
+        }) {
+          attemptedHosts.add(host);
+          return primary;
+        },
+      );
+
+      expect(await service.connect('interviewer', 'secret'), isTrue);
+      expect(attemptedHosts, ['ftp-sync.idrcdata.org']);
+    });
+
+    test('uses the provider hostname once after a primary connection failure',
+        () async {
+      if (AppConfig.country != 'Uganda') return;
+
+      final attemptedHosts = <String>[];
+      final primary = _FakeFtpClient(
+          () => Future<bool>.error(FTPException('Could not connect')));
+      final fallback = _FakeFtpClient(() async => true);
+      final service = FtpService(
+        ftpClientFactory: ({
+          required host,
+          required port,
+          required username,
+          required password,
+        }) {
+          attemptedHosts.add(host);
+          return host == 'ftp-sync.idrcdata.org' ? primary : fallback;
+        },
+      );
+
+      expect(await service.connect('interviewer', 'secret'), isTrue);
+      expect(attemptedHosts, [
+        'ftp-sync.idrcdata.org',
+        'ftp-4fa9bafd.registeredsite.com',
+      ]);
+      expect(primary.disconnectCalls, 1);
+    });
+
+    test('returns failure after both current hosts fail', () async {
+      if (AppConfig.country != 'Uganda') return;
+
+      final attemptedHosts = <String>[];
+      final clients = <_FakeFtpClient>[];
+      final service = FtpService(
+        ftpClientFactory: ({
+          required host,
+          required port,
+          required username,
+          required password,
+        }) {
+          attemptedHosts.add(host);
+          final client = _FakeFtpClient(
+              () => Future<bool>.error(FTPException('Could not connect')));
+          clients.add(client);
+          return client;
+        },
+      );
+
+      expect(await service.connect('interviewer', 'secret'), isFalse);
+      expect(attemptedHosts, [
+        'ftp-sync.idrcdata.org',
+        'ftp-4fa9bafd.registeredsite.com',
+      ]);
+      expect(clients.map((client) => client.disconnectCalls), [1, 1]);
+    });
+
+    test('does not fall back after an explicit authentication rejection',
+        () async {
+      if (AppConfig.country != 'Uganda') return;
+
+      final attemptedHosts = <String>[];
+      final primary = _FakeFtpClient(
+          () => Future<bool>.error(FTPException('Wrong password', '530')));
+      final service = FtpService(
+        ftpClientFactory: ({
+          required host,
+          required port,
+          required username,
+          required password,
+        }) {
+          attemptedHosts.add(host);
+          return primary;
+        },
+      );
+
+      expect(await service.connect('interviewer', 'secret'), isFalse);
+      expect(attemptedHosts, ['ftp-sync.idrcdata.org']);
+      expect(primary.disconnectCalls, 1);
     });
   });
 }

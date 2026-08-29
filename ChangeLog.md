@@ -4,6 +4,17 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [1.3.3+13] - 2026-08-29
+
+### Fixed
+- **Uganda FTP uploads now use a hostname controlled by IDRC.** Network Solutions silently
+  moved the FTP endpoint from its legacy `netsolhost.com` address to a generated
+  `registeredsite.com` hostname, breaking field uploads. Uganda now connects through
+  `ftp-sync.idrcdata.org`, an IDRC-managed DNS alias, so a future provider hostname migration
+  needs a DNS update rather than another app release. If that alias is temporarily unavailable,
+  the app tries the current provider hostname once as a fallback. Burkina Faso's separate SFTP
+  connection is unchanged.
+
 ## [1.3.2+12] - 2026-08-24
 
 ### Fixed

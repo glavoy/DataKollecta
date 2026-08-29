@@ -58,18 +58,88 @@ class FtpUploadResult {
   }
 }
 
+/// Small adapter seam around the FTP package. It lets connection behaviour be
+/// tested without opening real sockets from widget/unit tests.
+abstract interface class FtpClient {
+  Future<bool> connect();
+  Future<bool> disconnect();
+  Future<bool> changeDirectory(String? directory);
+  Future<List<FTPEntry>> listDirectoryContent();
+  Future<bool> downloadFile(String? remoteName, File localFile);
+  Future<bool> uploadFile(File file, {String remoteName, bool supportIPV6});
+  Future<int> sizeFile(String filename);
+}
+
+typedef FtpClientFactory = FtpClient Function({
+  required String host,
+  required int port,
+  required String username,
+  required String password,
+});
+
+class _FtpConnectClient implements FtpClient {
+  final FTPConnect _client;
+
+  _FtpConnectClient(this._client);
+
+  @override
+  Future<bool> changeDirectory(String? directory) =>
+      _client.changeDirectory(directory);
+
+  @override
+  Future<bool> connect() => _client.connect();
+
+  @override
+  Future<bool> disconnect() => _client.disconnect();
+
+  @override
+  Future<bool> downloadFile(String? remoteName, File localFile) =>
+      _client.downloadFile(remoteName, localFile);
+
+  @override
+  Future<List<FTPEntry>> listDirectoryContent() =>
+      _client.listDirectoryContent();
+
+  @override
+  Future<int> sizeFile(String filename) => _client.sizeFile(filename);
+
+  @override
+  Future<bool> uploadFile(File file,
+          {String remoteName = '', bool supportIPV6 = true}) =>
+      _client.uploadFile(
+        file,
+        sRemoteName: remoteName,
+        supportIPV6: supportIPV6,
+      );
+}
+
 class FtpService {
   static const _downloadTimeout = Duration(minutes: 2);
-
+  static const _ugandaPrimaryHost = 'ftp-sync.idrcdata.org';
+  static const _ugandaProviderHost = 'ftp-4fa9bafd.registeredsite.com';
 
   // FTP connection (Uganda)
-  FTPConnect? _ftpConnect;
+  FtpClient? _ftpConnect;
+  final FtpClientFactory _ftpClientFactory;
   // SFTP connection (Burkina Faso)
   SSHClient? _sshClient;
   SftpClient? _sftpClient;
 
   String _pathPrefix = '';
   bool get _usesSftp => _sftpClient != null;
+
+  FtpService({FtpClientFactory? ftpClientFactory})
+      : _ftpClientFactory = ftpClientFactory ?? _createFtpClient;
+
+  static FtpClient _createFtpClient({
+    required String host,
+    required int port,
+    required String username,
+    required String password,
+  }) =>
+      _FtpConnectClient(
+        FTPConnect(host, user: username, pass: password, port: port),
+      );
 
   /// Accounts whose files do not sit at the usual depth. The test account's
   /// home directory holds a copy of the production layout one level down, and
@@ -93,7 +163,7 @@ class FtpService {
         pathPrefix: _burkinaPathPrefix[username] ?? 'r21',
       );
     }
-    return (host: '0f7a55b.netsolhost.com', port: 21, pathPrefix: '');
+    return (host: _ugandaPrimaryHost, port: 21, pathPrefix: '');
   }
 
   String get _uploadDirectory =>
@@ -126,24 +196,85 @@ class FtpService {
         return false;
       }
     } else {
-      _ftpConnect = FTPConnect(config.host,
-          user: username, pass: password, port: config.port);
-      try {
-        await _ftpConnect!.connect();
-        return true;
-      } catch (e) {
-        debugPrint('[FtpService] FTP connection failed: $e');
-        return false;
-      }
+      return _connectUganda(username, password, config.port);
     }
+  }
+
+  /// Connect through the controlled hostname first. The direct provider name
+  /// is only an emergency fallback while DNS changes propagate or are fixed.
+  Future<bool> _connectUganda(
+      String username, String password, int port) async {
+    if (_ftpConnect != null) await disconnect();
+
+    final primary = await _tryFtpConnection(
+      host: _ugandaPrimaryHost,
+      port: port,
+      username: username,
+      password: password,
+      isFallback: false,
+    );
+    if (primary.connected) return true;
+    if (primary.authenticationFailed) return false;
+
+    final fallback = await _tryFtpConnection(
+      host: _ugandaProviderHost,
+      port: port,
+      username: username,
+      password: password,
+      isFallback: true,
+    );
+    return fallback.connected;
+  }
+
+  Future<({bool connected, bool authenticationFailed})> _tryFtpConnection({
+    required String host,
+    required int port,
+    required String username,
+    required String password,
+    required bool isFallback,
+  }) async {
+    final client = _ftpClientFactory(
+      host: host,
+      port: port,
+      username: username,
+      password: password,
+    );
+    debugPrint(
+        '[FtpService] FTP ${isFallback ? 'fallback ' : ''}connection attempt: $host');
+
+    try {
+      await client.connect();
+      _ftpConnect = client;
+      debugPrint(
+          '[FtpService] FTP ${isFallback ? 'fallback ' : ''}connection succeeded: $host');
+      return (connected: true, authenticationFailed: false);
+    } catch (error) {
+      final authenticationFailed = _isAuthenticationFailure(error);
+      debugPrint(
+          '[FtpService] FTP ${isFallback ? 'fallback ' : ''}connection failed: $host ($error)');
+      try {
+        await client.disconnect();
+      } catch (_) {
+        // The failed client is deliberately discarded either way.
+      }
+      return (
+        connected: false,
+        authenticationFailed: authenticationFailed,
+      );
+    }
+  }
+
+  static bool _isAuthenticationFailure(Object error) {
+    if (error is! FTPException) return false;
+    return error.message.startsWith('Wrong username') ||
+        error.message == 'Wrong password';
   }
 
   /// List zip files in the /survey/ directory
   Future<List<String>> listSurveyZips() async {
     if (_usesSftp) {
       try {
-        final dir =
-            _pathPrefix.isEmpty ? '/survey' : '/$_pathPrefix/survey';
+        final dir = _pathPrefix.isEmpty ? '/survey' : '/$_pathPrefix/survey';
         final items = await _sftpClient!.listdir(dir);
         return items
             .where((item) =>
@@ -194,7 +325,8 @@ class FtpService {
     } else {
       baseDir = await getApplicationSupportDirectory();
     }
-    final zipsDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
+    final zipsDir =
+        Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
     if (!await zipsDir.exists()) {
       await zipsDir.create(recursive: true);
     }
@@ -202,10 +334,11 @@ class FtpService {
 
     if (_usesSftp) {
       try {
-        final remotePath =
-            _pathPrefix.isEmpty ? '/survey/$filename' : '/$_pathPrefix/survey/$filename';
-        final bytes = await _sftpDownloadBytes(remotePath)
-            .timeout(_downloadTimeout);
+        final remotePath = _pathPrefix.isEmpty
+            ? '/survey/$filename'
+            : '/$_pathPrefix/survey/$filename';
+        final bytes =
+            await _sftpDownloadBytes(remotePath).timeout(_downloadTimeout);
         await localFile.writeAsBytes(bytes);
         return localFile;
       } on TimeoutException {
@@ -391,7 +524,8 @@ class FtpService {
               remoteFilename, remoteDirectory, remoteBytes, localBytes),
         );
       }
-      debugPrint('[FtpService] SFTP verified upload: $remotePath ($remoteBytes bytes)');
+      debugPrint(
+          '[FtpService] SFTP verified upload: $remotePath ($remoteBytes bytes)');
       return FtpUploadResult(
         success: true,
         stage: FtpUploadStage.verifySize,
@@ -425,7 +559,7 @@ class FtpService {
     try {
       await _ftpConnect!.uploadFile(
         file,
-        sRemoteName: remoteFilename,
+        remoteName: remoteFilename,
         supportIPV6: supportIPV6,
       );
     } catch (e) {
