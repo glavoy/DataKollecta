@@ -17,6 +17,15 @@
   such update was silently refused, forever, with no error shown anywhere in the UI -- the FTP
   download itself succeeded, the survey just never appeared on the main screen. The guard is
   now DataKollecta-only, where the collision it protects against can actually happen.
+- **GiSTX never actually saved a survey's FTP credentials.** `_associateCredentialsWithDownloadedSurvey`
+  resolved a downloaded survey's ID by matching the zip's filename against the manifest's
+  human-readable display name -- different strings under `DataKollecta-SurveyGen`'s normal
+  naming convention (e.g. `avert_ug_2026_08_31` vs `AVERT UG 2026-08-31`), so the match always
+  failed and the credentials were silently never saved, for any survey, ever. Every upload
+  therefore used whatever was currently sitting in the global Settings fields, regardless of
+  which login actually downloaded the currently active survey -- switching between two surveys
+  downloaded under two different logins could upload data under the wrong one. Now resolves the
+  survey directly from its known extraction folder instead of matching a display name.
 
 ## [1.3.3+13] - 2026-08-29
 
