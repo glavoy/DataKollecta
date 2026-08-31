@@ -36,6 +36,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscurePassword = true;
   String _appVersion = '';
 
+  // GiSTX only: the surveyId these fields are currently showing/editing, if
+  // the main screen has an active survey. Null before any survey has ever
+  // been downloaded, in which case the fields fall back to the plain
+  // global values, same as before this screen became survey-aware.
+  String? _activeSurveyId;
+
   // DataKollecta project list.
   List<ProjectSession> _projects = [];
   bool _projectsLoading = false;
@@ -85,11 +91,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (AppConfig.isDataKollecta) {
       await _loadProjects();
     } else {
-      final surveyorId = await _settingsService.surveyorId;
-      final username = await _settingsService.ftpUsername;
-      final password = await _settingsService.ftpPassword;
+      // Survey-aware: show whichever survey is currently active's own
+      // stored credentials/Surveyor ID, falling back to the global values
+      // only when that survey has none saved yet (or none is active at
+      // all -- e.g. before the very first download).
+      String? activeSurveyId;
+      final activeSurveyName = await _settingsService.activeSurvey;
+      if (activeSurveyName != null && activeSurveyName.isNotEmpty) {
+        activeSurveyId =
+            await SurveyConfigService().getSurveyId(activeSurveyName);
+      }
+
+      String? surveyorId;
+      String? username;
+      String? password;
+      if (activeSurveyId != null) {
+        surveyorId =
+            await _settingsService.getSurveyorIdOrGlobal(activeSurveyId);
+        final credentials =
+            await _settingsService.getCredentialsForSurvey(activeSurveyId);
+        username = credentials?['username'];
+        password = credentials?['password'];
+      } else {
+        surveyorId = await _settingsService.surveyorId;
+        username = await _settingsService.ftpUsername;
+        password = await _settingsService.ftpPassword;
+      }
+
       if (mounted) {
         setState(() {
+          _activeSurveyId = activeSurveyId;
           _surveyorIdController.text = surveyorId ?? '';
           _ftpUsernameController.text = username ?? '';
           _ftpPasswordController.text = password ?? '';
@@ -118,12 +149,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       try {
+        // Always updates the global "next download" slot, so downloading a
+        // new survey afterward picks up what was just typed here.
         await _settingsService.saveAllSettings(
           surveyorId: _surveyorIdController.text.trim(),
           ftpHost: '',
           ftpUsername: _ftpUsernameController.text.trim(),
           ftpPassword: _ftpPasswordController.text,
         );
+
+        // Also corrects the active survey's own record, if these fields
+        // were pre-filled from one -- otherwise an edit here would only
+        // ever affect the *next* survey downloaded, never the one you're
+        // actually looking at.
+        if (_activeSurveyId != null) {
+          await _settingsService.setSurveyCredentials(
+            _activeSurveyId!,
+            _ftpUsernameController.text.trim(),
+            _ftpPasswordController.text,
+          );
+          await _settingsService.setSurveyorIdForSurvey(
+            _activeSurveyId!,
+            _surveyorIdController.text.trim(),
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -170,4 +170,22 @@ class SettingsService {
 
     return null;
   }
+
+  // Survey-specific Surveyor ID -- a field worker can legitimately be
+  // assigned a different Surveyor ID per project, the same reason
+  // credentials are per-survey above.
+  Future<String?> getSurveyorIdForSurvey(String surveyId) =>
+      _read('survey_${surveyId}_surveyorId');
+
+  Future<void> setSurveyorIdForSurvey(String surveyId, String value) =>
+      _write('survey_${surveyId}_surveyorId', value);
+
+  /// Surveyor ID for [surveyId] if one was saved for that survey, else the
+  /// global Surveyor ID -- the same survey-then-global fallback
+  /// [getCredentialsForSurvey] already applies to username/password.
+  Future<String?> getSurveyorIdOrGlobal(String surveyId) async {
+    final perSurvey = await getSurveyorIdForSurvey(surveyId);
+    if (perSurvey != null && perSurvey.isNotEmpty) return perSurvey;
+    return surveyorId;
+  }
 }

@@ -215,6 +215,16 @@ class _SyncScreenState extends State<SyncScreen> {
         // Save the credentials that were used to download this survey
         await _settingsService.setSurveyCredentials(
             surveyId, username, password);
+
+        // Also snapshot the currently-configured Surveyor ID against this
+        // survey -- a field worker can be assigned a different ID per
+        // project, so the ID used to download must travel with the survey
+        // the same way the credentials do.
+        final surveyorId = await _settingsService.surveyorId;
+        if (surveyorId != null && surveyorId.isNotEmpty) {
+          await _settingsService.setSurveyorIdForSurvey(surveyId, surveyorId);
+        }
+
         debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
       } else {
         debugPrint(
@@ -232,10 +242,8 @@ class _SyncScreenState extends State<SyncScreen> {
     });
 
     try {
-      final surveyorId = await _settingsService.surveyorId;
       final surveyName = await _settingsService.activeSurvey;
-
-      if (surveyorId == null || surveyName == null) {
+      if (surveyName == null) {
         throw Exception(_s.missingSettings);
       }
 
@@ -244,7 +252,11 @@ class _SyncScreenState extends State<SyncScreen> {
       if (surveyId == null)
         throw Exception(_s.couldNotFindSurveyId(surveyName));
 
-      // 2. Get credentials for THIS survey (survey-specific or falls back to global)
+      // 2. Get credentials and Surveyor ID for THIS survey (survey-specific
+      // or falls back to global) -- resolved only now that surveyId is
+      // known, so a surveyor working across multiple projects always
+      // uploads under the ID/credentials that survey was downloaded with,
+      // not whatever is currently sitting in the global Settings fields.
       final credentials =
           await _settingsService.getCredentialsForSurvey(surveyId);
       if (credentials == null) {
@@ -253,6 +265,11 @@ class _SyncScreenState extends State<SyncScreen> {
 
       final username = credentials['username']!;
       final password = credentials['password']!;
+
+      final surveyorId = await _settingsService.getSurveyorIdOrGlobal(surveyId);
+      if (surveyorId == null || surveyorId.isEmpty) {
+        throw Exception(_s.missingSettings);
+      }
 
       // 3. Get DB Path from manifest
       final manifest = await _surveyConfig.getActiveSurveyManifest();
