@@ -4,6 +4,20 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [1.3.3+14] - 2026-08-31
+
+### Fixed
+- **GiSTX could no longer install a new survey version onto an already-installed device.**
+  A `databaseName`/`surveyId` collision guard added in 1.3.2+10 (to stop a DataKollecta phone
+  holding two different projects' surveys from silently sharing one physical database) ran
+  unconditionally for every product, including GiSTX -- which has no multi-project concept at
+  all. `DataKollecta-SurveyGen`'s documented way to version a survey is a new `surveyId` per
+  release with the *same* `databaseName` on purpose (so the subject-ID counter and existing
+  data survive the update), which is exactly the shape the guard mistook for a collision: every
+  such update was silently refused, forever, with no error shown anywhere in the UI -- the FTP
+  download itself succeeded, the survey just never appeared on the main screen. The guard is
+  now DataKollecta-only, where the collision it protects against can actually happen.
+
 ## [1.3.3+13] - 2026-08-29
 
 ### Fixed

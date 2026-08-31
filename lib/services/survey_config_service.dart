@@ -74,21 +74,35 @@ class SurveyConfigService {
             // folder name, DbService's open-database map entry, and the
             // SQLite file itself), so two different surveys sharing either
             // would otherwise silently share one physical database.
-            final manifestEntry = _findManifestEntry(archive);
-            if (manifestEntry != null) {
-              final manifest = json.decode(
-                      utf8.decode(manifestEntry.content as List<int>))
-                  as Map<String, dynamic>;
-              final zipSurveyId = manifest['surveyId'] as String?;
-              final databaseName = manifest['databaseName'] as String?;
-              if (zipSurveyId != null && databaseName != null) {
-                final owner =
-                    await findSurveyIdForDatabaseName(databaseName);
-                if (owner != null && owner != zipSurveyId) {
-                  debugPrint(
-                      '[SurveyConfig] Refusing to extract $zipName: databaseName '
-                      '"$databaseName" is already used by survey "$owner".');
-                  continue;
+            //
+            // DataKollecta-only: GiSTX has no multi-project concept, and a
+            // shared databaseName across different surveyIds is not a
+            // collision there -- it is DataKollecta-SurveyGen's documented,
+            // intended way to version a survey (new surveyId per release,
+            // same databaseName, so the subject-ID counter and existing
+            // data survive an update). Applying this guard unconditionally
+            // silently blocked every such GiSTX field update: confirmed
+            // live on 2026-08-31, a new AVERT version refused forever with
+            // "databaseName ... already used by survey ..." because an
+            // earlier version was already installed under the same
+            // databaseName by design.
+            if (AppConfig.isDataKollecta) {
+              final manifestEntry = _findManifestEntry(archive);
+              if (manifestEntry != null) {
+                final manifest = json.decode(
+                        utf8.decode(manifestEntry.content as List<int>))
+                    as Map<String, dynamic>;
+                final zipSurveyId = manifest['surveyId'] as String?;
+                final databaseName = manifest['databaseName'] as String?;
+                if (zipSurveyId != null && databaseName != null) {
+                  final owner =
+                      await findSurveyIdForDatabaseName(databaseName);
+                  if (owner != null && owner != zipSurveyId) {
+                    debugPrint(
+                        '[SurveyConfig] Refusing to extract $zipName: databaseName '
+                        '"$databaseName" is already used by survey "$owner".');
+                    continue;
+                  }
                 }
               }
             }
