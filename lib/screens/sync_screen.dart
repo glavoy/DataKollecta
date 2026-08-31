@@ -200,18 +200,26 @@ class _SyncScreenState extends State<SyncScreen> {
       // Extract zip first (it's in the zips folder)
       await _surveyConfig.initializeSurveys();
 
-      // The survey name is the filename without .zip extension
-      final surveyName =
+      // The extraction folder name is the filename without .zip extension --
+      // NOT the same thing as the manifest's human-readable surveyName
+      // (e.g. "avert_ug_2026_08_31" vs "AVERT UG 2026-08-31"), which is why
+      // this reads the manifest directly from that folder instead of going
+      // through getSurveyId's surveyName match.
+      final surveyFolderName =
           filename.replaceAll(RegExp(r'\.zip$', caseSensitive: false), '');
-
-      // Get the surveyId for this survey
-      final surveyId = await _surveyConfig.getSurveyId(surveyName);
+      final manifest =
+          await _surveyConfig.getManifestForFolder(surveyFolderName);
+      final surveyId = manifest?['surveyId'] as String?;
 
       if (surveyId != null) {
         // Save the credentials that were used to download this survey
         await _settingsService.setSurveyCredentials(
             surveyId, username, password);
         debugPrint('[SyncScreen] Saved credentials for survey: $surveyId');
+      } else {
+        debugPrint(
+            '[SyncScreen] Could not resolve surveyId for $surveyFolderName -- '
+            'credentials not associated.');
       }
     } catch (e) {
       debugPrint('[SyncScreen] Error associating credentials: $e');

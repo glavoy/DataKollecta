@@ -174,6 +174,20 @@ class SurveyConfigService {
     return null;
   }
 
+  /// Reads a survey's manifest directly from its known extraction folder name
+  /// (the downloaded zip's own filename stem) -- unlike [getSurveyId], this
+  /// never depends on matching the human-readable manifest surveyName, so it
+  /// works even when the zip's filename and the manifest's display name
+  /// differ (the normal case under DataKollecta-SurveyGen's naming
+  /// convention).
+  Future<Map<String, dynamic>?> getManifestForFolder(String folderName) async {
+    final surveysDir = await getSurveysDirectory();
+    final manifestFile =
+        File(p.join(surveysDir.path, folderName, 'survey_manifest.gistx'));
+    if (!await manifestFile.exists()) return null;
+    return _loadManifestFromFile(manifestFile);
+  }
+
   /// Delete a survey (extracted folder and source zip)
   Future<void> deleteSurvey(String surveyName) async {
     try {
