@@ -252,11 +252,15 @@ class _SyncScreenState extends State<SyncScreen> {
       if (surveyId == null)
         throw Exception(_s.couldNotFindSurveyId(surveyName));
 
+      debugPrint(
+          '[SyncScreen] Uploading "$surveyName" -> resolved surveyId="$surveyId"');
+
       // 2. Get credentials and Surveyor ID for THIS survey (survey-specific
       // or falls back to global) -- resolved only now that surveyId is
       // known, so a surveyor working across multiple projects always
       // uploads under the ID/credentials that survey was downloaded with,
       // not whatever is currently sitting in the global Settings fields.
+      final storedUsername = await _settingsService.getSurveyUsername(surveyId);
       final credentials =
           await _settingsService.getCredentialsForSurvey(surveyId);
       if (credentials == null) {
@@ -266,10 +270,16 @@ class _SyncScreenState extends State<SyncScreen> {
       final username = credentials['username']!;
       final password = credentials['password']!;
 
+      debugPrint('[SyncScreen] survey-specific username stored for '
+          '"$surveyId" = ${storedUsername ?? "(none -- falling back to global)"}; '
+          'using username="$username" for this upload');
+
       final surveyorId = await _settingsService.getSurveyorIdOrGlobal(surveyId);
       if (surveyorId == null || surveyorId.isEmpty) {
         throw Exception(_s.missingSettings);
       }
+
+      debugPrint('[SyncScreen] using surveyorId="$surveyorId" for this upload');
 
       // 3. Get DB Path from manifest
       final manifest = await _surveyConfig.getActiveSurveyManifest();

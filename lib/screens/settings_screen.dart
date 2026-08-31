@@ -102,6 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             await SurveyConfigService().getSurveyId(activeSurveyName);
       }
 
+      debugPrint('[SettingsScreen] activeSurveyName="$activeSurveyName" -> '
+          'resolved activeSurveyId=${activeSurveyId ?? "(null)"}');
+
       String? surveyorId;
       String? username;
       String? password;
