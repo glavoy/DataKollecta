@@ -27,6 +27,16 @@
   downloaded under two different logins could upload data under the wrong one. Now resolves the
   survey directly from its known extraction folder instead of matching a display name.
 
+### Changed
+- **GiSTX's Surveyor ID is now preserved per survey, and Settings is survey-aware.** A field
+  worker can legitimately be assigned a different Surveyor ID per project, but it was a single
+  global value baked into every upload's filename regardless of which survey was active --
+  switching surveys could tag an upload with the wrong ID. Surveyor ID now travels with a
+  survey's credentials, resolved against the currently active survey rather than the global
+  Settings fields. Opening Settings now shows the active survey's own stored
+  credentials/Surveyor ID (falling back to global only when that survey has none saved yet),
+  and Save corrects that survey's own record, not only the value used for the next download.
+
 ## [1.3.3+13] - 2026-08-29
 
 ### Fixed
