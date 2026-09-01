@@ -208,6 +208,8 @@ class AppStrings {
   String get password => isFrench ? 'Mot de passe' : 'Password';
   String get enterPassword =>
       isFrench ? 'Entrez le mot de passe' : 'Enter password';
+  String get lastSavedCredentials =>
+      isFrench ? 'Derniers identifiants enregistrés' : 'Last saved credentials';
   String get manageSurveys =>
       isFrench ? 'Gérer les Questionnaires' : 'Manage Surveys';
   String get deleteSurvey =>

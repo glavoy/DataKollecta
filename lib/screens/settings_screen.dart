@@ -592,6 +592,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _s.lastSavedCredentials,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
                     ],
                     const SizedBox(height: 20),
                     const Divider(),
