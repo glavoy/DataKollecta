@@ -4,7 +4,7 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
-## [1.3.5+15] - 2026-08-31
+## [1.3.5+16] - 2026-08-31
 
 ### Fixed
 - **GiSTX could no longer install a new survey version onto an already-installed device.**
