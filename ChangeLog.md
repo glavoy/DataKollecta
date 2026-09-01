@@ -4,6 +4,41 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [1.3.6+17] - 2026-09-01
+
+### Added
+- **`calc:timestamp`: an explicit calculation type for mid-questionnaire timestamps.**
+  Previously, a custom timestamp field (distinct from the reserved `starttime`/`stoptime`) was
+  authored implicitly — an `automatic`/`datetime` field with a *blank* Responses column, left to
+  fall through to a runtime default. That shape turned out to be ambiguous: `survey_screen.dart`'s
+  primary-key-detection heuristic treated any unregistered automatic field with no calculation as
+  an ID field whenever the questionnaire had an `idconfig`, so these blank-Responses timestamp
+  fields were silently stamped with a generated subject-ID-shaped value instead of a clock reading.
+  `calc:timestamp` (`DataKollecta-SurveyGen`) removes the ambiguity: it's authored the same
+  explicit way every other calculation is, always requires `FieldType: datetime`, and always
+  generates with `preserve: true` baked in (freezing the captured time across a later edit, the
+  same way `starttime`/`stoptime` do — this generator has no other way to author `preserve` from
+  Excel). The old implicit fallback is removed entirely: an `automatic`/`datetime` field with a
+  blank Responses column is now a build-blocking generator error, not a special case.
+
+### Fixed
+- **GiSTX/DataKollecta: automatic fields could be silently misrouted into ID generation.**
+  `_processAutomaticQuestion`'s `isIdField` check (`survey_screen.dart`) matched *any* automatic
+  field that wasn't in the `AutoFields` registry and had no calculation, whenever the
+  questionnaire had an `idconfig` — written before "blank Responses + `datetime` FieldType" existed
+  as a second legitimate meaning for that same shape (see `calc:timestamp` above). Two categories
+  of field could be hit: custom timestamp fields (stamped with a generated ID instead of the
+  current time — confirmed against real field data, see below), and, in a hierarchy with a
+  parent-child link, a CRF's own `linkingfield`/`incrementfield` (e.g. `hhid`/`linenum`) on a
+  questionnaire that also has its own `idconfig` for a different primary key — both already get
+  their real value from elsewhere before this check runs, so being caught here could silently
+  overwrite a correct linked/incremented value with a freshly-generated or `-9` sentinel one. The
+  check now also excludes `datetime`-typed fields (no legitimate ID target is ever typed datetime)
+  and this screen's own `linkingField`/`incrementField`. Found while tracing why
+  `avert_ug_test_2026_07-13.sqlite`'s `time_eligible`/`time_start_vac_coverage`/
+  `time_start_mal_risk_factors`/`time_start_smc` columns held subject-ID-shaped values instead of
+  timestamps.
+
 ## [1.3.5+16] - 2026-08-31
 
 ### Fixed
