@@ -11,6 +11,7 @@ import '../services/theme_service.dart';
 import '../config/app_config.dart';
 import '../services/app_strings.dart';
 import '../services/app_strings_http_sync.dart';
+import 'sync_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -149,7 +150,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context);
+          // Saving credentials is almost always in service of downloading a
+          // survey next -- go straight to Sync Center instead of back to
+          // the main screen, since that's the immediate next step.
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const SyncScreen()),
+          );
         }
       } catch (e) {
         if (mounted) {
