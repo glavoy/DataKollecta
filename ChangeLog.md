@@ -28,14 +28,22 @@
   survey directly from its known extraction folder instead of matching a display name.
 
 ### Changed
-- **GiSTX's Surveyor ID is now preserved per survey, and Settings is survey-aware.** A field
-  worker can legitimately be assigned a different Surveyor ID per project, but it was a single
-  global value baked into every upload's filename regardless of which survey was active --
-  switching surveys could tag an upload with the wrong ID. Surveyor ID now travels with a
-  survey's credentials, resolved against the currently active survey rather than the global
-  Settings fields. Opening Settings now shows the active survey's own stored
-  credentials/Surveyor ID (falling back to global only when that survey has none saved yet),
-  and Save corrects that survey's own record, not only the value used for the next download.
+- **GiSTX's Surveyor ID is now preserved per survey.** A field worker can legitimately be
+  assigned a different Surveyor ID per project, but it was a single global value baked into
+  every upload's filename regardless of which survey was active -- switching surveys could
+  tag an upload with the wrong ID. A survey's Surveyor ID is now captured alongside its
+  credentials the moment it's downloaded, and resolved per-survey (falling back to global
+  only when a survey has none saved yet) whenever it's uploaded.
+- **Settings is a pure staging area, unconditionally** -- it always shows and only ever
+  writes the credentials/Surveyor ID that will apply to the *next* download, never a
+  specific already-installed survey's stored values. An earlier version of this change made
+  Settings show, and Save correct, whichever survey happened to be active; live testing found
+  that actively corrupts data (typing credentials meant for a not-yet-downloaded survey and
+  saving silently overwrote an unrelated already-active survey's real association) and, once
+  that was fixed, still looked like data loss (a just-saved edit appeared to vanish when you
+  navigated away and back without downloading). A survey's actual, correct association is
+  created only by a successful download, and is only ever visible via Sync Center or the
+  credentials an upload actually uses.
 
 ## [1.3.3+13] - 2026-08-29
 
