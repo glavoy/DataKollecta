@@ -775,11 +775,22 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // The automatic value calculation is already handled in QuestionView.initState
     // But we can also do it here for automatic questions we skip over
 
-    // Check if this is a primary key field that needs ID generation
-    // Fields are considered ID fields if they are NOT in the AutoFields registry
-    // AND do not have a calculation configuration
+    // Check if this is a primary key field that needs ID generation.
+    // Fields are considered ID fields if they are NOT in the AutoFields
+    // registry, do not have a calculation configuration, are not a
+    // `datetime`-typed field (no legitimate ID target is ever typed
+    // datetime -- a bare datetime automatic field with no calculation is a
+    // pre-calc:timestamp custom-timestamp field from an already-generated
+    // survey, not an ID), and are not this screen's own linking/increment
+    // field (`hhid`/`linenum`-style fields already get their real value from
+    // `prepopulatedAnswers`/`_calculateLineNum` before navigation starts, so
+    // routing them into ID generation here would silently overwrite a
+    // correct value with a freshly-generated or sentinel one).
     final isIdField = !AutoFields.getRegistry().containsKey(q.fieldName) &&
-        q.calculation == null;
+        q.calculation == null &&
+        q.fieldType.toLowerCase() != 'datetime' &&
+        q.fieldName != widget.linkingField &&
+        q.fieldName != widget.incrementField;
 
     debugPrint(
         '[ProcessingAuto] ${q.fieldName} isIdField=$isIdField hasCalculation=${q.calculation != null}');

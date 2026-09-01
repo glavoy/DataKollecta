@@ -345,6 +345,17 @@ class AutoFields {
           if (sourceDate == null) return '';
           return _formatDatePart(sourceDate, (config.unit ?? '').toLowerCase());
 
+        case 'timestamp':
+          // The explicit, always-required replacement for the old "blank
+          // Responses column on a datetime automatic field" convention: a
+          // mid-questionnaire timestamp stamped the moment this row is
+          // reached, same idea as starttime/stoptime but at any position the
+          // survey author chooses. SurveyGen always emits preserve='true' on
+          // this type (see CalculationConfig.preserve, honored by compute()
+          // above), so it freezes on first capture rather than jumping to
+          // the edit time on a later revisit.
+          return DateTime.now().toIso8601String();
+
         default:
           return '';
       }

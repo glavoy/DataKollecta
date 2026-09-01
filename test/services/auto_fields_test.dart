@@ -330,4 +330,38 @@ void main() {
       expect(result, '01');
     });
   });
+
+  group('timestamp calculation', () {
+    // SurveyGen always emits preserve='true' for this type (never
+    // Excel-authorable), so the question fixture matches that -- there is no
+    // preserve:false variant to test the way date_part has.
+    final question = Question(
+      type: QuestionType.automatic,
+      fieldName: 'time_eligible',
+      fieldType: 'datetime',
+      calculation: CalculationConfig(type: 'timestamp', preserve: true),
+    );
+
+    test('stamps the current date-and-time when the row is reached',
+        () async {
+      final before = DateTime.now();
+      final result = await AutoFields.compute({}, question);
+      final after = DateTime.now();
+
+      final parsed = DateTime.parse(result);
+      expect(parsed.isBefore(before.subtract(const Duration(seconds: 1))),
+          isFalse);
+      expect(parsed.isAfter(after.add(const Duration(seconds: 1))), isFalse);
+    });
+
+    test('freezes on first capture -- an edit-mode revisit keeps it',
+        () async {
+      final answers = {'time_eligible': '2020-01-01T00:00:00.000'};
+
+      final result = await AutoFields.compute(answers, question,
+          isEditMode: true);
+
+      expect(result, '2020-01-01T00:00:00.000');
+    });
+  });
 }
