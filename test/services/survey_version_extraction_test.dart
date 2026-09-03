@@ -121,6 +121,20 @@ void main() {
             'tables and a shared subject-ID counter');
   }, skip: !AppConfig.isDataKollecta);
 
+  test('GiSTX allows two surveyIds on one database, with no project tracking',
+      () async {
+    // GiSTX's documented update path, and the reason the guard is gated on
+    // isDataKollecta at all: two zips on the FTP server with different
+    // surveyIds and the same databaseName both install, and both open the one
+    // SQLite file. There are no project associations in a GiSTX build for the
+    // guard to consult, so nothing here seeds any.
+    await install('avert_ug_2026_07_21', 'avert_ug.sqlite');
+    await install('avert_ug_2026_08_14', 'avert_ug.sqlite');
+
+    expect(extracted('avert_ug_2026_07_21'), isTrue);
+    expect(extracted('avert_ug_2026_08_14'), isTrue);
+  }, skip: AppConfig.isDataKollecta);
+
   test('a side-loaded zip with no known project is allowed through', () async {
     // No associations recorded at all -- a zip copied straight into zips/, or
     // one installed before project tracking existed. Matches what
