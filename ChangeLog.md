@@ -4,6 +4,25 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [UNRELEASED] - TBD
+
+### Fixed
+- **A new version of a survey can now be installed on a device that already has an earlier one
+  (DataKollecta).** The extraction guard in `SurveyConfigService.initializeSurveys` refused any
+  zip whose manifest `databaseName` was already claimed by a different `surveyId` — which is
+  exactly what a new version looks like, since versioning a survey means a new `surveyId` (so
+  the updated XML lands in a new folder and is actually read) onto an unchanged `databaseName`
+  (so `DbService` opens the existing SQLite file, `ALTER TABLE`s the new questions in, and the
+  subject-ID counter carries on). The guard now refuses only a genuine **cross-project**
+  collision, matching `HttpSyncBackend._guardAgainstCollision` on the download path; an owner
+  with no known project binding — a side-loaded zip — is allowed through, as that path already
+  does. GiSTX was already exempt (see the 2026-08-31 AVERT incident recorded in the code
+  comment) and is unaffected.
+
+  This is the app half of survey versioning in `DataKollecta-Web`, which now models versions
+  explicitly (`survey_packages.survey_code` + `version`) and enforces that every version of a
+  survey declares the same `databaseName`. See `docs/DATABASE_VERSIONING_DECISIONS.md`.
+
 ## [1.3.6+17] - 2026-09-01
 
 ### Added

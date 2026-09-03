@@ -171,6 +171,45 @@ By keeping `r21_test_negative_2026-01-05.sqlite` as the permanent database name,
 
 ---
 
+## Update (2026-09-03): the portal now owns this for DataKollecta
+
+Everything above still describes what the **app** does, and that has not
+changed. What has changed is who is responsible for getting `databaseName`
+right.
+
+For the **DataKollecta** product, `DataKollecta-Web` now models survey
+versions directly. `survey_packages` carries a `survey_code` (stable across
+versions) and a `version` integer, and a database trigger
+(`enforce_survey_database_binding`) enforces the invariant this document was
+written to protect, in both directions:
+
+- every version of one `survey_code` must declare the **same** `databaseName`;
+- no two `survey_code`s in a project may claim the same `databaseName`.
+
+So the manual checklist below — "verify `databaseName` has NOT been changed" —
+is now a machine check rather than a thing to remember. Revising a survey in
+the portal (**New Version**) inherits the database name and mints the next
+Survey ID; an uploaded zip whose manifest declares an in-use `databaseName` is
+added as the next version of that survey automatically, with no option to
+import it as a separate one.
+
+This is effectively **Option 3**, decided differently: the "stable identity
+across versions" lives in the portal as `survey_code` rather than as a
+`projectId` field in the manifest. The manifest format is unchanged, so
+`DataKollecta-SurveyGen` and every manifest reader in this app are untouched —
+`databaseName` remains the single field that decides data continuity, which is
+exactly why it is the field the portal matches on.
+
+One app change went with it. The extraction guard in
+`SurveyConfigService.initializeSurveys` used to refuse any zip whose
+`databaseName` was already claimed by a different `surveyId`, which is
+precisely what a new version looks like. It now refuses only a genuine
+**cross-project** collision, matching `HttpSyncBackend._guardAgainstCollision`
+on the download path. GiSTX was already exempt and is unaffected.
+
+The **GiSTX** product still relies on the SurveyGen conventions below, since it
+has no portal.
+
 ## Implementation Checklist for Future Survey Updates
 
 When creating a new version of the r21 survey:
@@ -233,7 +272,7 @@ The app automatically handles new questions added to the XML files. When a surve
 
 ### Relevant Code
 
-Located in `lib/services/db_service.dart`, method `_syncSurveyTable()` (lines 379-452):
+Located in `lib/services/db_service.dart`, method `_syncSurveyTable()`:
 
 ```dart
 } else {

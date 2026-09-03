@@ -64,28 +64,43 @@ class SurveyConfigService {
             final archive = ZipDecoder().decodeBytes(zipData);
 
             // Peek the manifest before writing anything, so a databaseName
-            // collision with an already-installed, DIFFERENT survey can be
-            // refused before this zip ever becomes a folder on disk. This
-            // matters for DataKollecta because a zip can arrive here via
-            // side-loading (copied straight into the zips/ folder) rather
-            // than through HttpSyncBackend.downloadSurvey, which performs
-            // the equivalent guard before download instead -- surveyId and
-            // databaseName are both device-global keys (the extraction
-            // folder name, DbService's open-database map entry, and the
-            // SQLite file itself), so two different surveys sharing either
-            // would otherwise silently share one physical database.
+            // collision with an already-installed survey belonging to a
+            // DIFFERENT PROJECT can be refused before this zip ever becomes
+            // a folder on disk. This matters for DataKollecta because a zip
+            // can arrive here via side-loading (copied straight into the
+            // zips/ folder) rather than through
+            // HttpSyncBackend.downloadSurvey, which performs the equivalent
+            // guard before download instead.
             //
-            // DataKollecta-only: GiSTX has no multi-project concept, and a
-            // shared databaseName across different surveyIds is not a
-            // collision there -- it is DataKollecta-SurveyGen's documented,
-            // intended way to version a survey (new surveyId per release,
-            // same databaseName, so the subject-ID counter and existing
-            // data survive an update). Applying this guard unconditionally
-            // silently blocked every such GiSTX field update: confirmed
-            // live on 2026-08-31, a new AVERT version refused forever with
+            // What is NOT a collision: a new surveyId onto an existing
+            // databaseName within the same project. That is precisely how a
+            // survey is versioned -- new surveyId per release (a new
+            // extraction folder, so the updated XML is actually read),
+            // unchanged databaseName, so DbService opens the existing SQLite
+            // file, ALTER TABLEs the new questions in, and the subject-ID
+            // counter carries on. Refusing it made "add one question to a
+            // deployed survey" impossible on DataKollecta, and had already
+            // done real damage on the GiSTX side: confirmed live on
+            // 2026-08-31, a new AVERT version was refused forever with
             // "databaseName ... already used by survey ..." because an
-            // earlier version was already installed under the same
-            // databaseName by design.
+            // earlier version was installed under the same databaseName by
+            // design. That is what the isDataKollecta gate below was added
+            // for; this narrows the DataKollecta half to the same rule
+            // rather than exempting GiSTX from a rule that was too broad for
+            // both.
+            //
+            // Still DataKollecta-only, because "which project owns this
+            // survey" only exists there -- GiSTX has no multi-project
+            // concept, so it has no cross-project collision to detect.
+            //
+            // Deliberately matches HttpSyncBackend._guardAgainstCollision,
+            // the equivalent guard on the download path: refuse only a
+            // genuine cross-project collision, and let an owner with no
+            // known project binding through (a side-loaded zip, or one
+            // installed before this tracking existed -- see that method's
+            // comment). Both are real device-global keys, so the two guards
+            // disagreeing would mean a zip the download path accepts is
+            // silently dropped at extraction.
             if (AppConfig.isDataKollecta) {
               final manifestEntry = _findManifestEntry(archive);
               if (manifestEntry != null) {
@@ -98,10 +113,19 @@ class SurveyConfigService {
                   final owner =
                       await findSurveyIdForDatabaseName(databaseName);
                   if (owner != null && owner != zipSurveyId) {
-                    debugPrint(
-                        '[SurveyConfig] Refusing to extract $zipName: databaseName '
-                        '"$databaseName" is already used by survey "$owner".');
-                    continue;
+                    final doc = await _sessionsRepo.load();
+                    final ownerProject = doc.projectFor(owner);
+                    final incomingProject = doc.projectFor(zipSurveyId);
+                    if (ownerProject != null &&
+                        incomingProject != null &&
+                        ownerProject != incomingProject) {
+                      debugPrint(
+                          '[SurveyConfig] Refusing to extract $zipName: databaseName '
+                          '"$databaseName" is used by survey "$owner" in project '
+                          '"$ownerProject", but this zip belongs to project '
+                          '"$incomingProject".');
+                      continue;
+                    }
                   }
                 }
               }
