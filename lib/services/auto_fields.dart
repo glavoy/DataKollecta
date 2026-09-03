@@ -197,7 +197,7 @@ class AutoFields {
             }
             return '';
           } catch (e) {
-            print('Error executing auto field query: $e');
+            debugPrint('[AutoFields] Auto field query failed, returning empty: $e');
             return '';
           }
 
@@ -360,7 +360,7 @@ class AutoFields {
           return '';
       }
     } catch (e) {
-      print('Error executing calculation: $e');
+      debugPrint('[AutoFields] Calculation failed, returning empty: $e');
       return '';
     }
   }

@@ -176,9 +176,7 @@ class SurveyLoader {
           if (parts.length >= 2) {
             condition = parts[0].trim();
             // If message attribute wasn't provided, use the one from the string
-            if (msg == null) {
-              msg = parts[1].trim().replaceAll("'", "");
-            }
+            msg ??= parts[1].trim().replaceAll("'", "");
           }
         }
 

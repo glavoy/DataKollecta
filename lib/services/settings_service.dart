@@ -3,6 +3,7 @@
 ///
 /// Uses flutter_secure_storage on mobile/Windows; falls back to shared_preferences
 /// on macOS where keychain entitlements conflict with local ad-hoc signing.
+library;
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';

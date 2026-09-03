@@ -1,6 +1,7 @@
 /// Application configuration
 ///
 /// This file contains all configurable application-level settings.
+library;
 
 class AppConfig {
   /// The country this build was compiled for.

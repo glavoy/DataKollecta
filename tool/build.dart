@@ -10,9 +10,9 @@
 ///     dart run tool/build.dart macos                          # builds and packages a DMG
 ///
 /// Options:
-///     --flavor <name>    country flavor: uganda (default) or bf.
+///     --flavor `<name>`    country flavor: uganda (default) or bf.
 ///                        Rejected for a product that doesn't vary by country.
-///     --product <name>   gistx (default) or datakollecta.
+///     --product `<name>`   gistx (default) or datakollecta.
 ///     --bump             bump the build number before building.
 ///
 /// This never touches the release version (`1.3.0`) — that is a semver
@@ -199,7 +199,7 @@ Future<void> _build(List<String> args) async {
   }
 }
 
-/// Materializes tool/product/**/<productId>.* into the native project files
+/// Materializes `tool/product/**/<productId>.*` into the native project files
 /// each platform reads at build time.
 void _applyProductConfigs(String productId) {
   _copyProductFile('tool/product/android/$productId.properties',

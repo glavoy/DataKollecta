@@ -91,9 +91,8 @@ class SurveyUploadResult {
   final UploadOutcome? outcome;
   final RoutingFailure? routingFailure;
 
-  const SurveyUploadResult.completed(UploadOutcome outcome)
-      : outcome = outcome,
-        routingFailure = null;
+  const SurveyUploadResult.completed(UploadOutcome this.outcome)
+      : routingFailure = null;
   const SurveyUploadResult.notRouted(RoutingFailure reason)
       : outcome = null,
         routingFailure = reason;

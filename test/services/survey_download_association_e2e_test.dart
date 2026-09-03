@@ -47,7 +47,7 @@ List<int> _buildZip({
 }
 
 /// Mirrors exactly what SyncScreen._downloadSurvey does after a successful
-/// FTP download: write the zip to zips/<filename>, then run the same
+/// FTP download: write the zip to `zips/<filename>`, then run the same
 /// association step.
 Future<void> _simulateDownload({
   required String zipsDirPath,

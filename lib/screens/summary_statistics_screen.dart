@@ -30,9 +30,7 @@ class _SummaryStatisticsScreenState extends State<SummaryStatisticsScreen> {
     final configService = SurveyConfigService();
     String? actualId = await configService.getSurveyId(widget.surveyId);
 
-    if (actualId == null) {
-      actualId = widget.surveyId;
-    }
+    actualId ??= widget.surveyId;
 
     _resolvedSurveyId = actualId;
     final stats = <Map<String, dynamic>>[];

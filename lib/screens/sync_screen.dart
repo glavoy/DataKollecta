@@ -249,8 +249,9 @@ class _SyncScreenState extends State<SyncScreen> {
 
       // 1. Get Survey ID and DB Path
       final surveyId = await _surveyConfig.getSurveyId(surveyName);
-      if (surveyId == null)
+      if (surveyId == null) {
         throw Exception(_s.couldNotFindSurveyId(surveyName));
+      }
 
       debugPrint(
           '[SyncScreen] Uploading "$surveyName" -> resolved surveyId="$surveyId"');

@@ -870,12 +870,15 @@ class _QuestionViewState extends State<QuestionView> {
                       _checkboxSelection.add(opt.value);
                     } else {
                       // If selecting a normal option, remove any special options
-                      if (dontKnowValue != null)
+                      if (dontKnowValue != null) {
                         _checkboxSelection.remove(dontKnowValue);
-                      if (refuseValue != null)
+                      }
+                      if (refuseValue != null) {
                         _checkboxSelection.remove(refuseValue);
-                      if (notInListValue != null)
+                      }
+                      if (notInListValue != null) {
                         _checkboxSelection.remove(notInListValue);
+                      }
                       _checkboxSelection.add(opt.value);
                     }
                   } else {
@@ -1158,6 +1161,11 @@ class _QuestionViewState extends State<QuestionView> {
               lastDate: DateTime(2100),
             );
             if (pickedDate != null) {
+              // The date picker awaited the user, so this widget can be
+              // gone before the time picker is asked for. `mounted`, not
+              // `context.mounted`: this method takes no context
+              // parameter, so `context` here is State.context.
+              if (!mounted) return;
               final pickedTime = await showTimePicker(
                 context: context,
                 initialTime:
@@ -1171,8 +1179,9 @@ class _QuestionViewState extends State<QuestionView> {
                   pickedTime.hour,
                   pickedTime.minute,
                 );
-                if (widget.answers[q.fieldName] == combined.toIso8601String())
+                if (widget.answers[q.fieldName] == combined.toIso8601String()) {
                   return;
+                }
                 setState(() {
                   _selectedDateTime = combined;
                   widget.answers[q.fieldName] = combined.toIso8601String();

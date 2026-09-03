@@ -37,6 +37,12 @@ dev_dependencies:
     sdk: flutter
   change_app_package_name: ^1.3.0
   flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^6.0.0
+  # Imported directly by the survey-config tests to install a fake
+  # path_provider platform; declaring it keeps
+  # depend_on_referenced_packages satisfied rather than relying on it
+  # arriving transitively.
+  path_provider_platform_interface: ^2.1.3
 
 flutter:
   uses-material-design: true

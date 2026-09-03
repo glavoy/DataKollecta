@@ -68,7 +68,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   final List<int> _history = []; // Navigation history of displayed questions
   final Set<String> _visitedFields =
       {}; // Track which questions were actually displayed
-  late Future<List<Question>> _questions = _loadSurvey();
+  late final Future<List<Question>> _questions = _loadSurvey();
   List<Question>?
       _loadedQuestions; // Holds the questions after future completes
   bool _isSaving = false;
@@ -1265,6 +1265,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     // Get questions list for clearing skipped answers
     final questions = await _questions;
+    if (!context.mounted) return;
 
     // Clear answers for any questions that were skipped due to skip logic
     // This ensures data consistency (e.g., clearing pregnancy data if sex changed to male)
@@ -1311,10 +1312,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
       );
 
       if (summary.isNotEmpty) {
+        if (!context.mounted) return;
         final result = await _showReviewChangesDialog(context, summary);
         if (result == 'discard') {
           // Exit without saving
-          if (mounted) {
+          if (context.mounted) {
             setState(() {
               _isSaving = false;
             });
@@ -1324,7 +1326,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         } else if (result != 'save') {
           // 'back' or null (dialog dismissed/canceled). The user stays on this
           // screen, so release the guard or Finish is dead for good.
-          if (mounted) {
+          if (context.mounted) {
             setState(() {
               _isSaving = false;
             });
@@ -1398,7 +1400,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       debugPrint('Save failed: $e');
     }
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // The guard is released only when the save failed, so the user can retry.
     // On success it stays set: the record is in the database, and the success
@@ -1411,7 +1413,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       // Inside the loop the reconciliation happens once at the end instead.
       if (widget.repeatIndex == null) {
         await _reconcileCountOnParentOfThisForm(context);
-        if (!mounted) return;
+        if (!context.mounted) return;
       }
 
       // Check if we should start auto-repeat for child surveys (only for new records, not modifications)
@@ -1448,7 +1450,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final linkingValue = _answers[linkingField]?.toString();
       if (linkingValue == null || linkingValue.isEmpty) return;
 
-      if (!mounted) return;
+      if (!context.mounted) return;
       await _reconcileRepeatCount(context, tableName, linkingValue);
     } catch (e) {
       debugPrint('Error reconciling parent count: $e');
@@ -1466,6 +1468,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // Get all CRF records to find child surveys
       final allCrfs = await DbService.getExistingRecords(surveyId, 'crfs');
+      if (!context.mounted) return;
 
       // Sort by display_order to ensure repeats happen in correct sequence
       final sortedCrfs = List<Map<String, dynamic>>.from(allCrfs);
@@ -1476,6 +1479,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
       });
 
       for (final crf in sortedCrfs) {
+        // Re-checked per iteration, not just once above: the prompt and the
+        // repeat loop below both await, so a later pass can resume after the
+        // user has already left this screen.
+        if (!context.mounted) return;
+
         final childTableName = crf['tablename']?.toString();
         final parentTable = crf['parenttable']?.toString();
 
@@ -1534,6 +1542,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
             );
 
             if (shouldStart == true) {
+              if (!context.mounted) return;
               await _startRepeatSurveyLoop(
                 context,
                 childTableName,
@@ -1565,9 +1574,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
 
       // No auto-repeat configured, show success dialog
+      if (!context.mounted) return;
       _showSaveSuccessDialog(context);
     } catch (e) {
       debugPrint('Error checking auto-repeat: $e');
+      if (!context.mounted) return;
       _showSaveSuccessDialog(context);
     }
   }
@@ -1652,6 +1663,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         // Check if we should enforce count
         if (enforceCountMode == 2) {
           // Force mode - must complete (no exit option)
+          if (!context.mounted) return;
           await _showMustCompleteDialogWithEntity(
             context,
             repeatCount,
@@ -1680,7 +1692,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
     }
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // After loop, reconcile the parent's count with what was actually entered.
     // This does not show the success dialog -- more repeating sections may
@@ -1801,7 +1813,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         );
         debugPrint('Auto-synced ${reconciliation.parentTable}.'
             '${reconciliation.countField} to ${reconciliation.actualCount}');
-        if (!mounted) return true;
+        if (!context.mounted) return true;
         // The count is already written by the time this shows -- unlike
         // _showCountMismatchDialog, there is nothing left to decide, so a
         // single acknowledgement button is the only action offered.
@@ -1814,7 +1826,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         return true;
 
       case RepeatCountOutcome.askToUpdate:
-        if (!mounted) return true;
+        if (!context.mounted) return true;
         final action = await _showCountMismatchDialog(
           context,
           reconciliation.displayName,
@@ -1830,7 +1842,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         return true;
 
       case RepeatCountOutcome.aboveMaximum:
-        if (!mounted) return true;
+        if (!context.mounted) return true;
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
@@ -2208,7 +2220,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
                         ],
                       ),
                     );
-                    if (confirm == true) {
+                    // `context` here is this dialog's own builder
+                    // context, and the nested confirm above awaited --
+                    // the review dialog can already be gone.
+                    if (confirm == true && context.mounted) {
                       Navigator.pop(context, 'discard');
                     }
                   },

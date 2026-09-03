@@ -6,6 +6,7 @@
 ///
 /// Updated to support dynamic loading from ApplicationDocumentsDirectory
 /// and auto-extraction of bundled zip files.
+library;
 
 import 'dart:convert';
 import 'dart:io';
@@ -136,8 +137,9 @@ class SurveyConfigService {
             for (final file in archive) {
               final filename = file.name;
               if (file.isFile) {
-                if (filename.contains('__MACOSX') || filename.startsWith('.'))
+                if (filename.contains('__MACOSX') || filename.startsWith('.')) {
                   continue;
+                }
 
                 final data = file.content as List<int>;
                 final outFile = File(p.join(targetDir.path, filename));

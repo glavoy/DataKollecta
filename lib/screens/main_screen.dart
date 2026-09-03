@@ -313,6 +313,14 @@ class _MainScreenState extends State<MainScreen> {
                       // Check if settings are configured
                       final isConfigured =
                           await _surveyConfig.areSettingsConfigured();
+                      // Settings are read asynchronously, so this screen can
+                      // be gone by the time the answer arrives -- pushing a
+                      // route or showing a dialog on a dead context throws.
+                      // `context.mounted`, not `mounted`: this closure sits
+                      // inside build's own `context` parameter, which shadows
+                      // State.context, so a State-level check would be
+                      // guarding a different object than the one used below.
+                      if (!context.mounted) return;
 
                       if (!isConfigured) {
                         _showSettingsRequiredDialog(context);
@@ -345,6 +353,14 @@ class _MainScreenState extends State<MainScreen> {
                       // Check if settings are configured
                       final isConfigured =
                           await _surveyConfig.areSettingsConfigured();
+                      // Settings are read asynchronously, so this screen can
+                      // be gone by the time the answer arrives -- pushing a
+                      // route or showing a dialog on a dead context throws.
+                      // `context.mounted`, not `mounted`: this closure sits
+                      // inside build's own `context` parameter, which shadows
+                      // State.context, so a State-level check would be
+                      // guarding a different object than the one used below.
+                      if (!context.mounted) return;
 
                       if (!isConfigured) {
                         _showSettingsRequiredDialog(context);

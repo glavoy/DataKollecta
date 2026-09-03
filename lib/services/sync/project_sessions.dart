@@ -13,6 +13,8 @@
 /// survey it owns) and because the existing per-survey pattern in
 /// SettingsService (`survey_${id}_username`) offers neither enumeration nor
 /// deletion -- both of which this needs.
+library;
+
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';

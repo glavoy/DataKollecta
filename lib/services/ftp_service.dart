@@ -291,8 +291,9 @@ class FtpService {
 
     if (_ftpConnect == null) return [];
     try {
-      if (_pathPrefix.isNotEmpty)
+      if (_pathPrefix.isNotEmpty) {
         await _ftpConnect!.changeDirectory(_pathPrefix);
+      }
       await _ftpConnect!.changeDirectory('survey');
       final entries = await _ftpConnect!.listDirectoryContent();
 
@@ -354,8 +355,9 @@ class FtpService {
     if (_ftpConnect == null) return null;
     try {
       // Ensure we are in the right directory on server
-      if (_pathPrefix.isNotEmpty)
+      if (_pathPrefix.isNotEmpty) {
         await _ftpConnect!.changeDirectory(_pathPrefix);
+      }
       await _ftpConnect!.changeDirectory('survey');
 
       await _ftpConnect!.downloadFile(filename, localFile);

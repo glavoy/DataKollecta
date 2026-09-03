@@ -52,7 +52,7 @@ class QuestionCacheService {
         }
       } catch (e) {
         // Log error but continue loading other files
-        print('Error loading XML file $xmlFile: $e');
+        debugPrint('[QuestionCache] Skipping unreadable XML file $xmlFile: $e');
       }
     }
   }

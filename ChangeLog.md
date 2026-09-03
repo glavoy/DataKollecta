@@ -56,6 +56,26 @@
   projects owned by different accounts. See `docs/DATABASE_VERSIONING_DECISIONS.md`.
 
 ### Housekeeping
+- **`flutter analyze` now actually checks something.** `analysis_options.yaml` had
+  `include: package:flutter_lints/flutter.yaml` commented out and an empty `rules:` block, and
+  `flutter_lints` was not even a dev dependency — so "No issues found!" over 16,000 lines meant
+  only that nothing tripped the analyzer's built-in errors. Enabling it surfaced 53 issues.
+
+  The 24 worth having were **`use_build_context_synchronously`**: a `BuildContext` used after an
+  `await`, which throws if the widget went away while the future was in flight. Most are on the
+  save path in `survey_screen.dart` — a review dialog shown after the change summary is
+  computed, the auto-repeat prompts, the parent-count reconciliation — plus the date/time picker
+  pair in `question_views.dart`, where backing out between picking a date and picking a time hit
+  it. Each now carries a guard, and the guard is `context.mounted` rather than `mounted`
+  wherever the method takes its own `BuildContext` parameter: those are different objects, and
+  the analyzer says so ("guarded by an unrelated 'mounted' check"). `_showDone`,
+  `_checkAndStartAutoRepeat` and `_reconcileRepeatCount` all had `mounted` checks already that
+  were guarding the wrong thing.
+
+  The rest were mechanical (`dart fix`): brace-less `if` bodies, dangling library doc comments,
+  `??=`, angle brackets in doc comments. The three raw `print()` calls in production catch blocks
+  are now `debugPrint` with the codebase's bracketed prefix. `path_provider_platform_interface`
+  is declared as a dev dependency, since the survey-config tests import it directly.
 - **`db_service.dart` is a text file again.** Its synthetic-key prefix in
   `collapseDuplicateUniqueIds` was written as a literal NUL byte in the source rather than the
   `\u0000` escape. Dart compiled it either way, but the NUL made the whole 1,200-line file

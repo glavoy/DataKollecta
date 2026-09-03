@@ -9,7 +9,7 @@ import 'field_comparator.dart';
 /// Automatically detects value types (numeric, date, or string) for comparisons.
 ///
 /// Multiple Logic Checks:
-///   Questions can have multiple <logic_check> elements.
+///   Questions can have multiple `<logic_check>` elements.
 ///   They are evaluated sequentially in order.
 ///   The first check that fails returns its error message.
 ///   Subsequent checks are skipped.

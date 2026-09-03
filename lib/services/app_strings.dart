@@ -335,7 +335,7 @@ class AppStrings {
       isFrench ? 'Rechercher $field...' : 'Search $field...';
   String availableCount(int count, String field) => isFrench
       ? '$count $field disponible${count == 1 ? '' : 's'}'
-      : '$count ${field}(s) available';
+      : '$count $field(s) available';
   String noMatchingField(String field) => isFrench
       ? 'Aucun $field correspondant trouvé'
       : 'No matching $field found';
