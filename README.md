@@ -35,7 +35,7 @@ The two products have separate application ids and separate signing keys, so
 they install side by side rather than updating each other. See CLAUDE.md's
 "Product flavors" section for how the build mechanism works.
 
-See [md/BUILD_INSTRUCTIONS.md](md/BUILD_INSTRUCTIONS.md) for build and release
+See [CLAUDE.md](CLAUDE.md)'s "Commands" and "Versioning" sections for build and release
 steps. Keystore and signing instructions are deliberately **not** in this
 repository — they are kept with the keystore backup.
 

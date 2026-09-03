@@ -76,6 +76,25 @@
   `??=`, angle brackets in doc comments. The three raw `print()` calls in production catch blocks
   are now `debugPrint` with the codebase's bracketed prefix. `path_provider_platform_interface`
   is declared as a dev dependency, since the survey-config tests import it directly.
+- **Tracked files that were never source are gone.** `build_log.txt`,
+  `build_log_vs2022.txt` (byte-identical to it), `doctor_log.txt` and `dist.iml` were committed
+  build and diagnostic output — `.gitignore` covers `*.log` but these were written as `.txt`, so
+  they slipped past it. `.idea/` is untracked too; `workspace.xml` changes on every window move.
+  All four patterns are now ignored.
+- **`test/generate_dynamic_wide_format.py` and `test/get_wide_data.sql` deleted.** Neither is a
+  test, and both query an `interviews`/`answers`/`options`/`questions` schema — an
+  entity-attribute-value model the app does not have. It creates `crfs`, `formchanges`, and one
+  table per form with a column per fieldname, so these could never have run against a current
+  database.
+- **`md/` is now explicitly an archive.** The fifteen topic guides moved to `md/archive/` behind
+  a `md/README.md` that says plainly that nothing in it is maintained, names
+  `TECHNICAL_README.md` as the known-wrong one, and points at `CLAUDE.md`, `docs/` and
+  SurveyGen's README instead. They were previously indistinguishable from current documentation
+  to anyone — or anything — grepping the repo. `Automatic Variables Migration Examples.txt`,
+  loose in the repo root as a `.txt`, joined them: its worked XML examples are still readable,
+  but the authoritative reference for that format is SurveyGen's README, and the app should not
+  hold a second copy of the spec. `README.md`'s link to `md/BUILD_INSTRUCTIONS.md` now points at
+  `CLAUDE.md`, which is where the build and release flow is actually maintained.
 - **`db_service.dart` is a text file again.** Its synthetic-key prefix in
   `collapseDuplicateUniqueIds` was written as a literal NUL byte in the source rather than the
   `\u0000` escape. Dart compiled it either way, but the NUL made the whole 1,200-line file
