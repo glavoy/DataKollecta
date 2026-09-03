@@ -20,8 +20,26 @@
   comment) and is unaffected.
 
   This is the app half of survey versioning in `DataKollecta-Web`, which now models versions
-  explicitly (`survey_packages.survey_code` + `version`) and enforces that every version of a
-  survey declares the same `databaseName`. See `docs/DATABASE_VERSIONING_DECISIONS.md`.
+  explicitly (`survey_packages.survey_code` + `version`) and enforces two things about
+  `databaseName`: every version of a survey must declare the same one, and no two surveys
+  anywhere on the platform may declare the same one. The second rule is platform-wide rather
+  than per-project or per-account because this is a *device*-global namespace — `DbService`
+  opens every survey's database from one flat `databases/` folder named by `databaseName`
+  alone, with no project or account segment in the path, and a field worker can belong to
+  projects owned by different accounts. See `docs/DATABASE_VERSIONING_DECISIONS.md`.
+
+### Housekeeping
+- **GiSTX's own update path now has a test.** Two zips with different `surveyId`s and the same
+  `databaseName` both extracting under a GiSTX build is the documented way to ship a survey
+  revision there, but nothing pinned it — which is how the guard came to block it silently in
+  the field on 2026-08-31 (a new AVERT version refused forever, with no error surfaced
+  anywhere). `test/services/survey_version_extraction_test.dart` covers that alongside the
+  DataKollecta cases: same project allows, different project refuses, no known project binding
+  allows. The suites are gated on `AppConfig.isDataKollecta` so both product builds pass.
+- **`docs/DATABASE_VERSIONING_DECISIONS.md` brought up to date.** It recorded a decision — hand-
+  maintain `databaseName` in each new manifest, and adopt a `projectId` field later — that the
+  portal has now answered differently, so the manual checklist it prescribes is a machine check
+  for DataKollecta. Its citation of `_syncSurveyTable()` at "lines 379-452" was also stale.
 
 ## [1.3.6+17] - 2026-09-01
 
