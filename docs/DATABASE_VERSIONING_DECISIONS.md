@@ -184,7 +184,14 @@ versions) and a `version` integer, and a database trigger
 written to protect, in both directions:
 
 - every version of one `survey_code` must declare the **same** `databaseName`;
-- no two `survey_code`s in a project may claim the same `databaseName`.
+- no two surveys **anywhere on the platform** may claim the same `databaseName`.
+
+The second rule is platform-wide rather than per-project or per-account because
+this is a *device*-global namespace: `DbService` opens every survey's database
+from one flat `<base>/<storageFolder>/databases/` folder named by `databaseName`
+alone, with no project or account segment in the path, and a field worker can
+belong to projects owned by different accounts. Two surveys sharing the name
+would resolve to one physical file wherever both are installed.
 
 So the manual checklist below — "verify `databaseName` has NOT been changed" —
 is now a machine check rather than a thing to remember. Revising a survey in
