@@ -86,6 +86,16 @@ class SettingsService {
   /// which could only ever represent one project at a time.
   static const String _keyProjectSessions = 'dk_project_sessions';
 
+  /// How many times this device has generated a subject ID without being able
+  /// to read the existing ones (see [IdGenerator]). It only ever advances, and
+  /// it is what makes successive degraded IDs differ from each other -- the
+  /// table cannot be consulted to find out which sentinel values are already
+  /// taken, because failing to read that table is the reason we are there.
+  ///
+  /// Persisted rather than kept in memory so a restart between two failures
+  /// does not hand out the same sentinel twice.
+  static const String _keyIdFallbackCount = 'id_fallback_count';
+
   // Getters for settings
   Future<String?> get surveyorId async => _read(_keysurveyorId);
   Future<String?> get ftpHost async => _read(_keyFtpHost);
@@ -104,6 +114,13 @@ class SettingsService {
   Future<String?> get projectSessionsRaw async => _read(_keyProjectSessions);
   Future<void> setProjectSessionsRaw(String value) =>
       _write(_keyProjectSessions, value);
+
+  /// See [_keyIdFallbackCount]. Unreadable or absent counts as none.
+  Future<int> get idFallbackCount async =>
+      int.tryParse(await _read(_keyIdFallbackCount) ?? '') ?? 0;
+
+  Future<void> setIdFallbackCount(int value) =>
+      _write(_keyIdFallbackCount, value.toString());
 
   // Setters for settings
   Future<void> setSurveyorId(String value) => _write(_keysurveyorId, value);

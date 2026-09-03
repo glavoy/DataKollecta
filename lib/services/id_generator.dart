@@ -1,6 +1,20 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'db_service.dart';
+import 'settings_service.dart';
+
+/// A base ID has used up every value its increment suffix can express.
+///
+/// Distinct from an ordinary generation failure: nothing is wrong with the
+/// device or the database, the study has simply outgrown the width its data
+/// dictionary declared, and the only fix is a longer `incrementLength`.
+class IdCapacityException implements Exception {
+  final String message;
+  const IdCapacityException(this.message);
+
+  @override
+  String toString() => 'IdCapacityException: $message';
+}
 
 /// Configuration for generating unique identifiers
 class IdConfig {
@@ -118,6 +132,48 @@ class IdGenerator {
     }
   }
 
+  /// The largest value the increment suffix can hold, e.g. 999 for length 3.
+  @visibleForTesting
+  static int maxIncrementFor(int incrementLength) =>
+      int.parse('9' * incrementLength);
+
+  /// How many values at the top of the range are reserved as sentinels.
+  ///
+  /// Ten, except where the range is too small to spare them -- reserving ten
+  /// of a two-digit range would take a tenth of the study's capacity. Data
+  /// dictionaries deliberately oversize the increment (a 50-interview study
+  /// still gets a four-digit range), so ten costs nothing in practice.
+  @visibleForTesting
+  static int sentinelBandSizeFor(int incrementLength) =>
+      maxIncrementFor(incrementLength) >= 100 ? 10 : 1;
+
+  /// The lowest reserved value. Ordinary IDs run from 1 up to this minus one.
+  @visibleForTesting
+  static int sentinelFloorFor(int incrementLength) =>
+      maxIncrementFor(incrementLength) - sentinelBandSizeFor(incrementLength) + 1;
+
+  /// The increment to use when the existing IDs could not be read.
+  ///
+  /// Counts **down** from the top of the range, driven by [priorFailures] --
+  /// a device-local tally, because the one thing we cannot do here is ask the
+  /// table which sentinels are already taken. Failing to read that table is
+  /// precisely why we are in this method.
+  ///
+  /// The point is not to avoid a duplicate outright; two devices that both
+  /// fail can still land on the same value, and every record carries a
+  /// `uniqueid` UUID that keeps such a collision resolvable. The point is that
+  /// `GX57999` announces itself, where the old fallback of `1` produced
+  /// `GX57001` -- indistinguishable from a legitimate first record, so nobody
+  /// ever found out. `WHERE subjid LIKE '%999'` finds every degraded record.
+  @visibleForTesting
+  static int degradedIncrement({
+    required int incrementLength,
+    required int priorFailures,
+  }) {
+    final band = sentinelBandSizeFor(incrementLength);
+    return maxIncrementFor(incrementLength) - (priorFailures % band);
+  }
+
   /// Gets the next increment number for a given base ID
   ///
   /// For example, if fieldName = "subjid", baseId = "GX57" and the database has:
@@ -125,6 +181,10 @@ class IdGenerator {
   /// - GX57002
   ///
   /// This will return 3 (for GX57003)
+  ///
+  /// If the existing IDs cannot be read, this returns a sentinel from the top
+  /// of the range instead of restarting at 1, and never refuses -- losing an
+  /// interview is worse than issuing an ID that has to be reconciled later.
   static Future<int> _getNextIncrement({
     required String surveyId,
     required String tableName,
@@ -132,21 +192,37 @@ class IdGenerator {
     required String baseId,
     required int incrementLength,
   }) async {
-    try {
-      // Get all records from the table
-      final records = await DbService.getExistingRecords(surveyId, tableName);
+    // `null` means the read failed; an empty list means the table genuinely
+    // holds no records, which is an ordinary first-record case. The old code
+    // called `getExistingRecords`, which reports both as an empty list -- so a
+    // locked or unreadable database silently produced increment 1 and an ID
+    // that collided with an already-enrolled subject.
+    final records =
+        await DbService.tryGetExistingRecords(surveyId, tableName);
 
-      return nextIncrementFrom(
-        records: records,
-        fieldName: fieldName,
-        baseId: baseId,
+    if (records == null) {
+      final settings = SettingsService();
+      final priorFailures = await settings.idFallbackCount;
+      await settings.setIdFallbackCount(priorFailures + 1);
+
+      final sentinel = degradedIncrement(
         incrementLength: incrementLength,
+        priorFailures: priorFailures,
       );
-    } catch (e) {
-      debugPrint('Error getting next increment: $e');
-      // If there's an error, start from 1
-      return 1;
+      debugPrint(
+          '[IdGenerator] Could not read existing "$fieldName" values in '
+          '"$tableName". Issuing the reserved increment $sentinel for base '
+          '"$baseId" so the record is still saved and the ID is identifiable. '
+          'Degraded ID count on this device is now ${priorFailures + 1}.');
+      return sentinel;
     }
+
+    return nextIncrementFrom(
+      records: records,
+      fieldName: fieldName,
+      baseId: baseId,
+      incrementLength: incrementLength,
+    );
   }
 
   /// Derives the next increment from [records] by scanning [fieldName] only.
@@ -155,6 +231,16 @@ class IdGenerator {
   /// unrelated values that happen to share the base ID's prefix and suffix
   /// length (e.g. a barcode or another coded field), inflating the counter and
   /// skipping IDs.
+  ///
+  /// Values in the reserved sentinel band are ignored, so a degraded ID cannot
+  /// poison the counter: with records 001-042 plus a sentinel 999, the next ID
+  /// is 043. Without that exclusion one transient read failure would push
+  /// `MAX` to 999 and every subsequent record would hit the capacity check
+  /// below -- worse than the bug this replaced.
+  ///
+  /// Throws [IdCapacityException] rather than return a value that would not
+  /// fit [incrementLength]. `padLeft` does not truncate, so 1000 in a
+  /// three-digit scheme silently produced an eight-character `GX571000`.
   ///
   /// Public to allow counter behavior to be verified without initializing the
   /// application's survey database registry.
@@ -167,6 +253,7 @@ class IdGenerator {
   }) {
     // getExistingRecords normalizes column names to lowercase
     final column = fieldName.toLowerCase();
+    final sentinelFloor = sentinelFloorFor(incrementLength);
 
     // Find the maximum increment number for this base ID
     int maxIncrement = 0;
@@ -178,14 +265,23 @@ class IdGenerator {
         final incrementPart = value.substring(baseId.length);
         if (incrementPart.length == incrementLength) {
           final increment = int.tryParse(incrementPart);
-          if (increment != null && increment > maxIncrement) {
+          if (increment == null || increment >= sentinelFloor) continue;
+          if (increment > maxIncrement) {
             maxIncrement = increment;
           }
         }
       }
     }
 
-    return maxIncrement + 1;
+    final next = maxIncrement + 1;
+    if (next >= sentinelFloor) {
+      throw IdCapacityException(
+          'Base ID "$baseId" has reached the end of its $incrementLength-digit '
+          'range: $maxIncrement is the highest in use and $sentinelFloor upward '
+          'is reserved. The data dictionary needs a longer incrementLength for '
+          '"$fieldName".');
+    }
+    return next;
   }
 
   /// Validates that all required fields for ID generation are present in answers

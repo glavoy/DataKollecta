@@ -636,12 +636,25 @@ class DbService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getExistingRecords(
+  /// Every row of [tableName], or `null` if the read **failed**.
+  ///
+  /// The distinction is what [getExistingRecords] throws away, and it matters
+  /// for anything deriving a counter: an empty list means "this table holds no
+  /// records", which is the normal first-record case, while `null` means "the
+  /// contents are unknown". Treating a failed read as an empty table is what
+  /// let [IdGenerator] restart a subject-ID counter at 1 and hand out an ID
+  /// that was already enrolled -- silently, because the error never surfaced
+  /// past this method.
+  ///
+  /// A **missing table** is deliberately reported as empty rather than `null`:
+  /// a table that does not exist cannot hold a colliding ID, so starting a
+  /// counter at 1 there is correct. Only an actual failure is `null`.
+  static Future<List<Map<String, dynamic>>?> tryGetExistingRecords(
       String surveyId, String tableName,
       {String? orderBy}) async {
     try {
       final db = await _getDbOrThrow(surveyId);
-      if (!await _tableExists(db, tableName)) return [];
+      if (!await _tableExists(db, tableName)) return const [];
 
       final results = await db.query(tableName, orderBy: orderBy);
 
@@ -651,8 +664,19 @@ class DbService {
       }).toList();
     } catch (e) {
       _logError('Error fetching records: $e');
-      return [];
+      return null;
     }
+  }
+
+  /// Every row of [tableName], with a failed read reported as no rows.
+  ///
+  /// Callers that only display records are fine with this. Anything deriving
+  /// an identifier must use [tryGetExistingRecords] and handle `null`.
+  static Future<List<Map<String, dynamic>>> getExistingRecords(
+      String surveyId, String tableName,
+      {String? orderBy}) async {
+    return await tryGetExistingRecords(surveyId, tableName, orderBy: orderBy) ??
+        const [];
   }
 
   /// Collapses rows that share the same `uniqueid`, keeping only the one
@@ -686,7 +710,7 @@ class DbService {
       final key = (uniqueId == null || uniqueId.isEmpty)
           // No uniqueid to key on -- give it its own synthetic key so rows
           // without one never collide with each other or a real uniqueid.
-          ? ' ${unkeyedCount++}'
+          ? '\u0000${unkeyedCount++}'
           : uniqueId;
 
       final existing = bestByKey[key];
@@ -775,6 +799,18 @@ class DbService {
       }
       return 1;
     } catch (e) {
+      // Same shape of hazard as the subject-ID counter (see
+      // IdGenerator._getNextIncrement): a failed read here restarts this
+      // parent's child counter at 1 and produces a duplicate
+      // linenum/netnum within the household. Unlike that one this used to
+      // swallow the error without even a log line, so the duplicate had no
+      // trace at all. Logging is the floor, not the fix -- an unpadded
+      // counter has no spare range to carry a sentinel value the way a
+      // padded subject ID does.
+      _logError(
+          'Error getting next $incrementField for $tableName '
+          '($primaryKeyField=$primaryKeyValue) -- restarting at 1, which may '
+          'duplicate an existing $incrementField: $e');
       return 1;
     }
   }

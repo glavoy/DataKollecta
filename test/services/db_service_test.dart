@@ -435,4 +435,26 @@ void main() {
       expect(await db.query('crfs'), hasLength(2));
     });
   });
+
+  group('a failed read is not an empty table', () {
+    // The distinction IdGenerator depends on. An unregistered surveyId makes
+    // the internal _getDbOrThrow throw, which is the same path a locked or
+    // corrupt database takes.
+    const unopened = 'survey-that-was-never-opened';
+
+    test('tryGetExistingRecords reports a failed read as null', () async {
+      expect(
+        await DbService.tryGetExistingRecords(unopened, 'enrollee'),
+        isNull,
+      );
+    });
+
+    test('getExistingRecords still flattens a failure to no rows', () async {
+      // Kept deliberately: the five display call sites want this. It is only
+      // unsafe for code deriving an identifier, which now uses the method
+      // above -- reading increment 1 out of this empty list is what handed a
+      // second subject an already-enrolled ID.
+      expect(await DbService.getExistingRecords(unopened, 'enrollee'), isEmpty);
+    });
+  });
 }

@@ -7,6 +7,33 @@
 ## [UNRELEASED] - TBD
 
 ### Fixed
+- **A subject ID generated while the database could not be read is now identifiable instead of
+  a silent duplicate.** `DbService.getExistingRecords` reports every failure as an empty list,
+  and `IdGenerator` read that as "this table holds no records" — so a locked, corrupt or
+  otherwise unreadable database made the counter restart at 1 and hand the next interview an ID
+  that was already enrolled. Nothing surfaced: the interviewer saw a normal-looking `GX57001`,
+  and the collision only appeared later during analysis. (`_getNextIncrement`'s own
+  `catch { return 1 }` never even ran — the layer below had already converted the failure into
+  an empty list.)
+
+  The record is still saved — losing an interview is worse than issuing an ID that has to be
+  reconciled, and every record already carries a `uniqueid` UUID that keeps a duplicate
+  resolvable. What changed is that the ID now announces itself: a new
+  `DbService.tryGetExistingRecords` returns `null` for a failed read (a *missing* table stays
+  an empty list, since it cannot hold a colliding ID), and on `null` the generator issues a
+  value from a reserved band at the top of the increment range — 9999 for a four-digit
+  increment, then 9998, 9997… driven by a persisted per-device counter, since the one thing it
+  cannot do there is ask the table which sentinels are taken. `WHERE subjid LIKE '%999'` finds
+  every degraded record.
+
+  Two supporting changes make that safe. `nextIncrementFrom` now **ignores** values in the
+  reserved band, so a degraded ID cannot poison the counter — records 001-042 plus a sentinel
+  9999 still yield 043; without that, one transient failure would push `MAX` to 9999 and
+  wedge every subsequent record. And it now throws `IdCapacityException` rather than return an
+  increment too wide for the scheme: `padLeft` does not truncate, so 1000 in a three-digit
+  increment silently produced an eight-character `GX571000`. That check applies to any survey
+  that genuinely fills its range, not just the degraded path.
+
 - **A new version of a survey can now be installed on a device that already has an earlier one
   (DataKollecta).** The extraction guard in `SurveyConfigService.initializeSurveys` refused any
   zip whose manifest `databaseName` was already claimed by a different `surveyId` — which is
@@ -29,6 +56,16 @@
   projects owned by different accounts. See `docs/DATABASE_VERSIONING_DECISIONS.md`.
 
 ### Housekeeping
+- **`db_service.dart` is a text file again.** Its synthetic-key prefix in
+  `collapseDuplicateUniqueIds` was written as a literal NUL byte in the source rather than the
+  `\u0000` escape. Dart compiled it either way, but the NUL made the whole 1,200-line file
+  register as binary — `grep` skipped it silently and `git diff` refused to show it, which is
+  an easy way to miss something while editing it.
+- **`DbService.getNextIncrementValue` no longer swallows its errors.** The child-record counter
+  (`linenum`, `netnum`) has the same shape of hazard as the subject-ID counter above — a failed
+  read restarts it at 1 and duplicates within the household — but its `catch` returned 1 with no
+  log line at all, so the duplicate left no trace. Now logged. An unpadded counter has no spare
+  range to carry a sentinel the way a padded subject ID does, so this is a floor, not a fix.
 - **GiSTX's own update path now has a test.** Two zips with different `surveyId`s and the same
   `databaseName` both extracting under a GiSTX build is the documented way to ship a survey
   revision there, but nothing pinned it — which is how the guard came to block it silently in
