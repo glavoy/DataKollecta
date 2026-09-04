@@ -44,9 +44,43 @@ class AutoFields {
     'mm': _computeMm,
     'dd': _computeDd,
     'doy': _computeDoy,
+    parentUniqueIdField: _computeParentUniqueId,
 
     // Add more automatic variables here ...
   };
+
+  /// The child column carrying its parent record's immutable `uniqueid`.
+  ///
+  /// SurveyGen writes this question onto every form that declares a
+  /// `parenttable`, so the column exists on exactly the child tables.
+  static const String parentUniqueIdField = 'parent_uniqueid';
+
+  /// The parent's `uniqueid`, which is **carried**, not computed.
+  ///
+  /// Both child-creation paths already hold the parent's row at the moment
+  /// they build the child -- the parent-ID selector reads full parent rows,
+  /// and the auto-repeat loop runs inside the parent's own screen -- so the
+  /// value arrives through `prepopulatedAnswers`, the same channel that
+  /// carries the linking value. [compute] returns an existing non-empty
+  /// String before reaching the registry, so this function runs only when
+  /// that carrying failed.
+  ///
+  /// It is in the registry anyway, for two reasons. It states that this field
+  /// is not the app's to invent. And a registry-*absent* automatic field with
+  /// no calculation is treated as an ID to generate by
+  /// `SurveyNavigationService.isGeneratedIdField`, so an entry here is what
+  /// keeps it off that path regardless of what a form's `idconfig` says.
+  ///
+  /// Returns empty rather than refusing: the linking value is still correct,
+  /// so the child is saveable, and the record must not be lost over a join
+  /// key that can be reconstructed later.
+  static String _computeParentUniqueId(
+      AnswerMap answers, Question q, bool isEditMode, String? surveyId) {
+    debugPrint('[AutoFields] $parentUniqueIdField was not carried in for this '
+        'record -- the parent link will be empty and the child will have to '
+        'be matched on its linking value instead.');
+    return '';
+  }
 
   /// Public entry point: returns existing answer if present,
   /// otherwise computes once and stores it in `answers`.

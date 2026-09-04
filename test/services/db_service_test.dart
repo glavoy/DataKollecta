@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 // `DatabaseException` is declared by both sqflite_common and db_service.dart;
 // this file wants the latter, which is what _quoteIdentifier throws.
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
+import 'package:datakollecta/services/auto_fields.dart';
 import 'package:datakollecta/services/db_service.dart';
 
 void main() {
@@ -796,7 +797,13 @@ void main() {
       }
       for (final statement in DbService.buildSurveyTableStatements(
         tableName: 'hh_members',
-        columnNames: ['uniqueid', 'hhid', 'linenum', 'membername'],
+        columnNames: [
+          'uniqueid',
+          'hhid',
+          'linenum',
+          'membername',
+          DbService.parentUniqueIdColumn,
+        ],
         crf: childCrf(),
         parentCrf: parentCrf(),
         onSkippedConstraint: onSkipped,
@@ -808,9 +815,15 @@ void main() {
     Future<void> addHousehold(String uniqueId, String hhid) =>
         db.insert('hh_info', {'uniqueid': uniqueId, 'hhid': hhid});
 
-    Future<void> addMember(String uniqueId, String hhid, String linenum) =>
-        db.insert('hh_members',
-            {'uniqueid': uniqueId, 'hhid': hhid, 'linenum': linenum});
+    /// [parentUniqueId] defaults to the household seeded by [addHousehold].
+    Future<void> addMember(String uniqueId, String hhid, String linenum,
+            {String? parentUniqueId = 'hh-1'}) =>
+        db.insert('hh_members', {
+          'uniqueid': uniqueId,
+          'hhid': hhid,
+          'linenum': linenum,
+          DbService.parentUniqueIdColumn: parentUniqueId,
+        });
 
     test('the production open path enforces foreign keys', () async {
       // PRAGMA foreign_keys defaults to off, is per-connection, and is not
@@ -887,7 +900,7 @@ void main() {
       await addHousehold('hh-2', '100120002');
 
       await addMember('m-1', '100120001', '1');
-      await addMember('m-2', '100120002', '1');
+      await addMember('m-2', '100120002', '1', parentUniqueId: 'hh-2');
 
       expect(
         (await db.query('hh_members')).length,
@@ -1176,6 +1189,140 @@ void main() {
       expect(rows, hasLength(1));
       expect(rows.single['hhid'], 'HH001');
       expect(rows.single['linenum'], '1');
+    });
+  });
+
+  group('the parent_uniqueid join key', () {
+    // hhid is built from typed answers, so an interviewer correcting a
+    // mistyped household number changes it. parent_uniqueid carries the
+    // parent's UUID instead: hhid stays the human-readable business key, and
+    // the join key becomes one nothing can retype.
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      db = await DbService.openSurveyDatabaseForTesting(inMemoryDatabasePath);
+      await DbService.syncFormChangesTableForTesting('s1', db);
+    });
+
+    tearDown(() => db.close());
+
+    Map<String, dynamic> parentCrf() => {
+          'tablename': 'hh_info',
+          'primarykey': 'hhid',
+          'linkingfield': 'hhid',
+        };
+
+    Map<String, dynamic> childCrf() => {
+          'tablename': 'hh_members',
+          'primarykey': 'hhid,linenum',
+          'linkingfield': 'hhid',
+          'parenttable': 'hh_info',
+          'incrementfield': 'linenum',
+        };
+
+    List<String> childStatements({List<String>? columns}) =>
+        DbService.buildSurveyTableStatements(
+          tableName: 'hh_members',
+          columnNames: columns ??
+              ['uniqueid', 'hhid', 'linenum', DbService.parentUniqueIdColumn],
+          crf: childCrf(),
+          parentCrf: parentCrf(),
+        );
+
+    test('the schema and answer layers agree on the column name', () {
+      // Two constants rather than one import, so the schema layer does not
+      // depend on the answer layer -- which makes this assertion the thing
+      // keeping them in step.
+      expect(DbService.parentUniqueIdColumn, AutoFields.parentUniqueIdField);
+      expect(DbService.parentUniqueIdColumn, 'parent_uniqueid');
+    });
+
+    test('a child gets a second foreign key, on the immutable key', () {
+      final create = childStatements().first;
+
+      expect(create, contains('FOREIGN KEY ("parent_uniqueid")'));
+      expect(create, contains('REFERENCES "hh_info" (uniqueid)'));
+    });
+
+    test('the parent-link key does not cascade, because it cannot change', () {
+      // A UUID is not something an interviewer can retype, so there is
+      // nothing for a cascade to carry. Only the business key needs one.
+      final create = childStatements().first;
+      final parentLinkClause = create
+          .split(', ')
+          .firstWhere((c) => c.contains('"parent_uniqueid"'));
+
+      expect(parentLinkClause, isNot(contains('ON UPDATE CASCADE')));
+      expect(create, contains('FOREIGN KEY ("hhid")'));
+    });
+
+    test('no parent-link key when the column is absent', () {
+      // SurveyGen writes the column only onto a form with a parenttable, so
+      // an older package will not have it and must still create cleanly.
+      final create =
+          childStatements(columns: ['uniqueid', 'hhid', 'linenum']).first;
+
+      expect(create, isNot(contains('parent_uniqueid')));
+      expect(create, contains('FOREIGN KEY ("hhid")'));
+    });
+
+    test('a child pointing at no real parent record is refused', () async {
+      for (final s in DbService.buildSurveyTableStatements(
+        tableName: 'hh_info',
+        columnNames: ['uniqueid', 'hhid'],
+        crf: parentCrf(),
+        isReferencedAsParent: true,
+      )) {
+        await db.execute(s);
+      }
+      for (final s in childStatements()) {
+        await db.execute(s);
+      }
+      await db.insert('hh_info', {'uniqueid': 'hh-1', 'hhid': '100120001'});
+
+      await expectLater(
+        () => db.insert('hh_members', {
+          'uniqueid': 'm-1',
+          'hhid': '100120001',
+          'linenum': '1',
+          DbService.parentUniqueIdColumn: 'not-a-real-uuid',
+        }),
+        throwsA(predicate(
+            (e) => e.toString().contains('FOREIGN KEY constraint failed'))),
+      );
+    });
+
+    test('correcting the business key leaves the join key untouched',
+        () async {
+      for (final s in DbService.buildSurveyTableStatements(
+        tableName: 'hh_info',
+        columnNames: ['uniqueid', 'hhid'],
+        crf: parentCrf(),
+        isReferencedAsParent: true,
+      )) {
+        await db.execute(s);
+      }
+      for (final s in childStatements()) {
+        await db.execute(s);
+      }
+      await db.insert('hh_info', {'uniqueid': 'hh-1', 'hhid': '100120001'});
+      await db.insert('hh_members', {
+        'uniqueid': 'm-1',
+        'hhid': '100120001',
+        'linenum': '1',
+        DbService.parentUniqueIdColumn: 'hh-1',
+      });
+
+      await db.update('hh_info', {'hhid': '100120009'},
+          where: 'uniqueid = ?', whereArgs: ['hh-1']);
+
+      // This is the point of the field: the business key moved, the join key
+      // did not, so an analysis joining on parent_uniqueid never noticed.
+      final member = (await db.query('hh_members')).single;
+      expect(member['hhid'], '100120009');
+      expect(member[DbService.parentUniqueIdColumn], 'hh-1');
     });
   });
 }

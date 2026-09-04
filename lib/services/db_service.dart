@@ -524,6 +524,12 @@ class DbService {
     }
   }
 
+  /// The child column holding its parent's immutable `uniqueid`.
+  ///
+  /// Kept here rather than imported from `AutoFields` so the schema layer has
+  /// no dependency on the answer layer; the two are asserted equal by test.
+  static const String parentUniqueIdColumn = 'parent_uniqueid';
+
   /// Splits a comma-separated `crfs` cell into trimmed, lowercased names.
   static List<String> _splitCrfsList(Object? cell) =>
       (cell?.toString() ?? '')
@@ -648,6 +654,24 @@ class DbService {
             'REFERENCES ${_quoteIdentifier(parentTable)} ($refCols) '
             'ON UPDATE CASCADE');
       }
+    }
+
+    // The second foreign key, and the one that cannot fail. `parent_uniqueid`
+    // holds the parent's UUID, so unlike the linking value it can never
+    // collide and never needs cascading -- the parent's own uniqueid is its
+    // PRIMARY KEY, and a UUID is not something an interviewer can retype.
+    //
+    // Two keys with two jobs: this one is the structural guarantee that a
+    // child belongs to a real parent, while the linkingfield key above exists
+    // purely to carry a correction to the human-readable business key.
+    //
+    // Declared only when SurveyGen actually wrote the column, which it does
+    // for exactly the forms that declare a parenttable.
+    if (parentTable.isNotEmpty &&
+        parentCrf != null &&
+        present.contains(parentUniqueIdColumn)) {
+      colDefs.add('FOREIGN KEY (${_quoteIdentifier(parentUniqueIdColumn)}) '
+          'REFERENCES ${_quoteIdentifier(parentTable)} (uniqueid)');
     }
 
     final statements = <String>[

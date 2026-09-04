@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auto_fields.dart';
 import '../services/db_service.dart';
 import 'survey_screen.dart';
 import '../services/survey_config_service.dart';
@@ -61,6 +62,18 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
   /// nothing rather than a number that is really a guess.
   bool _incrementReadFailed = false;
 
+  /// The parent record's immutable `uniqueid` per linking value.
+  ///
+  /// The linking value itself (an `hhid`) is built from typed answers, so an
+  /// interviewer correcting a mistyped household number changes it -- and the
+  /// foreign key's cascade then rewrites every child. The UUID cannot be
+  /// retyped, so it is the join key that cannot drift.
+  ///
+  /// The full parent rows were already being read here; they were just held
+  /// in a local that went out of scope, leaving `_onIdSelected` with nothing
+  /// but the selected id string.
+  final Map<String, String> _parentUniqueIdByLinkingValue = {};
+
   @override
   void initState() {
     super.initState();
@@ -96,6 +109,7 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
       // display_fields (e.g. the participant's name) next to each ID.
       final Map<String, Map<String, dynamic>> recordByValue = {};
       _subtitleByLinkingValue.clear();
+      _parentUniqueIdByLinkingValue.clear();
 
       // Parse the configured display fields (same format as record selector)
       final displayFields = widget.displayFields
@@ -137,6 +151,10 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
           if (uniqueIds.add(id)) {
             // First record wins for a given linking value
             recordByValue[id] = normalizedRecord;
+            final parentUniqueId = normalizedRecord['uniqueid']?.toString();
+            if (parentUniqueId != null && parentUniqueId.isNotEmpty) {
+              _parentUniqueIdByLinkingValue[id] = parentUniqueId;
+            }
           }
         }
       }
@@ -240,6 +258,22 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
     final Map<String, dynamic> prepopulatedAnswers = {
       widget.linkingField: selectedId,
     };
+
+    // The join key that no correction to a typed field can break. Carried the
+    // same way the linking value is, rather than computed in AutoFields: the
+    // registry's functions are synchronous and cannot query for the parent's
+    // row, and there is no need to -- the value is right here.
+    final parentUniqueId = _parentUniqueIdByLinkingValue[selectedId];
+    if (parentUniqueId != null) {
+      prepopulatedAnswers[AutoFields.parentUniqueIdField] = parentUniqueId;
+    } else {
+      // The parent row had no uniqueid, which should not happen -- every
+      // generated survey declares it. Log rather than block: the linking
+      // value is still correct, so the child is saveable and recoverable.
+      debugPrint('[ParentIdSelector] No uniqueid on parent '
+          '"${widget.parentTable}" for ${widget.linkingField}=$selectedId -- '
+          '${AutoFields.parentUniqueIdField} will be empty for this child.');
+    }
 
     // If there's an increment field, carry the next number through. Note that
     // `SurveyScreen._calculateLineNum` recomputes and overwrites this for a

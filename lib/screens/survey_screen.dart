@@ -521,6 +521,24 @@ class _SurveyScreenState extends State<SurveyScreen> {
     });
   }
 
+  /// This record's own `uniqueid`, to be carried into any child started from
+  /// here, or null if it is somehow not set.
+  ///
+  /// Null should not happen -- every generated survey declares `uniqueid`, and
+  /// `AutoFields` computes it before navigation reaches the end. Returning
+  /// null rather than an empty string keeps the distinction visible at the
+  /// call site instead of writing a blank join key.
+  String? _parentUniqueIdForChildren() {
+    final value = _answerFor('uniqueid')?.toString();
+    if (value == null || value.isEmpty) {
+      debugPrint('[SurveyScreen] No uniqueid on this record, so children '
+          'started from here will have an empty '
+          '${AutoFields.parentUniqueIdField}.');
+      return null;
+    }
+    return value;
+  }
+
   /// Reads an answer by field name, ignoring case.
   ///
   /// `_pkFields` are lowercased crfs values while `_answers` is keyed by the
@@ -1678,7 +1696,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
         MaterialPageRoute(
           builder: (context) => SurveyScreen(
             questionnaireFilename: '$childTableName.xml',
-            prepopulatedAnswers: {linkingField: linkingValue},
+            // This loop runs inside the parent's own screen, so `_answers`
+            // still holds the parent's record -- its `uniqueid` is the
+            // immutable join key the child carries alongside the linking
+            // value. Unlike the parent-ID selector, nothing has to be looked
+            // up for it.
+            prepopulatedAnswers: {
+              linkingField: linkingValue,
+              if (_parentUniqueIdForChildren() != null)
+                AutoFields.parentUniqueIdField: _parentUniqueIdForChildren()!,
+            },
             incrementField: crfConfig['incrementfield']?.toString(),
             repeatIndex: i,
             repeatTotal: repeatCount,
