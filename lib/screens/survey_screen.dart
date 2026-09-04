@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../widgets/question_views.dart';
+import '../services/answer_storage_service.dart';
 import '../services/answer_validation_service.dart';
 import '../services/child_increment_service.dart';
 import '../services/duplicate_key_service.dart';
@@ -244,101 +245,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
       copy[entry.key] = value is List ? List.from(value) : value;
     }
     return copy;
-  }
-
-  /// Check if answers have been modified compared to original
-  bool _hasChanges() {
-    if (_originalAnswers == null) return true; // New record, always has changes
-
-    // Compare each answer
-    for (final key in _answers.keys) {
-      // Ignore automatic fields that auto-update
-      if (key == 'lastmod' || key == 'swver' || key == 'survey_id') continue;
-
-      final newValue = _answers[key];
-      final oldValue = _originalAnswers![key];
-
-      // Handle different types
-      if (newValue is List && oldValue is List) {
-        if (newValue.length != oldValue.length) return true;
-        for (int i = 0; i < newValue.length; i++) {
-          if (newValue[i].toString() != oldValue[i].toString()) return true;
-        }
-      } else if (newValue is DateTime && oldValue is DateTime) {
-        if (newValue != oldValue) return true;
-      } else {
-        if (newValue.toString() != oldValue.toString()) {
-          final s1 = newValue.toString();
-          final s2 = oldValue.toString();
-
-          // Check if they are numeric equivalent (e.g. "04" vs "4")
-          final n1 = num.tryParse(s1);
-          final n2 = num.tryParse(s2);
-          if (n1 != null && n2 != null && n1 == n2) {
-            continue;
-          }
-
-          // Check if they are DateTime equivalent (e.g. "2025-12-09 11:22" vs "2025-12-09T11:22")
-          try {
-            final d1 = DateTime.tryParse(s1);
-            final d2 = DateTime.tryParse(s2);
-            if (d1 != null && d2 != null && d1.isAtSameMomentAs(d2)) {
-              continue; // Same moment in time
-            }
-          } catch (_) {}
-
-          return true;
-        }
-      }
-    }
-
-    // Check for removed answers
-    for (final key in _originalAnswers!.keys) {
-      if (!_answers.containsKey(key)) return true;
-    }
-
-    return false;
-  }
-
-  /// Clear answers for questions that were skipped (not visited)
-  /// This ensures data consistency when skip logic bypasses questions
-  /// For example: if sex changes from Female to Male, pregnancy questions should be cleared
-  void _clearSkippedAnswers(List<Question> questions) {
-    // Get all question field names that should collect data (not automatic/information)
-    final dataQuestions = questions
-        .where((q) =>
-            q.type != QuestionType.automatic &&
-            q.type != QuestionType.information)
-        .map((q) => q.fieldName)
-        .toSet();
-
-    // Also preserve primary key fields (they're skipped but shouldn't be cleared)
-    final primaryKeys =
-        widget.primaryKeyFields?.map((f) => f.toLowerCase()).toSet() ?? {};
-
-    // Find fields that have answers but were not visited (skipped)
-    final skippedFields = <String>[];
-    for (final fieldName in _answers.keys) {
-      // Check if this is a data question
-      if (!dataQuestions.contains(fieldName)) continue;
-
-      // Check if it's a primary key (don't clear these)
-      if (primaryKeys.contains(fieldName.toLowerCase())) continue;
-
-      // Check if it was visited
-      if (!_visitedFields.contains(fieldName)) {
-        skippedFields.add(fieldName);
-      }
-    }
-
-    // Clear the skipped fields
-    if (skippedFields.isNotEmpty) {
-      debugPrint(
-          'Clearing ${skippedFields.length} skipped fields: ${skippedFields.join(", ")}');
-      for (final field in skippedFields) {
-        _answers[field] = null;
-      }
-    }
   }
 
   /// Called whenever an answer changes
@@ -1147,14 +1053,19 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
     // Clear answers for any questions that were skipped due to skip logic
     // This ensures data consistency (e.g., clearing pregnancy data if sex changed to male)
-    _clearSkippedAnswers(questions);
+    AnswerStorageService.clearSkippedAnswers(
+      answers: _answers,
+      questions: questions,
+      visitedFields: _visitedFields,
+      primaryKeyFields: widget.primaryKeyFields,
+    );
 
     // Note: Primary key ID (hhid/subjid) is now generated in real-time
     // when the automatic question is processed, not here at save time
 
     // Check if there are any changes (for edit mode only)
     if (widget.uniqueId != null) {
-      if (!_hasChanges()) {
+      if (!AnswerStorageService.hasChanges(_answers, _originalAnswers)) {
         // No changes made, show dialog and return
         showDialog(
           context: context,
@@ -1217,34 +1128,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // Update lastmod timestamp only when actually saving
     AutoFields.touchLastMod(_answers);
 
-    // Create a deep copy for saving
-    // Values are saved as-is (padding preserved)
-    final answersToSave = Map<String, dynamic>.from(_answers);
-
-    if (_loadedQuestions != null) {
-      for (final q in _loadedQuestions!) {
-        final val = answersToSave[q.fieldName];
-        if (val == null) continue;
-
-        if (q.type == QuestionType.date) {
-          final valStr = val.toString();
-          try {
-            final dt = DateTime.tryParse(valStr);
-            if (dt != null) {
-              answersToSave[q.fieldName] = dt.toIso8601String().split('T')[0];
-            }
-          } catch (_) {}
-        } else if (q.type == QuestionType.datetime) {
-          final valStr = val.toString();
-          try {
-            final dt = DateTime.tryParse(valStr);
-            if (dt != null) {
-              answersToSave[q.fieldName] = dt.toIso8601String();
-            }
-          } catch (_) {}
-        }
-      }
-    }
+    final answersToSave =
+        AnswerStorageService.coerceForStorage(_answers, _loadedQuestions);
 
     bool saveSuccessful = false;
     String? errorMessage;
