@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../widgets/question_views.dart';
+import '../services/child_increment_service.dart';
 import '../services/db_service.dart';
 import '../services/auto_fields.dart';
 import '../config/app_config.dart';
@@ -151,9 +152,22 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
       }
 
-      // 5) Calculate linenum if needed (for new records only)
+      // 5) Calculate linenum if needed (for new records only).
+      //
+      // The new-record gate stays here rather than inside the service: it is
+      // about which screen the interviewer came through, not about counting,
+      // and editing a record must never renumber it.
       if (widget.existingAnswers == null) {
-        await _calculateLineNum(questions);
+        await ChildIncrementService.assign(
+          questions: questions,
+          answers: _answers,
+          surveyId: surveyId,
+          tableName: widget.questionnaireFilename
+              .toLowerCase()
+              .replaceAll('.xml', ''),
+          incrementField: widget.incrementField,
+          fallbackLinkingField: widget.linkingField,
+        );
       }
 
       return questions;
@@ -247,86 +261,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
       copy[entry.key] = value is List ? List.from(value) : value;
     }
     return copy;
-  }
-
-  /// Calculate auto-increment field for the current record based on primary key
-  Future<void> _calculateLineNum(List<Question> questions) async {
-    try {
-      // Check if an increment field is configured
-      if (widget.incrementField == null || widget.incrementField!.isEmpty) {
-        return; // No increment field configured
-      }
-
-      final incrementFieldName = widget.incrementField!;
-
-      // Check if this survey has the configured increment field
-      final hasIncrementField =
-          questions.any((q) => q.fieldName == incrementFieldName);
-      if (!hasIncrementField) {
-        return; // Configured increment field doesn't exist in this survey
-      }
-
-      // Get the table name
-      final tableName =
-          widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-
-      final surveyId = await SurveyConfigService().getActiveSurveyId();
-      if (surveyId == null) return;
-
-      // Children are grouped by the CRF's `linkingfield` -- the column that
-      // defines parentage and the one the foreign key is declared on. This
-      // used to read `crfs.primarykey`'s first field, which agreed with
-      // `linkingfield` only by luck: nothing constrains a dictionary to list
-      // the linking field first, and `primarykey = 'linenum,hhid'` would have
-      // grouped every child in the survey by linenum.
-      final crfConfig = await DbService.getCrfConfig(surveyId, tableName);
-      final linkingField =
-          crfConfig?['linkingfield']?.toString() ?? widget.linkingField;
-
-      if (linkingField == null || linkingField.isEmpty) {
-        // A form with an incrementfield but no linkingfield is a mis-authored
-        // dictionary: there is no column to group siblings by, so any number
-        // here is a guess. Issue the degraded value rather than 1, which is
-        // indistinguishable from a legitimate first child.
-        debugPrint('No linkingfield configured for $tableName -- issuing '
-            '$incrementFieldName=${DbService.degradedIncrementValue}');
-        _answers[incrementFieldName] =
-            DbService.degradedIncrementValue.toString();
-        return;
-      }
-
-      final linkingValue = _answers[linkingField];
-
-      if (linkingValue == null || linkingValue.toString().isEmpty) {
-        // Same reasoning: without the parent's key there is no sibling set to
-        // count, so 1 would be a guess dressed as a fact.
-        debugPrint('Linking field $linkingField not set -- issuing '
-            '$incrementFieldName=${DbService.degradedIncrementValue}');
-        _answers[incrementFieldName] =
-            DbService.degradedIncrementValue.toString();
-        return;
-      }
-
-      // Query the database for the next increment value
-      final nextValue = await DbService.getNextIncrementValue(
-        surveyId: surveyId,
-        tableName: tableName,
-        incrementField: incrementFieldName,
-        linkingField: linkingField,
-        linkingValue: linkingValue.toString(),
-      );
-
-      _answers[incrementFieldName] = nextValue.toString();
-      debugPrint(
-          'Calculated $incrementFieldName=$nextValue for $linkingField=$linkingValue');
-    } catch (e) {
-      if (widget.incrementField != null && widget.incrementField!.isNotEmpty) {
-        debugPrint('Error calculating ${widget.incrementField} -- issuing '
-            '${DbService.degradedIncrementValue}: $e');
-        _answers[widget.incrementField!] =
-            DbService.degradedIncrementValue.toString();
-      }
-    }
   }
 
   /// Check if answers have been modified compared to original
