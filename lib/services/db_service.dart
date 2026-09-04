@@ -552,11 +552,17 @@ class DbService {
   /// - **`uniqueid TEXT PRIMARY KEY`** on every table. This is the only one
   ///   that can never refuse a record -- it is a fresh v4 UUID -- and it is
   ///   what makes any other collision recoverable after the fact.
-  /// - **`UNIQUE(<primarykey>)`**, but *only* on a table some other form
-  ///   names as its `parenttable`. A foreign key requires its referenced
-  ///   columns to be unique, so uniqueness is declared exactly where a
-  ///   foreign key needs it and nowhere speculatively. A leaf child
-  ///   deliberately gets none: see the index below.
+  /// - **A `UNIQUE` per column set a child actually references.** A foreign
+  ///   key requires its referenced columns to be unique, so uniqueness is
+  ///   declared exactly where a foreign key needs it and nowhere
+  ///   speculatively. A leaf child gets none: see the index below.
+  ///
+  ///   Note this is *not* the same as `UNIQUE(primarykey)`. A real dictionary
+  ///   links `vaccination_status` to `enrollee` on `barcode` -- a scanned
+  ///   physical label -- while `enrollee` is keyed on `subjid`. Keying the
+  ///   constraint to the primary key would have left that child with no
+  ///   foreign key at all, so [referencedColumnSets] carries the sets the
+  ///   children genuinely use.
   /// - **`FOREIGN KEY (linkingfield) REFERENCES parenttable(...) ON UPDATE
   ///   CASCADE`**, so correcting a parent's key carries to its children
   ///   instead of splitting the household across two ids.
@@ -572,20 +578,22 @@ class DbService {
   /// research is the worse outcome. Duplicates are found with a report
   /// (`GROUP BY <link>, <inc> HAVING COUNT(*) > 1`), not by refusing a save.
   ///
-  /// **When the foreign key cannot be declared.** It needs the parent side
-  /// unique, so it is emitted only where the parent's `primarykey` column set
-  /// *equals* this table's `linkingfield` column set. A grandchild of
-  /// `sleeping_structure` (`primarykey = hhid,structurenum`) linking on
-  /// `hhid` alone does not qualify -- `hhid` is not unique there. Such a case
-  /// is created without the foreign key and logged; SurveyGen rejects it at
-  /// authoring time, which is where it belongs.
+  /// **When the foreign key cannot be declared.** Only when the linking
+  /// columns are missing from either side. A child that names a column its
+  /// parent does not have is created without the key and logged; SurveyGen
+  /// and the portal both reject that at authoring time, which is where it
+  /// belongs.
+  ///
+  /// [referencedColumnSets] is every distinct `linkingfield` column set that
+  /// some child of this table declares, plus this table's own `primarykey`
+  /// when it is a parent. Each becomes a `UNIQUE`.
   @visibleForTesting
   static List<String> buildSurveyTableStatements({
     required String tableName,
     required List<String> columnNames,
     Map<String, dynamic>? crf,
     Map<String, dynamic>? parentCrf,
-    bool isReferencedAsParent = false,
+    List<List<String>> referencedColumnSets = const [],
     void Function(String)? onSkippedConstraint,
   }) {
     final table = _quoteIdentifier(tableName);
@@ -607,26 +615,32 @@ class DbService {
       colDefs.add('synced_at DATETIME');
     }
 
-    final primaryKeyCols = _splitCrfsList(crf?['primarykey']);
     final linkingCols = _splitCrfsList(crf?['linkingfield']);
     final parentTable = crf?['parenttable']?.toString().trim() ?? '';
     final incrementField = crf?['incrementfield']?.toString().trim() ?? '';
 
-    // The parent-side uniqueness a foreign key needs, and only that.
-    if (isReferencedAsParent && primaryKeyCols.isNotEmpty) {
-      if (primaryKeyCols.every(present.contains)) {
-        colDefs.add(
-            'UNIQUE(${primaryKeyCols.map(_quoteIdentifier).join(', ')})');
+    // The parent-side uniqueness a foreign key needs, and only that. One
+    // UNIQUE per distinct column set some child references, deduped so a
+    // table referenced on its primary key does not get the same constraint
+    // twice.
+    final declaredUnique = <String>{};
+    for (final columns in referencedColumnSets) {
+      final cols = columns.map((c) => c.toLowerCase()).toList();
+      if (cols.isEmpty) continue;
+      final signature = cols.join(',');
+      if (!declaredUnique.add(signature)) continue;
+
+      if (cols.every(present.contains)) {
+        colDefs.add('UNIQUE(${cols.map(_quoteIdentifier).join(', ')})');
       } else {
         onSkippedConstraint?.call(
-            'Table "$tableName" is a parent but its primarykey '
-            '(${primaryKeyCols.join(',')}) names a column it does not have, '
-            'so no UNIQUE was declared and children cannot reference it.');
+            'Table "$tableName" is referenced on ($signature), but does not '
+            'have every one of those columns -- no UNIQUE was declared, so '
+            'children cannot reference it.');
       }
     }
 
     if (parentTable.isNotEmpty && linkingCols.isNotEmpty) {
-      final parentPkCols = _splitCrfsList(parentCrf?['primarykey']);
       if (parentCrf == null) {
         onSkippedConstraint?.call(
             'Table "$tableName" declares parenttable "$parentTable", which is '
@@ -636,22 +650,14 @@ class DbService {
             'Table "$tableName" declares linkingfield '
             '(${linkingCols.join(',')}) but does not have every one of those '
             'columns -- no foreign key declared.');
-      } else if (parentPkCols.toSet().length != linkingCols.toSet().length ||
-          !parentPkCols.toSet().containsAll(linkingCols)) {
-        // The FK-ability rule. Without this the REFERENCES clause names
-        // columns that carry no UNIQUE on the parent, and SQLite rejects
-        // every insert with "foreign key mismatch" rather than at CREATE.
-        onSkippedConstraint?.call(
-            'Table "$tableName" links on (${linkingCols.join(',')}) but its '
-            'parent "$parentTable" has primarykey '
-            '(${parentPkCols.join(',')}). A foreign key needs the parent side '
-            'unique, so those two sets must match -- no foreign key '
-            'declared.');
       } else {
+        // References the linking columns on the parent, which the parent
+        // declares UNIQUE via its own referencedColumnSets. They need not be
+        // the parent's primary key: enrollee is keyed on subjid but linked to
+        // on barcode.
         final cols = linkingCols.map(_quoteIdentifier).join(', ');
-        final refCols = parentPkCols.map(_quoteIdentifier).join(', ');
         colDefs.add('FOREIGN KEY ($cols) '
-            'REFERENCES ${_quoteIdentifier(parentTable)} ($refCols) '
+            'REFERENCES ${_quoteIdentifier(parentTable)} ($cols) '
             'ON UPDATE CASCADE');
       }
     }
@@ -761,6 +767,47 @@ BEGIN
 END''';
   }
 
+  /// Every column set that must be `UNIQUE` on [tableName] for its children's
+  /// foreign keys to be declarable.
+  ///
+  /// That is each distinct `linkingfield` set declared by a form naming
+  /// [tableName] as its `parenttable`, plus [tableName]'s own `primarykey`
+  /// when it has children at all -- the primary key is what `IdGenerator`'s
+  /// counter and the duplicate check both assume is unique.
+  ///
+  /// Keyed on what children *reference* rather than on the primary key
+  /// because the two are not always the same: AVERT links
+  /// `vaccination_status` to `enrollee` on `barcode`, a scanned physical
+  /// label, while `enrollee` is keyed on `subjid`. Declaring uniqueness only
+  /// over the primary key would have left that child with no foreign key.
+  @visibleForTesting
+  static List<List<String>> referencedColumnSetsFor(
+    String tableName,
+    Map<String, Map<String, dynamic>> crfsByTable,
+  ) {
+    final sets = <String, List<String>>{};
+
+    void add(List<String> cols) {
+      if (cols.isEmpty) return;
+      sets.putIfAbsent(cols.join(','), () => cols);
+    }
+
+    var hasChildren = false;
+    for (final other in crfsByTable.values) {
+      final parent =
+          other['parenttable']?.toString().trim().toLowerCase() ?? '';
+      if (parent != tableName.toLowerCase()) continue;
+      hasChildren = true;
+      add(_splitCrfsList(other['linkingfield']));
+    }
+
+    if (hasChildren) {
+      add(_splitCrfsList(crfsByTable[tableName.toLowerCase()]?['primarykey']));
+    }
+
+    return sets.values.toList();
+  }
+
   /// Orders [xmlFiles] so a form is created after its parent.
   ///
   /// SQLite resolves a foreign key's target lazily, so a child created first
@@ -842,16 +889,14 @@ END''';
         final crf = crfsByTable[tableName];
         final parentTable =
             crf?['parenttable']?.toString().trim().toLowerCase() ?? '';
-        final isReferencedAsParent = crfsByTable.values.any((other) =>
-            (other['parenttable']?.toString().trim().toLowerCase() ?? '') ==
-            tableName);
 
         final statements = buildSurveyTableStatements(
           tableName: tableName,
           columnNames: dataQuestions.map((q) => q.fieldName).toList(),
           crf: crf,
           parentCrf: parentTable.isEmpty ? null : crfsByTable[parentTable],
-          isReferencedAsParent: isReferencedAsParent,
+          referencedColumnSets:
+              referencedColumnSetsFor(tableName, crfsByTable),
           onSkippedConstraint: (message) =>
               _logError('[$surveyId] $message'),
         );

@@ -763,6 +763,11 @@ void main() {
       // the production route, and the pragma has to hold on that route.
       databaseFactory = databaseFactoryFfi;
       db = await DbService.openSurveyDatabaseForTesting(inMemoryDatabasePath);
+      // Production creates formchanges before any survey table
+      // (_syncDatabaseSchema step 1b, ahead of step 2) precisely because the
+      // cascade trigger writes into it. Mirrored here so the dependency is
+      // exercised rather than assumed.
+      await DbService.syncFormChangesTableForTesting('s1', db);
     });
 
     tearDown(() => db.close());
@@ -782,15 +787,11 @@ void main() {
         };
 
     Future<void> createSchema({void Function(String)? onSkipped}) async {
-      // The cascade trigger writes an audit row, so formchanges has to exist.
-      // _syncDatabaseSchema creates it before any survey table for exactly
-      // this reason.
-      await DbService.syncFormChangesTableForTesting('s1', db);
       for (final statement in DbService.buildSurveyTableStatements(
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid', 'nmembers'],
         crf: parentCrf(),
-        isReferencedAsParent: true,
+        referencedColumnSets: const [['hhid']],
         onSkippedConstraint: onSkipped,
       )) {
         await db.execute(statement);
@@ -986,40 +987,105 @@ void main() {
       expect((await db.query('formchanges')).length, 1);
     });
 
-    test('a foreign key is skipped when the parent key set does not match',
+    test('a foreign key is skipped when the parent has no such column',
         () async {
       final skipped = <String>[];
       await createSchema(onSkipped: skipped.add);
 
-      // A grandchild of hh_members linking on hhid alone. hh_members has
-      // primarykey (hhid, linenum), so hhid is not unique there and the
-      // foreign key cannot be declared -- SQLite would reject every insert
-      // with "foreign key mismatch" rather than failing at CREATE.
+      // A child naming a linking column its parent does not have. The
+      // REFERENCES clause would name a column that carries no UNIQUE, and
+      // SQLite would reject every insert with "foreign key mismatch" rather
+      // than failing at CREATE -- so it is omitted and logged. SurveyGen and
+      // the portal both reject this shape at authoring time.
       final statements = DbService.buildSurveyTableStatements(
         tableName: 'member_visits',
         columnNames: ['uniqueid', 'hhid', 'visitnum'],
         crf: {
           'tablename': 'member_visits',
           'primarykey': 'hhid,visitnum',
-          'linkingfield': 'hhid',
+          'linkingfield': 'hhid,linenum',
           'parenttable': 'hh_members',
         },
         parentCrf: childCrf(),
         onSkippedConstraint: skipped.add,
       );
 
-      expect(statements.first, isNot(contains('REFERENCES')));
+      expect(statements.first, isNot(contains('REFERENCES "hh_members"')));
       expect(skipped, hasLength(1));
-      expect(skipped.single, contains('foreign key needs the parent side'));
+      expect(skipped.single, contains('does not have every one of those'));
 
       // It is still created, and still usable -- the relationship is just not
-      // enforced. SurveyGen rejects this shape at authoring time.
+      // enforced.
       for (final statement in statements) {
         await db.execute(statement);
       }
       await db.insert('member_visits',
           {'uniqueid': 'v-1', 'hhid': 'no-such-parent', 'visitnum': '1'});
       expect((await db.query('member_visits')).length, 1);
+    });
+
+    test('a child may link on a column that is not the parent primary key',
+        () async {
+      // AVERT's real shape: vaccination_status links to enrollee on `barcode`
+      // (a scanned physical label) while enrollee is keyed on `subjid`.
+      // Keying the UNIQUE to the primary key would have left this child with
+      // no foreign key at all.
+      final enrolleeCrf = {
+        'tablename': 'enrollee',
+        'primarykey': 'subjid',
+        'linkingfield': 'barcode',
+      };
+      final vaccinationCrf = {
+        'tablename': 'vaccination_status',
+        'primarykey': 'barcode',
+        'linkingfield': 'barcode',
+        'parenttable': 'enrollee',
+      };
+      final crfs = {'enrollee': enrolleeCrf, 'vaccination_status': vaccinationCrf};
+
+      final parentSets =
+          DbService.referencedColumnSetsFor('enrollee', crfs);
+      expect(parentSets, containsAll([['barcode'], ['subjid']]));
+
+      for (final s in DbService.buildSurveyTableStatements(
+        tableName: 'enrollee',
+        columnNames: ['uniqueid', 'subjid', 'barcode'],
+        crf: enrolleeCrf,
+        referencedColumnSets: parentSets,
+      )) {
+        await db.execute(s);
+      }
+      for (final s in DbService.buildSurveyTableStatements(
+        tableName: 'vaccination_status',
+        columnNames: ['uniqueid', 'barcode'],
+        crf: vaccinationCrf,
+        parentCrf: enrolleeCrf,
+        referencedColumnSets:
+            DbService.referencedColumnSetsFor('vaccination_status', crfs),
+      )) {
+        await db.execute(s);
+      }
+
+      await db.insert('enrollee',
+          {'uniqueid': 'e-1', 'subjid': 'R21001', 'barcode': 'R21U-001-AB1C'});
+      await db.insert('vaccination_status',
+          {'uniqueid': 'v-1', 'barcode': 'R21U-001-AB1C'});
+
+      // The key is real: an unknown barcode is refused.
+      await expectLater(
+        () => db.insert('vaccination_status',
+            {'uniqueid': 'v-2', 'barcode': 'R21U-999-ZZ9Z'}),
+        throwsA(predicate(
+            (e) => e.toString().contains('FOREIGN KEY constraint failed'))),
+      );
+
+      // And correcting a mistyped barcode carries to the child.
+      await db.update('enrollee', {'barcode': 'R21U-002-AB1C'},
+          where: 'uniqueid = ?', whereArgs: ['e-1']);
+      expect(
+        (await db.query('vaccination_status')).single['barcode'],
+        'R21U-002-AB1C',
+      );
     });
 
     test('a leaf child carries no UNIQUE and no parent-side constraint',
@@ -1273,7 +1339,7 @@ void main() {
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid'],
         crf: parentCrf(),
-        isReferencedAsParent: true,
+        referencedColumnSets: const [['hhid']],
       )) {
         await db.execute(s);
       }
@@ -1300,7 +1366,7 @@ void main() {
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid'],
         crf: parentCrf(),
-        isReferencedAsParent: true,
+        referencedColumnSets: const [['hhid']],
       )) {
         await db.execute(s);
       }
