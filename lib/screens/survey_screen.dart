@@ -80,18 +80,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Set<String> _existingPrimaryKeys = {};
   List<String> _pkFields = [];
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
-
   String? _logicError; // Holds the current logic check error message
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   Future<List<Question>> _loadSurvey() async {
     try {
@@ -240,22 +229,22 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
     }
 
-    // Store a deep copy of the original answers for change detection
-    _originalAnswers = _deepCopyAnswers(_answers);
+    // The baseline every later change is measured against.
+    _originalAnswers = _snapshotAnswers(_answers);
   }
 
-  /// Create a deep copy of the answers map
-  AnswerMap _deepCopyAnswers(AnswerMap source) {
+  /// A copy of [source] that later edits to `_answers` cannot reach through.
+  ///
+  /// Not a deep copy, despite what this was called: only a `List` is copied,
+  /// because a checkbox answer is the one value a question view mutates in
+  /// place. Everything else stored in an answer map is immutable -- `String`,
+  /// `num`, `DateTime`, `null` -- so sharing the reference is safe and copying
+  /// it would achieve nothing.
+  AnswerMap _snapshotAnswers(AnswerMap source) {
     final copy = <String, dynamic>{};
     for (final entry in source.entries) {
       final value = entry.value;
-      if (value is List) {
-        copy[entry.key] = List.from(value);
-      } else if (value is DateTime) {
-        copy[entry.key] = value;
-      } else {
-        copy[entry.key] = value;
-      }
+      copy[entry.key] = value is List ? List.from(value) : value;
     }
     return copy;
   }
@@ -686,14 +675,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
         _logicError = LogicService.evaluateLogicChecks(nextQuestion, _answers);
       }
     });
-
-    // Show verification reminder for hhid_verif question
-    // if (nextIndex < qs.length) {
-    //   final nextQuestion = qs[nextIndex];
-    //   if (nextQuestion.fieldName.toLowerCase() == 'hhid_verif') {
-    //     await _showVerificationReminder('hhid');
-    //   }
-    // }
   }
 
   /// Check if a field name is a primary key field
@@ -2026,66 +2007,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
       ),
     );
   }
-
-  /// Show verification reminder dialog before user enters verification field
-  // Future<void> _showVerificationReminder(String fieldToVerify) async {
-  //   final value = _answers[fieldToVerify]?.toString();
-  //   if (value == null || value.isEmpty) return;
-
-  //   await showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (context) => AlertDialog(
-  //       title: Row(
-  //         children: [
-  //           Icon(Icons.info_outline, color: Theme.of(context).primaryColor),
-  //           const SizedBox(width: 8),
-  //           const Text('Please Verify'),
-  //         ],
-  //       ),
-  //       content: Column(
-  //         mainAxisSize: MainAxisSize.min,
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           Text(
-  //             'You entered the following value for ${fieldToVerify.toUpperCase()}:',
-  //             style: const TextStyle(fontWeight: FontWeight.w500),
-  //           ),
-  //           const SizedBox(height: 12),
-  //           Container(
-  //             padding: const EdgeInsets.all(12),
-  //             decoration: BoxDecoration(
-  //               color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
-  //               borderRadius: BorderRadius.circular(8),
-  //               border: Border.all(
-  //                 color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-  //               ),
-  //             ),
-  //             child: Text(
-  //               value,
-  //               style: TextStyle(
-  //                 fontSize: 20,
-  //                 fontWeight: FontWeight.bold,
-  //                 color: Theme.of(context).colorScheme.primary,
-  //               ),
-  //             ),
-  //           ),
-  //           const SizedBox(height: 12),
-  //           const Text(
-  //             'Please re-enter this value in the next field to verify.',
-  //             style: TextStyle(fontSize: 13),
-  //           ),
-  //         ],
-  //       ),
-  //       actions: [
-  //         FilledButton(
-  //           onPressed: () => Navigator.pop(context),
-  //           child: const Text('OK'),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
 
   /// Show save success dialog
   void _showSaveSuccessDialog(BuildContext context) {
