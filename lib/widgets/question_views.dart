@@ -705,9 +705,6 @@ class _QuestionViewState extends State<QuestionView> {
     // Use dynamic options if available, otherwise use static options
     final options = _dynamicOptions.isNotEmpty ? _dynamicOptions : q.options;
 
-    debugPrint(
-        '[QuestionView] Building radio for ${q.fieldName}: _radioSelection=$_radioSelection, options.length=${options.length}, _dynamicOptions.length=${_dynamicOptions.length}');
-
     // Show empty message if no options and config has empty message
     if (options.isEmpty && q.responseConfig?.emptyMessage != null) {
       return Column(
@@ -791,10 +788,6 @@ class _QuestionViewState extends State<QuestionView> {
   }
 
   Widget _buildCheckbox(Question q) {
-    // Debug: Log checkbox state
-    debugPrint(
-        'Building checkbox ${q.fieldName}, selection: $_checkboxSelection');
-
     // Use dynamic options if available, otherwise use static options
     final options = _dynamicOptions.isNotEmpty ? _dynamicOptions : q.options;
 
@@ -829,8 +822,6 @@ class _QuestionViewState extends State<QuestionView> {
         Column(
           children: options.map((opt) {
             final checked = _checkboxSelection.contains(opt.value);
-            debugPrint(
-                '  Option ${opt.value} (${opt.label}): checked=$checked');
 
             // Check if this is a special response option
             final isDontKnow =

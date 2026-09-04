@@ -452,10 +452,17 @@ void main() {
     });
 
     test('getExistingRecords still flattens a failure to no rows', () async {
-      // Kept deliberately: the five display call sites want this. It is only
-      // unsafe for code deriving an identifier, which now uses the method
-      // above -- reading increment 1 out of this empty list is what handed a
-      // second subject an already-enrolled ID.
+      // Kept deliberately: the display call sites want this. It is only
+      // unsafe for code deriving an identifier, which for the subject ID now
+      // uses the method above -- reading increment 1 out of this empty list is
+      // what handed a second subject an already-enrolled ID.
+      //
+      // Not "the five display call sites", which is what this said before and
+      // is wrong: parent_id_selector_screen._getNextIncrementNumber derives a
+      // child increment from getExistingRecords and so still takes the unsafe
+      // path. See the doc comment on getExistingRecords -- it belongs to the
+      // parent/child counter work, which has to decide which column groups a
+      // household's children before either implementation can be the one.
       expect(await DbService.getExistingRecords(unopened, 'enrollee'), isEmpty);
     });
 
@@ -525,6 +532,85 @@ void main() {
       // escaped and guessed at.
       expect(
         () => maxFor(field: 'subjid" --'),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+  });
+
+  group('nextIncrementValueIn', () {
+    // The child counter (linenum/netnum). It had no test at all, which is how
+    // it kept interpolating its three identifiers raw while the sibling
+    // subject-ID query above was quoting them.
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute('CREATE TABLE hh_members (hhid TEXT, linenum TEXT)');
+    });
+
+    tearDown(() => db.close());
+
+    Future<int> nextFor({
+      String table = 'hh_members',
+      String field = 'linenum',
+      String keyField = 'hhid',
+      String key = 'HH001',
+    }) =>
+        DbService.nextIncrementValueIn(
+          db,
+          tableName: table,
+          incrementField: field,
+          primaryKeyField: keyField,
+          primaryKeyValue: key,
+        );
+
+    test('is 1 for a parent with no children yet', () async {
+      expect(await nextFor(), 1);
+    });
+
+    test('counts only this parent\'s children', () async {
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '1'});
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '2'});
+      await db.insert('hh_members', {'hhid': 'HH002', 'linenum': '7'});
+
+      expect(await nextFor(), 3);
+    });
+
+    test('reads a value stored as an integer rather than text', () async {
+      await db.rawInsert(
+          'INSERT INTO hh_members (hhid, linenum) VALUES (?, ?)',
+          ['HH001', 4]);
+
+      expect(await nextFor(), 5);
+    });
+
+    test('is 1 for a table this survey does not have', () async {
+      expect(await nextFor(table: 'not_a_table'), 1);
+    });
+
+    test('refuses an increment column it cannot safely quote', () async {
+      expect(
+        () => nextFor(field: 'linenum" --'),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
+    test('refuses a table name it cannot safely quote', () async {
+      // _tableExists runs first and answers false for a name like this, so
+      // the guard is reached only for a table that does exist. Create one
+      // whose name carries a quote to prove the check is not skipped.
+      await db.execute('CREATE TABLE "odd""name" (hhid TEXT, linenum TEXT)');
+
+      expect(
+        () => nextFor(table: 'odd"name'),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
+    test('refuses a primary-key column it cannot safely quote', () async {
+      expect(
+        () => nextFor(keyField: 'hhid" --'),
         throwsA(isA<DatabaseException>()),
       );
     });

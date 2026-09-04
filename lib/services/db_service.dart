@@ -680,6 +680,22 @@ class DbService {
   /// where whole rows are genuinely needed) and handle `null` -- reading
   /// increment 1 out of a failure's empty list is what handed a second subject
   /// an already-enrolled ID.
+  ///
+  /// **That is a rule with a live violation, not a guarantee.** This comment
+  /// previously read as though every caller obeyed it.
+  /// `parent_id_selector_screen._getNextIncrementNumber` derives a child
+  /// increment straight from this method, so a failed read there becomes an
+  /// empty list, becomes increment 1, becomes a duplicate linenum inside one
+  /// household -- exactly the shape the paragraph above describes, still open.
+  ///
+  /// It is not fixed here on purpose. That screen and
+  /// [getNextIncrementValue] are two different implementations of the same
+  /// counter and they group a household's children by different columns
+  /// (`crfs.primarykey`'s first field versus `crfs.linkingfield`), so which
+  /// answer an interviewer gets depends only on which screen they came
+  /// through. Collapsing them needs a decision about which column is
+  /// authoritative, which is the parent/child integrity work's first
+  /// question, not something to settle in a comment.
   static Future<List<Map<String, dynamic>>> getExistingRecords(
       String surveyId, String tableName,
       {String? orderBy}) async {
@@ -912,22 +928,13 @@ class DbService {
   }) async {
     try {
       final db = await _getDbOrThrow(surveyId);
-      if (!await _tableExists(db, tableName)) return 1;
-
-      final results = await db.rawQuery(
-        'SELECT MAX(CAST($incrementField AS INTEGER)) as maxValue FROM $tableName WHERE $primaryKeyField = ?',
-        [primaryKeyValue],
+      return await nextIncrementValueIn(
+        db,
+        tableName: tableName,
+        incrementField: incrementField,
+        primaryKeyField: primaryKeyField,
+        primaryKeyValue: primaryKeyValue,
       );
-
-      if (results.isEmpty || results.first['maxValue'] == null) return 1;
-      final maxValue = results.first['maxValue'];
-      // Handle both int and string results
-      if (maxValue is int) {
-        return maxValue + 1;
-      } else if (maxValue is String) {
-        return (int.tryParse(maxValue) ?? 0) + 1;
-      }
-      return 1;
     } catch (e) {
       // Same shape of hazard as the subject-ID counter (see
       // IdGenerator._getNextIncrement): a failed read here restarts this
@@ -943,6 +950,48 @@ class DbService {
           'duplicate an existing $incrementField: $e');
       return 1;
     }
+  }
+
+  /// The next [incrementField] for one parent, run against an open [db].
+  ///
+  /// Split out for the same reason [maxIdIncrementIn] is: the query is the
+  /// part worth testing, and resolving a surveyId to a database is not
+  /// reachable from a test. Throws rather than returning a fallback -- the
+  /// caller owns the failure policy, and today that policy is
+  /// [getNextIncrementValue]'s logged `return 1`.
+  @visibleForTesting
+  static Future<int> nextIncrementValueIn(
+    Database db, {
+    required String tableName,
+    required String incrementField,
+    required String primaryKeyField,
+    required String primaryKeyValue,
+  }) async {
+    if (!await _tableExists(db, tableName)) return 1;
+
+    // All three identifiers come from a data dictionary's crfs sheet and
+    // cannot be bound as parameters, so they are quoted rather than
+    // interpolated raw -- the same treatment [maxIdIncrementIn] already gives
+    // the subject-ID query. This was the one place that bypassed the guard.
+    final column = _quoteIdentifier(incrementField);
+    final table = _quoteIdentifier(tableName);
+    final keyColumn = _quoteIdentifier(primaryKeyField);
+
+    final results = await db.rawQuery(
+      'SELECT MAX(CAST($column AS INTEGER)) as maxValue '
+      'FROM $table WHERE $keyColumn = ?',
+      [primaryKeyValue],
+    );
+
+    if (results.isEmpty || results.first['maxValue'] == null) return 1;
+    final maxValue = results.first['maxValue'];
+    // Handle both int and string results
+    if (maxValue is int) {
+      return maxValue + 1;
+    } else if (maxValue is String) {
+      return (int.tryParse(maxValue) ?? 0) + 1;
+    }
+    return 1;
   }
 
   static Future<void> updateInterview({
