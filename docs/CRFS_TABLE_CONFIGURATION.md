@@ -22,9 +22,107 @@ CREATE TABLE crfs (
 	auto_start_repeat INTEGER,
 	repeat_enforce_count INTEGER,
 	display_order INTEGER DEFAULT 0,
-	display_fields TEXT
+	display_fields TEXT,
+	entry_condition TEXT
 )
 ```
+
+The authoritative list is `DbService._crfsColumns`; a column named by a manifest but
+absent here is dropped with a log line rather than failing the survey.
+
+---
+
+## What the app now enforces from these fields
+
+Until recently every one of these columns was **metadata the app read**. Survey
+tables were created with every column a plain `TEXT` -- no `PRIMARY KEY`, no `UNIQUE`,
+no `FOREIGN KEY` -- and `PRAGMA foreign_keys` was never switched on, so nothing stopped
+an orphan child, two records sharing a key, or a corrected parent key leaving its
+children behind.
+
+Each survey table is now created with real constraints, driven by the cells below:
+
+| Constraint | Driven by | Why |
+|---|---|---|
+| `uniqueid TEXT PRIMARY KEY` | always | The only key that can never refuse a record -- it is a fresh UUID -- and what makes any other collision recoverable |
+| `UNIQUE(...)`, one per referenced column set | every distinct `linkingfield` its children declare, plus its own `primarykey` when it has children | A foreign key needs its referenced columns unique |
+| `FOREIGN KEY (linkingfield) REFERENCES parenttable(linkingfield) ON UPDATE CASCADE` | `parenttable` + `linkingfield` | Correcting a parent's key carries to its children |
+| `FOREIGN KEY (parent_uniqueid) REFERENCES parenttable(uniqueid)` | `parenttable` | A join key nothing can retype -- see below |
+| A plain index on `(linkingfield, incrementfield)` | `incrementfield` | Serves the child counter's `MAX` query |
+
+**Uniqueness follows what children reference, not the primary key.** These are not always
+the same: a real dictionary links `vaccination_status` to `enrollee` on `barcode` (a
+scanned physical label) while `enrollee` is keyed on `subjid`. Both get a `UNIQUE`.
+
+**The sibling index is deliberately not `UNIQUE`.** A duplicate `linenum` is a counter
+bug -- the interviewer never types it -- and every row carries a `uniqueid`, so a
+duplicate stays reconcilable. A `UNIQUE` there would make the save *fail*, and in field
+research a lost interview is worse than an identifier that has to be reconciled later.
+Find duplicates with a report instead:
+
+```sql
+SELECT hhid, linenum, COUNT(*) FROM hh_members GROUP BY hhid, linenum HAVING COUNT(*) > 1;
+```
+
+**A duplicate parent key is refused**, because there is no equivalent escape. With
+`incrementLength: 0` a key like `hhid` is a pure function of typed answers, so there is
+no spare digit to move -- and a duplicate means a second copy of a household that already
+exists, which is a data-entry error to catch at entry rather than a record to save under
+a mangled id. The app's real-time duplicate check now fires for `automatic` key fields
+too, so the interviewer is told while the components can still be corrected.
+
+**A cascade writes an audit row.** Updating a parent's key rewrites its children behind
+the app's back -- not through `updateInterview` -- so each child table carries an
+`AFTER UPDATE` trigger that clears `synced_at` and writes a `formchanges` row. Without
+it the device would be corrected while the server kept the old key forever.
+
+**When the foreign key is skipped.** If `linkingfield` names a column its parent does not
+have, the table is created without the key and the reason is logged. SurveyGen and the
+portal both reject that shape at authoring time, which is where it belongs -- they now
+check every field name a `crfs` row mentions, including that `linkingfield` exists on the
+**parent**, which nothing checked before.
+
+**The child counter groups siblings by `linkingfield`.** There used to be two
+implementations that disagreed -- one grouped by `primarykey`'s first field -- so which
+number an interviewer got depended on which screen they came through. Where a form has an
+`incrementfield`, SurveyGen warns if `primarykey` is not `linkingfield,incrementfield`,
+since anything else describes a different grouping than the one records are numbered by.
+If the counter cannot be read, the app writes **`0`** rather than `1`: the counter starts
+at 1, so `0` is a value no real record holds, where `1` was indistinguishable from a
+legitimate first child. `WHERE <incrementfield> = 0` finds every degraded row.
+
+**These constraints are declared only at `CREATE TABLE`.** SQLite has no
+`ALTER TABLE ... ADD CONSTRAINT`, and `_syncSurveyTable` adds columns but never
+constraints -- so a device that already created a table keeps it unconstrained. Clearing
+the `databases/` folder is how a development device picks up the new schema. Once a
+survey is deployed this stops being possible, which is why the schema was settled before
+anything shipped.
+
+---
+
+## `parent_uniqueid` -- the join key that cannot drift
+
+**Written by `DataKollecta-SurveyGen`, onto every form that declares a `parenttable`.**
+Do not declare a row for it; like `uniqueid` and `swver` it is a reserved system variable,
+and a declared row is dropped with a warning.
+
+`hhid` stays the human-readable business key, but it is built from typed answers -- so an
+interviewer correcting a mistyped household number changes it, and anything joining on it
+has to survive that. `parent_uniqueid` holds the parent record's `uniqueid` instead. A
+UUID cannot be retyped, so a join on it cannot drift.
+
+Base forms do not get the column: a base form has nothing to point at, and a null join
+key is worse than none, because analysis would fall back to the business key anyway.
+
+The app fills it in when it creates the child, from the parent's own record -- the same
+channel that already carries the linking value. Nothing on the server side changed: the
+whole row is uploaded as schema-free JSONB.
+
+Contrast with the five computed variables further down (`yyyy`/`yy`/`mm`/`dd`/`doy`),
+which a dictionary *must* declare. The only reason those need declaring is **position** --
+one may have to sit immediately before the `idconfig` field that consumes it, which the
+generator cannot infer. Nothing consumes `parent_uniqueid`, so it has no position to get
+right, and generating it means forgetting a row cannot silently lose the join key.
 
 ---
 
@@ -60,7 +158,7 @@ CREATE TABLE crfs (
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `repeat_count_field` | TEXT | Field in parent table containing the repeat count | `num_people`, `num_nets` |
-| `repeat_count_source` | TEXT | Table to read the repeat count from | `household` |
+| ~~`repeat_count_source`~~ | -- | **Does not exist.** Not in the `crfs` worksheet's column list, not in the app's `crfs` table. Pre-existing documentation drift, recorded here rather than silently removed from the examples below. The count is always read from `parenttable`. | -- |
 | `auto_start_repeat` | INTEGER | `0`=disabled, `1`=prompt user, `2`=force auto-start | `1` (prompt) |
 | `repeat_enforce_count` | INTEGER | `0`=flexible, `1`=warn on mismatch, `2`=force complete, `3`=auto-sync. Never writes a count outside the count question's `LowerRange`/`UpperRange`. | `1` (warn) |
 
