@@ -7,6 +7,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 6.6.1 resolved; 7.0.1 available. Parses every survey form, so an
+  # upgrade needs a full pass over survey_loader.dart against real
+  # dictionaries. No attempt made -- not known to be broken.
   xml: ^6.5.0
   uuid: ^4.5.1
   path: ^1.9.0
@@ -15,13 +18,28 @@ dependencies:
   # for desktop (Windows) – sqflite on FFI
   sqflite_common_ffi: ^2.3.2
   crypto: ^3.0.3
+  # 9.2.4 resolved; 11.0.0 available. Holds the sync credentials and
+  # tokens, and 10.x changed the Android backend, which is the platform
+  # where SettingsService already has to recover from a stale Keystore
+  # master key (see its _read). No attempt made.
   flutter_secure_storage: ^9.2.2
+  # 6.0.0 resolved; 8.0.0 available. Only used to parse the response
+  # lookup CSVs; DbService.importCsvContent has its own tests covering
+  # quoted commas and escaped quotes, so an upgrade is testable. No
+  # attempt made.
   csv: ^6.0.0
   archive: ^3.6.1
+  # 1.0.1 resolved; 3.0.0 available. GiSTX-only (FTP sync), and the reason
+  # `intl` below is held at 0.17.0 -- so a DataKollecta build carries an old
+  # intl for a dependency it never calls. Upgrading would free intl, but it
+  # rewrites the FTP transport that Uganda and Burkina Faso both run on. The
+  # one genuinely open pin here; worth knowing, not worth doing casually.
   ftpconnect: ^1.0.0
   # Pinned: a later release rewrote the SSH transport's internals and made
   # SFTP downloads hang indefinitely. See ChangeLog 1.0.4.
   dartssh2: 2.18.0
+  # 8.3.1 resolved; 10.2.1 available. Supplies the version string shown
+  # in Settings and written to swver on every record. No attempt made.
   package_info_plus: ^8.0.0
   shared_preferences: ^2.3.2
   http: ^1.2.0
@@ -30,6 +48,11 @@ dependencies:
   # ever changes. Pinned to what ftpconnect already forces (^0.17.0) rather
   # than a newer intl, so this doesn't become the thing that breaks FTP.
   intl: ^0.17.0
+  # 10.1.2 resolved; 13.2.0 available. Three majors behind. DeviceIdentity
+  # depends on it for a stable device_id per platform, and that id is
+  # already recorded against collected data -- so an upgrade that changed
+  # what it reports would split one device's records in two. Verify
+  # device_id is unchanged on every platform before moving. No attempt made.
   device_info_plus: ^10.1.0
 
 dev_dependencies:
