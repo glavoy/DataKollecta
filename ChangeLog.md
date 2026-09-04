@@ -117,6 +117,27 @@
   portal has now answered differently, so the manual checklist it prescribes is a machine check
   for DataKollecta. Its citation of `_syncSurveyTable()` at "lines 379-452" was also stale.
 
+- **A throttled login is now understood as a throttle, not as a retryable transfer error.** The
+  server returns HTTP 429 when a username has been locked out after ten failed attempts, and the
+  app had no case for it: an unrecognised status fell through to
+  `SyncTransferException('Login failed (429)')`, which the sync run treats as worth **retrying**.
+  Retrying a lockout extends it and loads the endpoint that just asked the device to stop.
+
+  A new `SyncThrottledException` joins the sealed family rather than reusing either existing
+  type, because both would lose something concrete. `SyncAuthException` stops the run correctly
+  but the sync screen maps it to fixed "invalid credentials" copy, which would discard the wait
+  time -- the only part of a throttle response an interviewer can act on. So the throttle carries
+  the server's wording verbatim to the screen and stops rather than retries, and
+  `RecordUploader` reports `UploadStopReason.throttled` with its own sentence: folded into the
+  failure count it would read as data loss, when nothing is wrong with the records.
+
+  `postSync` maps 429 the same way even though `app-sync` does not throttle today, so a 429 from
+  a gateway or a future per-device limit cannot be retried. The 413 batch cap deliberately stays
+  retryable -- that one is the client's own fault and a smaller batch is a sensible retry.
+
+  This shipped **before** the server switched from 401 to 429, on purpose: reversed, there would
+  be a window where a build in the field meets a status it mishandles.
+
 - **The subject-ID counter is one SQL aggregate instead of a whole-table read.** Generating an
   ID used to call `getExistingRecords`, which materialises every row and lowercases every key
   of every row, to compute `MAX` of one column in Dart. On a table with 20,000 records that is
