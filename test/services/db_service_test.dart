@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-// `DatabaseException` is declared by both sqflite_common and db_service.dart;
-// this file wants the latter, which is what _quoteIdentifier throws.
+// `DatabaseException` is declared by both sqflite_common and this project;
+// this file wants the latter, which is what
+// `SurveyTableSchema.quoteIdentifier` throws. It now lives in
+// database_exception.dart and is re-exported by db_service.dart.
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
 import 'package:datakollecta/services/auto_fields.dart';
 import 'package:datakollecta/services/db_service.dart';
+import 'package:datakollecta/services/survey_table_schema.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -787,7 +790,7 @@ void main() {
         };
 
     Future<void> createSchema({void Function(String)? onSkipped}) async {
-      for (final statement in DbService.buildSurveyTableStatements(
+      for (final statement in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid', 'nmembers'],
         crf: parentCrf(),
@@ -796,14 +799,14 @@ void main() {
       )) {
         await db.execute(statement);
       }
-      for (final statement in DbService.buildSurveyTableStatements(
+      for (final statement in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'hh_members',
         columnNames: [
           'uniqueid',
           'hhid',
           'linenum',
           'membername',
-          DbService.parentUniqueIdColumn,
+          SurveyTableSchema.parentUniqueIdColumn,
         ],
         crf: childCrf(),
         parentCrf: parentCrf(),
@@ -823,7 +826,7 @@ void main() {
           'uniqueid': uniqueId,
           'hhid': hhid,
           'linenum': linenum,
-          DbService.parentUniqueIdColumn: parentUniqueId,
+          SurveyTableSchema.parentUniqueIdColumn: parentUniqueId,
         });
 
     test('the production open path enforces foreign keys', () async {
@@ -997,7 +1000,7 @@ void main() {
       // SQLite would reject every insert with "foreign key mismatch" rather
       // than failing at CREATE -- so it is omitted and logged. SurveyGen and
       // the portal both reject this shape at authoring time.
-      final statements = DbService.buildSurveyTableStatements(
+      final statements = SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'member_visits',
         columnNames: ['uniqueid', 'hhid', 'visitnum'],
         crf: {
@@ -1044,10 +1047,10 @@ void main() {
       final crfs = {'enrollee': enrolleeCrf, 'vaccination_status': vaccinationCrf};
 
       final parentSets =
-          DbService.referencedColumnSetsFor('enrollee', crfs);
+          SurveyTableSchema.referencedColumnSetsFor('enrollee', crfs);
       expect(parentSets, containsAll([['barcode'], ['subjid']]));
 
-      for (final s in DbService.buildSurveyTableStatements(
+      for (final s in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'enrollee',
         columnNames: ['uniqueid', 'subjid', 'barcode'],
         crf: enrolleeCrf,
@@ -1055,13 +1058,13 @@ void main() {
       )) {
         await db.execute(s);
       }
-      for (final s in DbService.buildSurveyTableStatements(
+      for (final s in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'vaccination_status',
         columnNames: ['uniqueid', 'barcode'],
         crf: vaccinationCrf,
         parentCrf: enrolleeCrf,
         referencedColumnSets:
-            DbService.referencedColumnSetsFor('vaccination_status', crfs),
+            SurveyTableSchema.referencedColumnSetsFor('vaccination_status', crfs),
       )) {
         await db.execute(s);
       }
@@ -1090,7 +1093,7 @@ void main() {
 
     test('a leaf child carries no UNIQUE and no parent-side constraint',
         () async {
-      final statements = DbService.buildSurveyTableStatements(
+      final statements = SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'hh_members',
         columnNames: ['uniqueid', 'hhid', 'linenum'],
         crf: childCrf(),
@@ -1117,7 +1120,7 @@ void main() {
         };
 
     test('creates a form after its parent', () {
-      final ordered = DbService.orderByParentFirst(
+      final ordered = SurveyTableSchema.orderByParentFirst(
         ['visits.xml', 'hh_members.xml', 'hh_info.xml'],
         crfs(),
       );
@@ -1129,7 +1132,7 @@ void main() {
     });
 
     test('keeps a form whose parent is not in this survey', () {
-      final ordered = DbService.orderByParentFirst(
+      final ordered = SurveyTableSchema.orderByParentFirst(
         ['orphan.xml'],
         {
           'orphan': {'tablename': 'orphan', 'parenttable': 'not_here'}
@@ -1140,7 +1143,7 @@ void main() {
     });
 
     test('does not loop on a cycle', () {
-      final ordered = DbService.orderByParentFirst(
+      final ordered = SurveyTableSchema.orderByParentFirst(
         ['a.xml', 'b.xml'],
         {
           'a': {'tablename': 'a', 'parenttable': 'b'},
@@ -1289,10 +1292,10 @@ void main() {
         };
 
     List<String> childStatements({List<String>? columns}) =>
-        DbService.buildSurveyTableStatements(
+        SurveyTableSchema.buildSurveyTableStatements(
           tableName: 'hh_members',
           columnNames: columns ??
-              ['uniqueid', 'hhid', 'linenum', DbService.parentUniqueIdColumn],
+              ['uniqueid', 'hhid', 'linenum', SurveyTableSchema.parentUniqueIdColumn],
           crf: childCrf(),
           parentCrf: parentCrf(),
         );
@@ -1301,8 +1304,8 @@ void main() {
       // Two constants rather than one import, so the schema layer does not
       // depend on the answer layer -- which makes this assertion the thing
       // keeping them in step.
-      expect(DbService.parentUniqueIdColumn, AutoFields.parentUniqueIdField);
-      expect(DbService.parentUniqueIdColumn, 'parent_uniqueid');
+      expect(SurveyTableSchema.parentUniqueIdColumn, AutoFields.parentUniqueIdField);
+      expect(SurveyTableSchema.parentUniqueIdColumn, 'parent_uniqueid');
     });
 
     test('a child gets a second foreign key, on the immutable key', () {
@@ -1335,7 +1338,7 @@ void main() {
     });
 
     test('a child pointing at no real parent record is refused', () async {
-      for (final s in DbService.buildSurveyTableStatements(
+      for (final s in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid'],
         crf: parentCrf(),
@@ -1353,7 +1356,7 @@ void main() {
           'uniqueid': 'm-1',
           'hhid': '100120001',
           'linenum': '1',
-          DbService.parentUniqueIdColumn: 'not-a-real-uuid',
+          SurveyTableSchema.parentUniqueIdColumn: 'not-a-real-uuid',
         }),
         throwsA(predicate(
             (e) => e.toString().contains('FOREIGN KEY constraint failed'))),
@@ -1362,7 +1365,7 @@ void main() {
 
     test('correcting the business key leaves the join key untouched',
         () async {
-      for (final s in DbService.buildSurveyTableStatements(
+      for (final s in SurveyTableSchema.buildSurveyTableStatements(
         tableName: 'hh_info',
         columnNames: ['uniqueid', 'hhid'],
         crf: parentCrf(),
@@ -1378,7 +1381,7 @@ void main() {
         'uniqueid': 'm-1',
         'hhid': '100120001',
         'linenum': '1',
-        DbService.parentUniqueIdColumn: 'hh-1',
+        SurveyTableSchema.parentUniqueIdColumn: 'hh-1',
       });
 
       await db.update('hh_info', {'hhid': '100120009'},
@@ -1388,7 +1391,7 @@ void main() {
       // did not, so an analysis joining on parent_uniqueid never noticed.
       final member = (await db.query('hh_members')).single;
       expect(member['hhid'], '100120009');
-      expect(member[DbService.parentUniqueIdColumn], 'hh-1');
+      expect(member[SurveyTableSchema.parentUniqueIdColumn], 'hh-1');
     });
   });
 }
