@@ -6,7 +6,96 @@
 
 ## [UNRELEASED] - TBD
 
+### Changed
+- **The parent/child relationship is now a constraint the database enforces, not a convention
+  the app remembers.** Survey tables were created with every column a plain `TEXT` — no
+  `PRIMARY KEY`, no `UNIQUE`, no `FOREIGN KEY` — and `PRAGMA foreign_keys` was never switched
+  on anywhere in the app. So nothing stopped an orphan child, two households sharing an `hhid`,
+  or a corrected parent key leaving its children behind. That last one needed no bug at all:
+  `hhnum` is typed, so in edit mode the app regenerates `hhid`, and the members already entered
+  kept the old one — the household split across two ids, and the next member added got
+  `linenum` 1 alongside members 1-5.
+
+  Each table is now created with `uniqueid TEXT PRIMARY KEY`, a `UNIQUE` over every column set
+  its children reference, `FOREIGN KEY (linkingfield) REFERENCES parent(...) ON UPDATE CASCADE`
+  so a correction carries, and a second `FOREIGN KEY (parent_uniqueid) REFERENCES
+  parent(uniqueid)`. Uniqueness follows what children *reference* rather than the primary key,
+  because the two are not always the same — one real dictionary links a child on `barcode`
+  while its parent is keyed on `subjid`.
+
+  A cascade rewrites children behind the app's back — it never goes through
+  `updateInterview` — so each child table also carries an `AFTER UPDATE` trigger that clears
+  `synced_at` and writes a `formchanges` row. Without it the device would be corrected while
+  the server kept the old key forever: a silent desync, arguably worse than the orphaning.
+
+  **These are declared only at `CREATE TABLE`.** SQLite has no `ALTER TABLE ADD CONSTRAINT`,
+  so a device that already created a table keeps it unconstrained — clear the `databases/`
+  folder to pick up the new schema. Nothing is deployed, which is the only reason this was
+  free; once a survey ships it stops being possible.
+
+- **Every child record now carries its parent's `uniqueid`.** `hhid` stays the
+  human-readable business key, but it is built from typed answers, so anything joining on it
+  depends on a value an interviewer can edit. `parent_uniqueid` — written by
+  `DataKollecta-SurveyGen` onto every form that declares a `parenttable` — holds the parent's
+  UUID instead, which cannot be retyped and so cannot drift. No wire, Edge Function or Postgres
+  change: the whole row already uploads as schema-free JSONB.
+
+- **The sibling ordinal (`linenum`/`netnum`) deliberately carries no `UNIQUE`.** A duplicate is
+  a counter bug the interviewer never typed, and every row carries a `uniqueid`, so it stays
+  reconcilable — whereas a `UNIQUE` would make the insert *fail*, and in field research a lost
+  interview is worse than an identifier reconciled later. Duplicates are found with a report
+  (`GROUP BY <link>, <inc> HAVING COUNT(*) > 1`). A duplicate *parent* key is refused, because
+  there is no equivalent escape: with `incrementLength: 0` there is no spare digit to move, and
+  a duplicate means a second copy of a household that already exists.
+
 ### Fixed
+- **The child increment counter had two implementations that disagreed.**
+  `survey_screen._calculateLineNum` grouped a household's children by `crfs.primarykey`'s
+  *first* field via a `SELECT MAX`, while `parent_id_selector_screen._getNextIncrementNumber`
+  grouped by `crfs.linkingfield` after reading the whole child table into Dart. Which number an
+  interviewer got depended only on which screen they came through; in current dictionaries the
+  two agree by luck. `linkingfield` is now authoritative — it defines parentage and is what the
+  foreign key is declared on — and there is one implementation.
+
+  The selector's counter was also dead as far as stored data goes: `_calculateLineNum` runs
+  after prepopulated answers are merged and assigns unconditionally, so it always overwrote it.
+  Its number only ever reached the "Next linenum: N" subtitle, which could therefore disagree
+  with what was saved. That subtitle now comes from one grouped query instead of a
+  `FutureBuilder` built inside `build()`, which launched a full-table read per visible row per
+  rebuild — including on every keystroke in the search box.
+
+- **A failed counter read now writes `0` instead of `1`.** The counter starts at 1, so `0` is a
+  value no legitimate record holds and `WHERE linenum = 0` finds every degraded row, where `1`
+  was indistinguishable from a legitimate first child and so left no trace. Unlike the
+  subject-ID sentinel this is a flat constant, not a reserved band: `idconfig.incrementLength`
+  sizes a primary key's suffix and says nothing about how many children a parent may have.
+  `0` also needs no exclusion from the counter's `MAX`, so one failed read cannot poison a
+  parent's sequence.
+
+- **Editing a record could regenerate its own primary keys.** `RecordSelectorScreen` did not
+  pass `linkingField` or `incrementField` to `SurveyScreen`, and two of the clauses deciding
+  whether a field is an ID to generate are comparisons against exactly those — while
+  `SurveyNavigationService` routes hidden primary keys through that path *precisely in edit
+  mode*. With both null, every primary-key field of a record being edited reached
+  `IdGenerator`, so reopening a child record could renumber its `linenum`. The comparison was
+  also case-sensitive against a hand-typed worksheet cell; it is now case-insensitive, and the
+  predicate moved to `SurveyNavigationService.isGeneratedIdField` where it can be tested.
+
+- **The real-time duplicate-key check could not fire for the survey it matters most to.** It
+  was only consulted from `_onAnswerChanged`, which runs for the question the interviewer is
+  currently on — and where both halves of a composite key are `type='automatic'` with no
+  `<calculation>`, neither ever renders, so the check had never once fired. It now also runs
+  where the key is computed. Separately, `getPrimaryKeyFields` returned the worksheet's case
+  verbatim while `getAllPrimaryKeys` returned SQLite's, so a sheet saying `HHID` made every
+  comparison miss and every record collapse to the same empty signature; both now lowercase.
+
+- **A failed record count could be written onto the parent as `0`.** `getRecordCount` reported
+  a read failure as `0`, and mode-3 reconciliation writes that number — so a failure could set
+  `nmembers = 0` on a household with five members. The only thing preventing it was the count
+  question happening to declare `minvalue='1'`; a dictionary omitting its `numeric_check` had
+  no protection. There is now `tryGetRecordCount` with the same null-means-failure contract
+  `tryGetMaxIdIncrement` carries, and reconciliation declines to write when the count is
+  unknown. Its table name also goes through the identifier guard; it was interpolated raw.
 - **A subject ID generated while the database could not be read is now identifiable instead of
   a silent duplicate.** `DbService.getExistingRecords` reports every failure as an empty list,
   and `IdGenerator` read that as "this table holds no records" — so a locked, corrupt or
