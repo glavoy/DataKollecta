@@ -16,9 +16,7 @@ class QuestionView extends StatefulWidget {
   final AnswerMap answers; // shared map so we can restore / persist answers
   final void Function(String fieldName, dynamic oldValue, dynamic newValue)?
       onAnswerChanged;
-  final VoidCallback? onRequestNext; // ask parent to navigate to next question
   final bool isEditMode; // Whether we're editing an existing record
-  final String? logicError; // The logic check error message to display
   final CsvDataService csvDataService;
   final String surveyId;
 
@@ -27,9 +25,7 @@ class QuestionView extends StatefulWidget {
     required this.question,
     required this.answers,
     this.onAnswerChanged,
-    this.onRequestNext,
     this.isEditMode = false,
-    this.logicError,
     required this.csvDataService,
     required this.surveyId,
   });
@@ -47,8 +43,6 @@ class _QuestionViewState extends State<QuestionView> {
   DateTime? _selectedDate;
   DateTime? _selectedDateTime;
   List<QuestionOption> _dynamicOptions = [];
-  final ScrollController _radioScrollController = ScrollController();
-  final ScrollController _checkboxScrollController = ScrollController();
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
 
@@ -319,8 +313,6 @@ class _QuestionViewState extends State<QuestionView> {
   void dispose() {
     _textFocusNode.dispose();
     _textController.dispose();
-    _radioScrollController.dispose();
-    _checkboxScrollController.dispose();
     super.dispose();
   }
 

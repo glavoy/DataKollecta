@@ -1224,9 +1224,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                                         (fieldName, oldVal, newVal) =>
                                             _onAnswerChanged(
                                                 fieldName, oldVal, newVal),
-                                    onRequestNext: () => _next(questions),
                                     isEditMode: widget.uniqueId != null,
-                                    logicError: _logicError,
                                     csvDataService: _csvDataService,
                                     surveyId: _activeSurveyId ?? '',
                                   ),
