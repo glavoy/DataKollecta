@@ -744,4 +744,332 @@ void main() {
       );
     });
   });
+
+  group('survey table constraints', () {
+    // The parent/child relationship the crfs worksheet declares used to exist
+    // only as metadata the app remembered: every column was a bare TEXT with
+    // no PRIMARY KEY, no UNIQUE and no FOREIGN KEY, and PRAGMA foreign_keys
+    // was never set anywhere in the repo. These tests are the evidence the
+    // constraints are real rather than decorative -- which is why they insert
+    // rows instead of asserting that a CREATE TABLE string contains the word
+    // REFERENCES.
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      // What DbService.init() does on desktop. Assigning the global factory
+      // rather than calling databaseFactoryFfi directly is deliberate: it is
+      // the production route, and the pragma has to hold on that route.
+      databaseFactory = databaseFactoryFfi;
+      db = await DbService.openSurveyDatabaseForTesting(inMemoryDatabasePath);
+    });
+
+    tearDown(() => db.close());
+
+    Map<String, dynamic> parentCrf() => {
+          'tablename': 'hh_info',
+          'primarykey': 'hhid',
+          'linkingfield': 'hhid',
+        };
+
+    Map<String, dynamic> childCrf() => {
+          'tablename': 'hh_members',
+          'primarykey': 'hhid,linenum',
+          'linkingfield': 'hhid',
+          'parenttable': 'hh_info',
+          'incrementfield': 'linenum',
+        };
+
+    Future<void> createSchema({void Function(String)? onSkipped}) async {
+      // The cascade trigger writes an audit row, so formchanges has to exist.
+      // _syncDatabaseSchema creates it before any survey table for exactly
+      // this reason.
+      await DbService.syncFormChangesTableForTesting('s1', db);
+      for (final statement in DbService.buildSurveyTableStatements(
+        tableName: 'hh_info',
+        columnNames: ['uniqueid', 'hhid', 'nmembers'],
+        crf: parentCrf(),
+        isReferencedAsParent: true,
+        onSkippedConstraint: onSkipped,
+      )) {
+        await db.execute(statement);
+      }
+      for (final statement in DbService.buildSurveyTableStatements(
+        tableName: 'hh_members',
+        columnNames: ['uniqueid', 'hhid', 'linenum', 'membername'],
+        crf: childCrf(),
+        parentCrf: parentCrf(),
+        onSkippedConstraint: onSkipped,
+      )) {
+        await db.execute(statement);
+      }
+    }
+
+    Future<void> addHousehold(String uniqueId, String hhid) =>
+        db.insert('hh_info', {'uniqueid': uniqueId, 'hhid': hhid});
+
+    Future<void> addMember(String uniqueId, String hhid, String linenum) =>
+        db.insert('hh_members',
+            {'uniqueid': uniqueId, 'hhid': hhid, 'linenum': linenum});
+
+    test('the production open path enforces foreign keys', () async {
+      // PRAGMA foreign_keys defaults to off, is per-connection, and is not
+      // persisted in the file -- so this is the single thing standing between
+      // "we have foreign keys" and "we believe we have foreign keys".
+      final result = await db.rawQuery('PRAGMA foreign_keys');
+      expect(result.first.values.first, 1);
+    });
+
+    test('a child whose parent does not exist is refused', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+
+      // Matching the message, not just "it threw": the point of the test is
+      // that the foreign key is the thing refusing it.
+      await expectLater(
+        () => addMember('m-1', '999999999', '1'),
+        throwsA(predicate(
+            (e) => e.toString().contains('FOREIGN KEY constraint failed'))),
+      );
+    });
+
+    test('a second household claiming the same hhid is refused', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+
+      // Refusing here is deliberate. hh_info declares incrementLength: 0, so
+      // hhid is a pure function of the interviewer's typed answers and there
+      // is no spare digit to move -- a duplicate means a second copy of a
+      // household that already exists, and saving it under a mangled id would
+      // manufacture a phantom household rather than preserve a record.
+      await expectLater(
+        () => addHousehold('hh-2', '100120001'),
+        throwsA(predicate((e) =>
+            e.toString().contains('UNIQUE constraint failed: hh_info.hhid'))),
+      );
+    });
+
+    test('two rows cannot share a uniqueid', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+
+      await expectLater(
+        () => addHousehold('hh-1', '100120002'),
+        throwsA(predicate((e) => e
+            .toString()
+            .contains('UNIQUE constraint failed: hh_info.uniqueid'))),
+      );
+    });
+
+    test('a duplicate (hhid, linenum) is accepted, deliberately', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+      await addMember('m-1', '100120001', '1');
+
+      // No UNIQUE on the sibling pair, on purpose: a duplicate linenum is a
+      // counter bug the interviewer never typed, every row carries a uniqueid,
+      // and saveInterview uses ConflictAlgorithm.abort -- so a constraint here
+      // would turn a recoverable oddity into a lost interview. This test
+      // exists so that adding one later breaks a test rather than an
+      // interview.
+      await addMember('m-2', '100120001', '1');
+
+      final duplicates = await db.rawQuery(
+          'SELECT hhid, linenum, COUNT(*) AS n FROM hh_members '
+          'GROUP BY hhid, linenum HAVING COUNT(*) > 1');
+      expect(duplicates, hasLength(1));
+      expect(duplicates.first['n'], 2);
+    });
+
+    test('the same linenum under a different household is fine', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+      await addHousehold('hh-2', '100120002');
+
+      await addMember('m-1', '100120001', '1');
+      await addMember('m-2', '100120002', '1');
+
+      expect(
+        (await db.query('hh_members')).length,
+        2,
+      );
+    });
+
+    test('correcting a household id carries to its children', () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+      for (final n in ['1', '2', '3']) {
+        await addMember('m-$n', '100120001', n);
+      }
+
+      // The motivating scenario: hhnum is typed, so an interviewer correcting
+      // a mistyped household number is ordinary work. Without the cascade the
+      // three members keep the old hhid, the household is split across two
+      // ids, and the next member added gets linenum 1 alongside members 1-3.
+      await db.update('hh_info', {'hhid': '100120009'},
+          where: 'uniqueid = ?', whereArgs: ['hh-1']);
+
+      final members = await db.query('hh_members', orderBy: 'linenum ASC');
+      expect(members, hasLength(3));
+      expect(members.map((r) => r['hhid']), everyElement('100120009'));
+      // Ordinals are untouched: the household moved, the members did not
+      // renumber.
+      expect(members.map((r) => r['linenum']), ['1', '2', '3']);
+    });
+
+    test('a cascade re-arms each child for upload and audits itself',
+        () async {
+      await createSchema();
+      await addHousehold('hh-1', '100120001');
+      for (final n in ['1', '2', '3']) {
+        await addMember('m-$n', '100120001', n);
+      }
+      // Pretend all three have already reached the server.
+      await db.update('hh_members', {'synced_at': '2026-09-01T00:00:00.000'});
+
+      await db.update('hh_info', {'hhid': '100120009'},
+          where: 'uniqueid = ?', whereArgs: ['hh-1']);
+
+      // Without the trigger the device would be corrected while the server
+      // kept the old key forever -- a silent desync, arguably worse than the
+      // visible orphaning the cascade fixes.
+      final pending = await db
+          .query('hh_members', where: 'synced_at IS NULL');
+      expect(pending, hasLength(3));
+
+      final changes = await db.query('formchanges');
+      expect(changes, hasLength(3));
+      expect(changes.map((r) => r['tablename']),
+          everyElement('hh_members'));
+      expect(changes.map((r) => r['fieldname']), everyElement('hhid'));
+      expect(changes.map((r) => r['oldvalue']), everyElement('100120001'));
+      expect(changes.map((r) => r['newvalue']), everyElement('100120009'));
+      expect(changes.map((r) => r['uniqueid']).toSet(),
+          {'m-1', 'm-2', 'm-3'});
+      // changeuniqueid must be non-null or the uploader's
+      // `WHERE changeuniqueid IS NOT NULL` filter skips the row entirely.
+      final changeIds =
+          changes.map((r) => r['changeuniqueid']?.toString()).toSet();
+      expect(changeIds, hasLength(3));
+      expect(changeIds, everyElement(isA<String>()));
+      expect(changeIds.every((id) => id!.length == 32), isTrue);
+      // synced_at must be null on the audit row too, or it never uploads.
+      expect(changes.map((r) => r['synced_at']), everyElement(isNull));
+    });
+
+    test('the cascade trigger survives recursive_triggers being on',
+        () async {
+      await createSchema();
+      await db.execute('PRAGMA recursive_triggers = ON');
+      await addHousehold('hh-1', '100120001');
+      await addMember('m-1', '100120001', '1');
+
+      // The trigger's own inner UPDATE touches synced_at, not the linking
+      // column, and the WHEN guard requires the column to have changed -- so
+      // it cannot re-enter itself.
+      await db.update('hh_info', {'hhid': '100120009'},
+          where: 'uniqueid = ?', whereArgs: ['hh-1']);
+
+      expect((await db.query('formchanges')).length, 1);
+    });
+
+    test('a foreign key is skipped when the parent key set does not match',
+        () async {
+      final skipped = <String>[];
+      await createSchema(onSkipped: skipped.add);
+
+      // A grandchild of hh_members linking on hhid alone. hh_members has
+      // primarykey (hhid, linenum), so hhid is not unique there and the
+      // foreign key cannot be declared -- SQLite would reject every insert
+      // with "foreign key mismatch" rather than failing at CREATE.
+      final statements = DbService.buildSurveyTableStatements(
+        tableName: 'member_visits',
+        columnNames: ['uniqueid', 'hhid', 'visitnum'],
+        crf: {
+          'tablename': 'member_visits',
+          'primarykey': 'hhid,visitnum',
+          'linkingfield': 'hhid',
+          'parenttable': 'hh_members',
+        },
+        parentCrf: childCrf(),
+        onSkippedConstraint: skipped.add,
+      );
+
+      expect(statements.first, isNot(contains('REFERENCES')));
+      expect(skipped, hasLength(1));
+      expect(skipped.single, contains('foreign key needs the parent side'));
+
+      // It is still created, and still usable -- the relationship is just not
+      // enforced. SurveyGen rejects this shape at authoring time.
+      for (final statement in statements) {
+        await db.execute(statement);
+      }
+      await db.insert('member_visits',
+          {'uniqueid': 'v-1', 'hhid': 'no-such-parent', 'visitnum': '1'});
+      expect((await db.query('member_visits')).length, 1);
+    });
+
+    test('a leaf child carries no UNIQUE and no parent-side constraint',
+        () async {
+      final statements = DbService.buildSurveyTableStatements(
+        tableName: 'hh_members',
+        columnNames: ['uniqueid', 'hhid', 'linenum'],
+        crf: childCrf(),
+        parentCrf: parentCrf(),
+      );
+
+      expect(statements.first, contains('REFERENCES'));
+      expect(statements.first, contains('ON UPDATE CASCADE'));
+      expect(statements.first, isNot(contains('UNIQUE(')));
+      // The sibling index is plain, so it serves the counter's MAX query
+      // without refusing a duplicate.
+      final index = statements.firstWhere((s) => s.contains('CREATE INDEX'));
+      expect(index, isNot(contains('UNIQUE')));
+      // And a cascade trigger, so the rewrite it performs is not invisible.
+      expect(statements.any((s) => s.contains('CREATE TRIGGER')), isTrue);
+    });
+  });
+
+  group('orderByParentFirst', () {
+    Map<String, Map<String, dynamic>> crfs() => {
+          'hh_members': {'tablename': 'hh_members', 'parenttable': 'hh_info'},
+          'hh_info': {'tablename': 'hh_info'},
+          'visits': {'tablename': 'visits', 'parenttable': 'hh_members'},
+        };
+
+    test('creates a form after its parent', () {
+      final ordered = DbService.orderByParentFirst(
+        ['visits.xml', 'hh_members.xml', 'hh_info.xml'],
+        crfs(),
+      );
+
+      expect(ordered.indexOf('hh_info.xml'),
+          lessThan(ordered.indexOf('hh_members.xml')));
+      expect(ordered.indexOf('hh_members.xml'),
+          lessThan(ordered.indexOf('visits.xml')));
+    });
+
+    test('keeps a form whose parent is not in this survey', () {
+      final ordered = DbService.orderByParentFirst(
+        ['orphan.xml'],
+        {
+          'orphan': {'tablename': 'orphan', 'parenttable': 'not_here'}
+        },
+      );
+
+      expect(ordered, ['orphan.xml']);
+    });
+
+    test('does not loop on a cycle', () {
+      final ordered = DbService.orderByParentFirst(
+        ['a.xml', 'b.xml'],
+        {
+          'a': {'tablename': 'a', 'parenttable': 'b'},
+          'b': {'tablename': 'b', 'parenttable': 'a'},
+        },
+      );
+
+      expect(ordered, hasLength(2));
+    });
+  });
 }

@@ -171,11 +171,7 @@ class DbService {
       _log('Database path for $surveyId: $dbPath');
 
       // 3. Open Database
-      final db =
-          await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
-        _log('Creating new database for $surveyId');
-        // We will handle table creation in _syncDatabaseSchema, but we can do initial setup here if needed
-      });
+      final db = await openDatabase(dbPath, options: surveyOpenOptions());
 
       _databases[surveyId] = db;
       _initializedSurveys.add(surveyId);
@@ -186,6 +182,42 @@ class DbService {
       _logError('Failed to initialize database for $surveyId: $e');
     }
   }
+
+  /// The options every survey database is opened with.
+  ///
+  /// Factored out so a test can open a database exactly the way production
+  /// does. Asserting that a `CREATE TABLE` string contains the word
+  /// `REFERENCES` proves nothing about whether the constraint is *enforced*;
+  /// the pragma below is the only thing that decides that, and it is easy to
+  /// get right in one place and wrong in another.
+  ///
+  /// `PRAGMA foreign_keys` defaults to **off**, is **per-connection**, and is
+  /// not persisted in the file -- so a connection that forgets it sees a
+  /// schema that says the constraints exist while none of them do anything.
+  ///
+  /// It must be set in `onConfigure`, which runs before any transaction:
+  /// `PRAGMA foreign_keys` is a silent no-op inside one, and
+  /// [_syncCrfsTable] does its clear-and-repopulate in `db.transaction`.
+  ///
+  /// One hook covers both engines. [init] swaps
+  /// `databaseFactory = databaseFactoryFfi` on desktop, so the same
+  /// `openDatabase` call reaches native sqflite on mobile and
+  /// `sqflite_common_ffi` on Windows/Linux/macOS.
+  @visibleForTesting
+  static OpenDatabaseOptions surveyOpenOptions() => OpenDatabaseOptions(
+        version: 1,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
+      );
+
+  /// Opens a database at [path] the way production opens one.
+  ///
+  /// Exists so the pragma above can be verified on the real open path rather
+  /// than on a hand-rolled one. Pass `inMemoryDatabasePath` from a test.
+  @visibleForTesting
+  static Future<Database> openSurveyDatabaseForTesting(String path) =>
+      databaseFactory.openDatabase(path, options: surveyOpenOptions());
 
   static Future<void> _syncDatabaseSchema(
       String surveyId, Database db, Map<String, dynamic> manifest) async {
@@ -199,11 +231,23 @@ class DbService {
       // 1c. Import CSV files as tables
       await _importCsvFiles(surveyId, db);
 
-      // 2. Create Survey Tables from XMLs
+      // 2. Create Survey Tables from XMLs.
+      //
+      // The crfs rows are read first because they carry the constraints a
+      // survey table is created with -- its primary key, which form is its
+      // parent, and which column links the two. _syncCrfsTable has already
+      // run, so the table is populated.
+      final crfsByTable = await _readCrfsByTable(db);
+
       final xmlFiles = manifest['xmlFiles'] as List?;
       if (xmlFiles != null) {
-        for (final xmlFile in xmlFiles) {
-          await _syncSurveyTable(surveyId, db, xmlFile.toString());
+        final ordered = orderByParentFirst(
+          xmlFiles.map((f) => f.toString()).toList(),
+          crfsByTable,
+        );
+        for (final xmlFile in ordered) {
+          await _syncSurveyTable(surveyId, db, xmlFile,
+              crfsByTable: crfsByTable);
         }
       }
     } catch (e) {
@@ -455,8 +499,295 @@ class DbService {
     }
   }
 
+  /// Every `crfs` row, keyed by lowercased `tablename`, with lowercased keys.
+  ///
+  /// A row with no `tablename` is skipped rather than keyed under `''`, where
+  /// it would masquerade as the parent of any form that left `parenttable`
+  /// blank.
+  static Future<Map<String, Map<String, dynamic>>> _readCrfsByTable(
+      Database db) async {
+    try {
+      if (!await _tableExists(db, 'crfs')) return const {};
+      final rows = await db.query('crfs');
+      final byTable = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final normalized =
+            row.map((k, v) => MapEntry(k.toLowerCase(), v));
+        final name = normalized['tablename']?.toString().trim().toLowerCase();
+        if (name == null || name.isEmpty) continue;
+        byTable[name] = normalized;
+      }
+      return byTable;
+    } catch (e) {
+      _logError('Error reading crfs configuration: $e');
+      return const {};
+    }
+  }
+
+  /// Splits a comma-separated `crfs` cell into trimmed, lowercased names.
+  static List<String> _splitCrfsList(Object? cell) =>
+      (cell?.toString() ?? '')
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+  /// The statements that create [tableName] with the constraints its `crfs`
+  /// row implies: `CREATE TABLE` first, then any indexes.
+  ///
+  /// Survey tables used to be created with every column as a bare `TEXT` and
+  /// no constraint of any kind, so the parent/child relationship the `crfs`
+  /// worksheet declares existed only as metadata the app remembered. Nothing
+  /// stopped an orphan child, two households sharing an id, or a corrected
+  /// parent key leaving its children behind.
+  ///
+  /// Three constraints, and one index, each with a different job:
+  ///
+  /// - **`uniqueid TEXT PRIMARY KEY`** on every table. This is the only one
+  ///   that can never refuse a record -- it is a fresh v4 UUID -- and it is
+  ///   what makes any other collision recoverable after the fact.
+  /// - **`UNIQUE(<primarykey>)`**, but *only* on a table some other form
+  ///   names as its `parenttable`. A foreign key requires its referenced
+  ///   columns to be unique, so uniqueness is declared exactly where a
+  ///   foreign key needs it and nowhere speculatively. A leaf child
+  ///   deliberately gets none: see the index below.
+  /// - **`FOREIGN KEY (linkingfield) REFERENCES parenttable(...) ON UPDATE
+  ///   CASCADE`**, so correcting a parent's key carries to its children
+  ///   instead of splitting the household across two ids.
+  /// - **A plain, non-unique index** on `(<linkingfield>, <incrementfield>)`,
+  ///   which serves the child counter's `MAX` query.
+  ///
+  /// **Why that index is not `UNIQUE`.** A duplicate `linenum` is a counter
+  /// bug, not an identity clash: the interviewer never types it. Every row
+  /// carries a `uniqueid` and every child its parent's, so parentage does not
+  /// depend on the ordinal and a duplicate stays reconcilable. A `UNIQUE`
+  /// there would make [saveInterview]'s `ConflictAlgorithm.abort` throw --
+  /// turning a recoverable oddity into a lost interview, which in field
+  /// research is the worse outcome. Duplicates are found with a report
+  /// (`GROUP BY <link>, <inc> HAVING COUNT(*) > 1`), not by refusing a save.
+  ///
+  /// **When the foreign key cannot be declared.** It needs the parent side
+  /// unique, so it is emitted only where the parent's `primarykey` column set
+  /// *equals* this table's `linkingfield` column set. A grandchild of
+  /// `sleeping_structure` (`primarykey = hhid,structurenum`) linking on
+  /// `hhid` alone does not qualify -- `hhid` is not unique there. Such a case
+  /// is created without the foreign key and logged; SurveyGen rejects it at
+  /// authoring time, which is where it belongs.
+  @visibleForTesting
+  static List<String> buildSurveyTableStatements({
+    required String tableName,
+    required List<String> columnNames,
+    Map<String, dynamic>? crf,
+    Map<String, dynamic>? parentCrf,
+    bool isReferencedAsParent = false,
+    void Function(String)? onSkippedConstraint,
+  }) {
+    final table = _quoteIdentifier(tableName);
+    final present = columnNames.map((c) => c.toLowerCase()).toSet();
+
+    final colDefs = <String>[];
+    for (final name in columnNames) {
+      // uniqueid is declared as a question by every generated survey, so it
+      // arrives here as an ordinary column. Promoting it in place keeps the
+      // dictionary's column order intact.
+      colDefs.add(name.toLowerCase() == 'uniqueid'
+          ? '${_quoteIdentifier(name)} TEXT PRIMARY KEY'
+          : '${_quoteIdentifier(name)} TEXT');
+    }
+    if (!present.contains('uniqueid')) {
+      colDefs.add('uniqueid TEXT PRIMARY KEY');
+    }
+    if (!present.contains('synced_at')) {
+      colDefs.add('synced_at DATETIME');
+    }
+
+    final primaryKeyCols = _splitCrfsList(crf?['primarykey']);
+    final linkingCols = _splitCrfsList(crf?['linkingfield']);
+    final parentTable = crf?['parenttable']?.toString().trim() ?? '';
+    final incrementField = crf?['incrementfield']?.toString().trim() ?? '';
+
+    // The parent-side uniqueness a foreign key needs, and only that.
+    if (isReferencedAsParent && primaryKeyCols.isNotEmpty) {
+      if (primaryKeyCols.every(present.contains)) {
+        colDefs.add(
+            'UNIQUE(${primaryKeyCols.map(_quoteIdentifier).join(', ')})');
+      } else {
+        onSkippedConstraint?.call(
+            'Table "$tableName" is a parent but its primarykey '
+            '(${primaryKeyCols.join(',')}) names a column it does not have, '
+            'so no UNIQUE was declared and children cannot reference it.');
+      }
+    }
+
+    if (parentTable.isNotEmpty && linkingCols.isNotEmpty) {
+      final parentPkCols = _splitCrfsList(parentCrf?['primarykey']);
+      if (parentCrf == null) {
+        onSkippedConstraint?.call(
+            'Table "$tableName" declares parenttable "$parentTable", which is '
+            'not a form in this survey -- no foreign key declared.');
+      } else if (!linkingCols.every(present.contains)) {
+        onSkippedConstraint?.call(
+            'Table "$tableName" declares linkingfield '
+            '(${linkingCols.join(',')}) but does not have every one of those '
+            'columns -- no foreign key declared.');
+      } else if (parentPkCols.toSet().length != linkingCols.toSet().length ||
+          !parentPkCols.toSet().containsAll(linkingCols)) {
+        // The FK-ability rule. Without this the REFERENCES clause names
+        // columns that carry no UNIQUE on the parent, and SQLite rejects
+        // every insert with "foreign key mismatch" rather than at CREATE.
+        onSkippedConstraint?.call(
+            'Table "$tableName" links on (${linkingCols.join(',')}) but its '
+            'parent "$parentTable" has primarykey '
+            '(${parentPkCols.join(',')}). A foreign key needs the parent side '
+            'unique, so those two sets must match -- no foreign key '
+            'declared.');
+      } else {
+        final cols = linkingCols.map(_quoteIdentifier).join(', ');
+        final refCols = parentPkCols.map(_quoteIdentifier).join(', ');
+        colDefs.add('FOREIGN KEY ($cols) '
+            'REFERENCES ${_quoteIdentifier(parentTable)} ($refCols) '
+            'ON UPDATE CASCADE');
+      }
+    }
+
+    final statements = <String>[
+      'CREATE TABLE $table (${colDefs.join(', ')})',
+    ];
+
+    if (linkingCols.isNotEmpty &&
+        incrementField.isNotEmpty &&
+        linkingCols.every(present.contains) &&
+        present.contains(incrementField.toLowerCase())) {
+      final cols = [...linkingCols, incrementField.toLowerCase()]
+          .map(_quoteIdentifier)
+          .join(', ');
+      statements.add(
+          'CREATE INDEX IF NOT EXISTS ${_quoteIdentifier('idx_${tableName}_sibling')} '
+          'ON $table ($cols)');
+    }
+
+    // A cascade rewrites child rows *behind the app's back*. It does not go
+    // through updateInterview, so nothing clears `synced_at` and nothing
+    // writes a formchanges row -- the device would be corrected while the
+    // server kept the old key forever. That silent desync is arguably worse
+    // than the visible orphaning the cascade fixes, so every cascading column
+    // gets a trigger.
+    //
+    // The trigger, not Dart, is the right home for this precisely because the
+    // hazard is that the cascade is invisible to Dart: correctness must not
+    // depend on which code path happened to update the parent. An FK cascade
+    // does fire an AFTER UPDATE trigger, with recursive_triggers on or off.
+    if (colDefs.any((d) => d.startsWith('FOREIGN KEY')) &&
+        linkingCols.every(present.contains)) {
+      for (final col in linkingCols) {
+        statements.add(_cascadeAuditTrigger(tableName: tableName, column: col));
+      }
+    }
+
+    return statements;
+  }
+
+  /// The trigger that records a cascaded change to [column] of [tableName].
+  ///
+  /// Two writes, each load-bearing:
+  ///
+  /// - `synced_at = NULL` re-arms the row for upload. Pending is defined as
+  ///   `synced_at IS NULL` (see `RecordUploader`), so without this the
+  ///   corrected child never re-uploads.
+  /// - A `formchanges` row, so the correction is auditable rather than
+  ///   appearing out of nowhere on the server.
+  ///
+  /// `changeuniqueid` must be non-null or the uploader's
+  /// `WHERE changeuniqueid IS NOT NULL` filter skips the row entirely. SQLite
+  /// has no UUID function, so it is a random 16-byte hex string --
+  /// `formchanges.formchanges_uuid` on the server is `text NOT NULL UNIQUE`
+  /// with no format validation, so this needs no wire, Edge Function or
+  /// Postgres change.
+  ///
+  /// `surveyor_id` is deliberately left null: `app-sync` derives it from the
+  /// session and explicitly ignores whatever the client sends.
+  ///
+  /// The `WHEN` guard is what stops the inner `UPDATE` re-entering this
+  /// trigger on its own `synced_at` write.
+  static String _cascadeAuditTrigger({
+    required String tableName,
+    required String column,
+  }) {
+    final table = _quoteIdentifier(tableName);
+    final col = _quoteIdentifier(column);
+    final name = _quoteIdentifier('trg_${tableName}_${column}_cascade');
+    // Single-quoted literals carry the table and column names into the
+    // formchanges row. Both come from a data dictionary, so they go through
+    // the identifier guard above before reaching this point; SurveyGen
+    // restricts them to letters, digits and underscores.
+    final tableLiteral = "'$tableName'";
+    final colLiteral = "'$column'";
+
+    return '''
+CREATE TRIGGER IF NOT EXISTS $name
+AFTER UPDATE OF $col ON $table
+FOR EACH ROW WHEN OLD.$col IS NOT NEW.$col
+BEGIN
+  UPDATE $table SET synced_at = NULL WHERE rowid = NEW.rowid;
+  INSERT INTO formchanges
+    (tablename, fieldname, uniqueid, oldvalue, newvalue, changeuniqueid)
+  VALUES
+    ($tableLiteral, $colLiteral, NEW.uniqueid, OLD.$col, NEW.$col,
+     lower(hex(randomblob(16))));
+END''';
+  }
+
+  /// Orders [xmlFiles] so a form is created after its parent.
+  ///
+  /// SQLite resolves a foreign key's target lazily, so a child created first
+  /// is not itself an error -- but the schema reads better in dependency
+  /// order, and a cycle (which SurveyGen rejects) surfaces here as leftovers
+  /// rather than as a puzzle at insert time.
+  @visibleForTesting
+  static List<String> orderByParentFirst(
+    List<String> xmlFiles,
+    Map<String, Map<String, dynamic>> crfsByTable,
+  ) {
+    String tableOf(String xml) =>
+        p.basename(xml).toLowerCase().replaceAll('.xml', '');
+
+    final remaining = List<String>.from(xmlFiles);
+    final ordered = <String>[];
+    final placed = <String>{};
+
+    while (remaining.isNotEmpty) {
+      final ready = remaining.where((xml) {
+        final parent = crfsByTable[tableOf(xml)]?['parenttable']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
+        // Ready when it has no parent, its parent is already placed, or its
+        // parent is not a form in this survey at all.
+        return parent.isEmpty ||
+            placed.contains(parent) ||
+            !crfsByTable.containsKey(parent);
+      }).toList();
+
+      if (ready.isEmpty) {
+        // A cycle. Emit the rest in their original order rather than looping.
+        ordered.addAll(remaining);
+        break;
+      }
+
+      for (final xml in ready) {
+        ordered.add(xml);
+        placed.add(tableOf(xml));
+        remaining.remove(xml);
+      }
+    }
+
+    return ordered;
+  }
+
   static Future<void> _syncSurveyTable(
-      String surveyId, Database db, String xmlFilename) async {
+      String surveyId, Database db, String xmlFilename,
+      {Map<String, Map<String, dynamic>> crfsByTable = const {}}) async {
     // Construct path to local file
     final surveysDir = await _getSurveysDirectory();
     final surveyDir = Directory(p.join(surveysDir.path, surveyId));
@@ -483,46 +814,35 @@ class DbService {
 
       if (!tableExists) {
         _log('Creating table $tableName for $surveyId...');
-        final buffer = StringBuffer();
-        buffer.write('CREATE TABLE $tableName (');
 
-        // Add uniqueid as a standard field if not present in questions?
-        // The previous implementation didn't explicitly add it, implying it might be in the XML or handled otherwise.
-        // However, `updateInterview` uses `uniqueid`. Let's assume it's part of the schema or needs to be added.
-        // Checking previous code: it didn't add `uniqueid` explicitly in `onCreate`.
-        // But `updateInterview` queries `where: 'uniqueid = ?'`.
-        // This implies `uniqueid` MUST be a column.
-        // I will add it as a standard column if it's not in the questions.
+        final crf = crfsByTable[tableName];
+        final parentTable =
+            crf?['parenttable']?.toString().trim().toLowerCase() ?? '';
+        final isReferencedAsParent = crfsByTable.values.any((other) =>
+            (other['parenttable']?.toString().trim().toLowerCase() ?? '') ==
+            tableName);
 
-        final colDefs = <String>[];
-        bool hasUniqueId = false;
-        bool hasSyncedAt = false;
+        final statements = buildSurveyTableStatements(
+          tableName: tableName,
+          columnNames: dataQuestions.map((q) => q.fieldName).toList(),
+          crf: crf,
+          parentCrf: parentTable.isEmpty ? null : crfsByTable[parentTable],
+          isReferencedAsParent: isReferencedAsParent,
+          onSkippedConstraint: (message) =>
+              _logError('[$surveyId] $message'),
+        );
 
-        for (final q in dataQuestions) {
-          colDefs.add('${q.fieldName} TEXT');
-          if (q.fieldName.toLowerCase() == 'uniqueid') hasUniqueId = true;
-          if (q.fieldName.toLowerCase() == 'synced_at') hasSyncedAt = true;
+        for (final statement in statements) {
+          await db.execute(statement);
         }
 
-        if (!hasUniqueId) {
-          colDefs.add('uniqueid TEXT PRIMARY KEY');
-        }
-        // Every current survey declares uniqueid as a reserved system
-        // variable (the generator always writes it), so hasUniqueId is true
-        // in practice and this branch is never taken -- uniqueid has no real
-        // uniqueness constraint on-device today. Retrofitting one onto a
-        // live table would need a full rebuild (SQLite can't ALTER one in),
-        // so DbService.collapseDuplicateUniqueIds is the deliberate
-        // read-time mitigation for the resulting duplicate-row condition,
-        // not a schema fix.
-        if (!hasSyncedAt) {
-          colDefs.add('synced_at DATETIME');
-        }
-
-        buffer.write(colDefs.join(', '));
-        buffer.write(')');
-
-        await db.execute(buffer.toString());
+        // The constraints above are declared only at CREATE. SQLite has no
+        // `ALTER TABLE ... ADD CONSTRAINT`, so a table that already exists
+        // keeps whatever it was created with -- see the else branch, which
+        // adds columns and nothing else. That is acceptable only because no
+        // survey has been deployed: clearing the databases/ folder is how a
+        // development device picks up this schema. It is not a migration
+        // path, and once a survey ships it cannot become one.
       } else {
         // Alter table logic
         final existingColumns = await _getTableColumns(db, tableName);
