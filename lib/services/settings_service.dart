@@ -97,32 +97,6 @@ class SettingsService {
   /// does not hand out the same sentinel twice.
   static const String _keyIdFallbackCount = 'id_fallback_count';
 
-  /// How many records DataKollecta's HTTP sync sends in one request (see
-  /// [RecordUploader]). Absent means [defaultSyncBatchSize].
-  ///
-  /// Tunable because the right number is a property of the *link*, not of the
-  /// app: on a good connection a larger batch removes HTTP round trips, while
-  /// on a marginal rural connection a smaller one fails less often and loses
-  /// less work when it does. Neither is knowable at build time.
-  static const String _keySyncBatchSize = 'sync_batch_size';
-
-  /// The batch size used when none is stored.
-  ///
-  /// 25 is where HTTP overhead stops dominating while the payload -- each
-  /// submission carries a whole form's answers as JSON -- is still comfortable
-  /// on a poor link.
-  static const int defaultSyncBatchSize = 25;
-
-  /// The range a stored batch size is clamped to.
-  ///
-  /// The ceiling exists so a mistyped setting cannot post an unbounded batch:
-  /// app-sync refuses more than 500 rows with a 413, and a 413 stops a sync run
-  /// after three consecutive failures with a message no interviewer can act on.
-  /// Clamping here means a bad value degrades to a slow sync rather than a
-  /// stopped one.
-  static const int minSyncBatchSize = 1;
-  static const int maxSyncBatchSize = 200;
-
   // Getters for settings
   Future<String?> get surveyorId async => _read(_keysurveyorId);
   Future<String?> get ftpHost async => _read(_keyFtpHost);
@@ -148,27 +122,6 @@ class SettingsService {
 
   Future<void> setIdFallbackCount(int value) =>
       _write(_keyIdFallbackCount, value.toString());
-
-  /// See [_keySyncBatchSize]. Never returns a value outside the clamp, so a
-  /// caller can use it directly without re-checking.
-  Future<int> get syncBatchSize async =>
-      clampSyncBatchSize(int.tryParse(await _read(_keySyncBatchSize) ?? ''));
-
-  Future<void> setSyncBatchSize(int value) =>
-      _write(_keySyncBatchSize, clampSyncBatchSize(value).toString());
-
-  /// [value] brought into range, with `null` (absent or unparseable) meaning
-  /// the default.
-  ///
-  /// Pure and static so the settings screen can validate what the user typed
-  /// with exactly the rule the uploader will apply, rather than a second copy
-  /// of it.
-  static int clampSyncBatchSize(int? value) {
-    if (value == null) return defaultSyncBatchSize;
-    if (value < minSyncBatchSize) return minSyncBatchSize;
-    if (value > maxSyncBatchSize) return maxSyncBatchSize;
-    return value;
-  }
 
   // Setters for settings
   Future<void> setSurveyorId(String value) => _write(_keysurveyorId, value);

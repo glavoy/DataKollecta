@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../settings_service.dart';
 import 'api_client.dart';
 import 'sync_backend.dart';
 
@@ -67,12 +66,19 @@ class UploadOutcome {
 /// succeeded), a run stops after [maxConsecutiveFailures] consecutive
 /// failed batches, and a run stops immediately on [SyncAuthException].
 class RecordUploader {
-  /// Only the fallback for a caller that names no batch size at all -- every
-  /// production path reads the configured one from `SettingsService`
-  /// ([SettingsService.defaultSyncBatchSize], currently 25) via
-  /// [RecordUploader.configured]. Left at 10 so the tests that construct an
-  /// uploader directly keep the batch shape they were written against.
-  static const int defaultBatchSize = 10;
+  /// How many records go in one HTTP request.
+  ///
+  /// 25 is where HTTP overhead stops dominating while the payload -- each
+  /// submission carries a whole form's answers as JSON -- is still comfortable
+  /// on a poor link. Tune it here and rebuild rather than exposing it: the
+  /// right number is a property of the connections the field actually sees,
+  /// which is something to learn from watching uploads, not something an
+  /// interviewer should be asked about.
+  ///
+  /// app-sync refuses more than 500 rows in one array with a 413, which
+  /// [upload] would read as an ordinary transfer failure and retry three times
+  /// before stopping the run. Any value set here must stay well under that.
+  static const int defaultBatchSize = 25;
   static const int defaultMaxConsecutiveFailures = 3;
 
   final ApiClient apiClient;
@@ -84,19 +90,6 @@ class RecordUploader {
     this.batchSize = defaultBatchSize,
     this.maxConsecutiveFailures = defaultMaxConsecutiveFailures,
   }) : apiClient = apiClient ?? ApiClient();
-
-  /// An uploader using the device's configured batch size.
-  ///
-  /// Read per upload run rather than cached, so changing it in Settings takes
-  /// effect on the next sync instead of the next app start -- which is the
-  /// point of making it a setting at all, since it is usually changed *because*
-  /// a sync is failing on the connection at hand.
-  static Future<RecordUploader> configured({ApiClient? apiClient}) async {
-    return RecordUploader(
-      apiClient: apiClient,
-      batchSize: await SettingsService().syncBatchSize,
-    );
-  }
 
   /// The core loop, free of SQLite/HTTP specifics so it can be tested with
   /// fake data sources: no real database, no real network, and -- the

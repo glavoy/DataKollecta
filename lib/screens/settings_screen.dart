@@ -41,10 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<ProjectSession> _projects = [];
   bool _projectsLoading = false;
 
-  // DataKollecta upload batch size. Seeded with the default so the dropdown
-  // has a valid value before _loadSettings resolves the stored one.
-  int _syncBatchSize = SettingsService.defaultSyncBatchSize;
-
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
   static const HttpSyncStrings _httpSync = HttpSyncStrings();
 
@@ -89,8 +85,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     if (AppConfig.isDataKollecta) {
       await _loadProjects();
-      final batchSize = await _settingsService.syncBatchSize;
-      if (mounted) setState(() => _syncBatchSize = batchSize);
     } else {
       // Settings is a pure staging area: it always shows exactly what was
       // last typed and saved here, never something survey-specific --
@@ -375,70 +369,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// The batch size DataKollecta's HTTP sync uses, as a dropdown rather than a
-  /// number field.
-  ///
-  /// A free-text number would need validation, a keyboard, and a decision about
-  /// what a half-typed "2" means while the user is still typing "25"; the range
-  /// that is actually useful here is a handful of values, so offering those
-  /// removes the whole problem. A value stored from elsewhere that is not on the
-  /// list is added to it rather than silently replaced, so nothing a user
-  /// configured disappears when they open this screen.
-  Widget _buildUploadSection(BuildContext context) {
-    const presets = [5, 10, 25, 50, 100, 200];
-    final options = {...presets, _syncBatchSize}.toList()..sort();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          _httpSync.uploadSettings,
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<int>(
-          initialValue: _syncBatchSize,
-          decoration: InputDecoration(
-            labelText: _httpSync.recordsPerUpload,
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.upload_file),
-          ),
-          items: [
-            for (final size in options)
-              DropdownMenuItem(value: size, child: Text('$size')),
-          ],
-          onChanged: _onSyncBatchSizeChanged,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _httpSync.recordsPerUploadHelp,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
-      ],
-    );
-  }
-
-  /// Saved immediately, like every other DataKollecta setting on this screen
-  /// (projects, dark mode, survey deletion) -- the staged form and its Save
-  /// button belong to the FTP branch only.
-  Future<void> _onSyncBatchSizeChanged(int? value) async {
-    if (value == null || value == _syncBatchSize) return;
-
-    final size = SettingsService.clampSyncBatchSize(value);
-    await _settingsService.setSyncBatchSize(size);
-    if (!mounted) return;
-
-    setState(() => _syncBatchSize = size);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_httpSync.recordsPerUploadSaved(size))),
-    );
-  }
-
   Widget _buildProjectsSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -629,10 +559,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 16),
                     if (AppConfig.isDataKollecta) ...[
                       _buildProjectsSection(context),
-                      const SizedBox(height: 20),
-                      const Divider(),
-                      const SizedBox(height: 12),
-                      _buildUploadSection(context),
                     ] else ...[
                       TextFormField(
                         controller: _ftpUsernameController,
