@@ -117,6 +117,64 @@
   portal has now answered differently, so the manual checklist it prescribes is a machine check
   for DataKollecta. Its citation of `_syncSurveyTable()` at "lines 379-452" was also stale.
 
+- **The subject-ID counter is one SQL aggregate instead of a whole-table read.** Generating an
+  ID used to call `getExistingRecords`, which materialises every row and lowercases every key
+  of every row, to compute `MAX` of one column in Dart. On a table with 20,000 records that is
+  a visible pause at the moment the interviewer is waiting. It is now a single
+  `SELECT MAX(...)` with the reserved sentinel band excluded in the `WHERE` clause rather than
+  filtered afterwards, so a degraded ID cannot push `MAX` to the top of the range.
+
+  Three query details each avoid a trap, and each has a test: the base ID is matched with
+  `substr(col, 1, n) = ?` rather than `LIKE '<base>%'`, because SQLite's `LIKE` is
+  ASCII-case-insensitive *and* would treat a `%` or `_` inside a dictionary-supplied prefix as
+  a wildcard; the increment is gated on `GLOB '[0-9]...'` rather than a bare `CAST`, because
+  `CAST('12x' AS INTEGER)` is `12` in SQLite while `int.tryParse('12x')` is null, so a `CAST`
+  alone would let a malformed value advance the counter; and a value stored as `INTEGER`
+  rather than `TEXT` still counts, which is what a CSV import or a legacy row can leave behind.
+
+- **Upload batches hold 25 records, not 10.** Eight hundred records collected offline went in
+  80 HTTP requests; now 32. The server caps a request at 500 rows, and the constant's comment
+  records that ceiling so a future build raising 25 can see what it must stay under.
+
+  Recorded as a decision, because it was briefly built the other way: this was first
+  implemented as a Settings dropdown and then reverted. Batch size is not a question to put to
+  an interviewer — it has no meaning in their work, they have no way to judge an answer, and a
+  wrong answer makes uploads worse. It is tuned in the code and shipped in a build.
+
+- **`SurveyScreen` no longer runs its "load existing primary keys" block twice.** The block
+  appeared verbatim, comment included, two times in initialisation, so every new record ran two
+  `getPrimaryKeyFields` queries and two full-table `getAllPrimaryKeys` reads. Idempotent, so
+  the result was right and only the cost was wrong — but that cost lands before the first
+  question appears on screen.
+
+- **The child counter's SQL identifiers are quoted.** `getNextIncrementValue` interpolated its
+  table, increment column and primary-key column straight into the statement. All three come
+  from a data dictionary's crfs sheet and cannot be bound as parameters, which is why
+  `_quoteIdentifier` exists and why the sibling subject-ID query already used it; this was the
+  one place that bypassed it. It also had no test at all, so the query is now split into a
+  `@visibleForTesting nextIncrementValueIn` with seven of them.
+
+- **A doc comment that read as a guarantee now reads as an open hazard.**
+  `getExistingRecords` says callers that only display records are fine with a failed read
+  flattening to an empty list. `parent_id_selector_screen._getNextIncrementNumber` derives a
+  child increment from it, so a failed read there still becomes increment 1 and a duplicate
+  `linenum` inside a household. It cannot be fixed alone: that screen and
+  `getNextIncrementValue` are two implementations of the same counter that group a household's
+  children by *different* columns (`crfs.primarykey`'s first field versus `crfs.linkingfield`),
+  so which answer an interviewer gets depends only on which screen they came through. Choosing
+  between them is a design question, and it is the parent/child integrity work's first one.
+
+- **Every held-back dependency now records why.** `dartssh2` and `intl` already carried their
+  reasons inline; `device_info_plus`, `flutter_secure_storage`, `package_info_plus`, `csv` and
+  `xml` did not, so a future pass — human or agent — would re-litigate each one and possibly
+  re-break what was already fixed. Versions unchanged; this is deliberately documentation and
+  not an upgrade.
+
+- **Three build-time `debugPrint`s removed from `question_views.dart`.** One per radio build,
+  one per checkbox build, and one per checkbox *option* per build, which together put 11 lines
+  into every `flutter test` run, interleaved with the progress line so the tail was unreadable.
+  The four that remain in that file all sit behind an `if` or on an error path.
+
 ## [1.3.6+17] - 2026-09-01
 
 ### Added
