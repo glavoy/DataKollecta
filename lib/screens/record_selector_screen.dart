@@ -77,6 +77,8 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
         records: records,
         displayFields: displayFields,
         idConfig: idConfig,
+        linkingField: crfConfig?['linkingfield']?.toString(),
+        incrementField: crfConfig?['incrementfield']?.toString(),
       );
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -261,6 +263,11 @@ class _RecordSelectorScreenState extends State<RecordSelectorScreen> {
           uniqueId: uniqueId,
           primaryKeyFields: data.primaryKeyFields,
           idConfig: data.idConfig,
+          // Both are what stop an edit from regenerating this record's
+          // linking value or renumbering its increment. See
+          // RecordSelectorData.
+          linkingField: data.linkingField,
+          incrementField: data.incrementField,
         ),
       ),
     );
@@ -599,11 +606,27 @@ class RecordSelectorData {
   final List<String> displayFields;
   final String? idConfig;
 
+  /// The CRF's `linkingfield` and `incrementfield`, carried through to
+  /// [SurveyScreen] so its `isIdField` guards hold in edit mode.
+  ///
+  /// These were omitted, and the omission was load-bearing.
+  /// `SurveyScreen._processAutomaticQuestion` decides whether a field is an
+  /// ID to be generated with, among other clauses,
+  /// `q.fieldName != widget.linkingField && q.fieldName != widget.incrementField`
+  /// -- and `SurveyNavigationService` routes hidden primary keys through that
+  /// method *precisely in edit mode*. With both null, every primary-key field
+  /// of a record being edited reached the generator, which is the opposite of
+  /// "editing must never recompute an increment".
+  final String? linkingField;
+  final String? incrementField;
+
   RecordSelectorData({
     required this.tableName,
     required this.primaryKeyFields,
     required this.records,
     this.displayFields = const [],
     this.idConfig,
+    this.linkingField,
+    this.incrementField,
   });
 }

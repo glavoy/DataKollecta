@@ -23,6 +23,49 @@ class SurveyNavigationService {
   /// used to silently do nothing (index -1 always fails `> currentIndex`).
   static const String endOfFormSkipTarget = 'end';
 
+  /// Whether [question] is a field whose value `IdGenerator` should build.
+  ///
+  /// Pulled out of `SurveyScreen._processAutomaticQuestion` so it can be
+  /// tested, because getting it wrong is silent and destructive: a field that
+  /// wrongly answers true has a correct, already-populated value overwritten
+  /// by a freshly generated one.
+  ///
+  /// The last two clauses are the load-bearing ones. `hhid`/`linenum`-style
+  /// fields get their real value from `prepopulatedAnswers` or
+  /// `_calculateLineNum` before navigation starts, so routing them into ID
+  /// generation would replace a correct value with a generated or degraded
+  /// one. That mattered most in **edit mode**, where
+  /// [advanceFromQuestion]/[findNextDisplayedQuestion] deliberately route
+  /// hidden primary keys through the automatic-question path -- so if the
+  /// caller does not know its linking and increment fields, every primary-key
+  /// field of a record being edited reaches the generator. `RecordSelectorScreen`
+  /// did not pass either one, which is exactly the case
+  /// "editing must never recompute an increment" is about.
+  ///
+  /// A `datetime`-typed automatic field with no calculation is excluded
+  /// because no legitimate ID target is ever typed datetime -- such a field is
+  /// a pre-`calc:timestamp` custom timestamp from an already-generated
+  /// survey, not an ID.
+  static bool isGeneratedIdField(
+    Question question, {
+    required bool hasRegistryEntry,
+    String? linkingField,
+    String? incrementField,
+  }) {
+    if (hasRegistryEntry) return false;
+    if (question.calculation != null) return false;
+    if (question.fieldType.toLowerCase() == 'datetime') return false;
+
+    final field = question.fieldName.toLowerCase();
+    if (linkingField != null && field == linkingField.toLowerCase()) {
+      return false;
+    }
+    if (incrementField != null && field == incrementField.toLowerCase()) {
+      return false;
+    }
+    return true;
+  }
+
   static bool _isEndOfForm(String target) =>
       target.trim().toLowerCase() == endOfFormSkipTarget;
 

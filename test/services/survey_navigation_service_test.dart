@@ -551,6 +551,105 @@ void main() {
       expect(answers['h'], 'clean');
     });
   });
+
+  group('SurveyNavigationService.isGeneratedIdField', () {
+    bool decide(
+      Question question, {
+      bool hasRegistryEntry = false,
+      String? linkingField,
+      String? incrementField,
+    }) =>
+        SurveyNavigationService.isGeneratedIdField(
+          question,
+          hasRegistryEntry: hasRegistryEntry,
+          linkingField: linkingField,
+          incrementField: incrementField,
+        );
+
+    test('an automatic field with no calculation is an ID to generate', () {
+      expect(decide(_question('subjid', QuestionType.automatic)), isTrue);
+    });
+
+    test('a field the AutoFields registry knows is not', () {
+      // Adding a name to that registry therefore removes it from ID
+      // generation -- a sharp edge worth pinning down.
+      expect(
+        decide(_question('uniqueid', QuestionType.automatic),
+            hasRegistryEntry: true),
+        isFalse,
+      );
+    });
+
+    test('a field with its own calculation is not', () {
+      expect(
+        decide(_question('derived', QuestionType.automatic,
+            calculation: CalculationConfig(type: 'constant', value: '1'))),
+        isFalse,
+      );
+    });
+
+    test('a datetime-typed field with no calculation is not', () {
+      // No legitimate ID target is ever typed datetime; such a field is a
+      // pre-calc:timestamp custom timestamp from an already-generated survey.
+      expect(
+        decide(_question('visit_ts', QuestionType.automatic,
+            fieldType: 'datetime')),
+        isFalse,
+      );
+    });
+
+    test('the screen\'s own linking and increment fields are not', () {
+      expect(
+        decide(_question('hhid', QuestionType.automatic),
+            linkingField: 'hhid'),
+        isFalse,
+      );
+      expect(
+        decide(_question('linenum', QuestionType.automatic),
+            incrementField: 'linenum'),
+        isFalse,
+      );
+    });
+
+    test('matches the linking and increment fields case-insensitively', () {
+      // crfs values arrive verbatim from a worksheet while fieldnames come
+      // from the XML, so a case difference between the two must not decide
+      // whether a primary key gets regenerated.
+      expect(
+        decide(_question('HHID', QuestionType.automatic),
+            linkingField: 'hhid'),
+        isFalse,
+      );
+      expect(
+        decide(_question('linenum', QuestionType.automatic),
+            incrementField: 'LINENUM'),
+        isFalse,
+      );
+    });
+
+    // The defect this predicate was extracted for. RecordSelectorScreen
+    // passed neither field, and advanceFromQuestion routes hidden primary
+    // keys through the automatic-question path precisely in edit mode -- so
+    // both guards were null and every primary-key field of a record being
+    // edited reached the generator, renumbering increments on edit.
+    test('a caller that knows neither field sends every key to the generator',
+        () {
+      expect(decide(_question('hhid', QuestionType.automatic)), isTrue);
+      expect(decide(_question('linenum', QuestionType.automatic)), isTrue);
+
+      // With the fields carried through, both are protected.
+      expect(
+        decide(_question('hhid', QuestionType.automatic),
+            linkingField: 'hhid', incrementField: 'linenum'),
+        isFalse,
+      );
+      expect(
+        decide(_question('linenum', QuestionType.automatic),
+            linkingField: 'hhid', incrementField: 'linenum'),
+        isFalse,
+      );
+    });
+  });
 }
 
 Question _question(
@@ -559,11 +658,12 @@ Question _question(
   CalculationConfig? calculation,
   List<SkipCondition> preSkips = const [],
   List<SkipCondition> postSkips = const [],
+  String fieldType = 'text',
 }) {
   return Question(
     type: type,
     fieldName: fieldName,
-    fieldType: 'text',
+    fieldType: fieldType,
     calculation: calculation,
     preSkips: preSkips,
     postSkips: postSkips,
