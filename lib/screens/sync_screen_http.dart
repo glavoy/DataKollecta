@@ -69,6 +69,10 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
     return switch (error) {
       SyncConnectionException _ => _httpSync.connectionFailed,
       SyncAuthException _ => _httpSync.invalidCredentials,
+      // The server's own wording, because it is the only place the wait time
+      // appears. Replacing it with fixed copy the way the auth branch does
+      // would drop the one fact the interviewer needs.
+      SyncThrottledException e => e.message,
       SyncTransferException e => e.message,
       null => _s.error,
     };
@@ -181,6 +185,7 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
       var surveysWithFailures = 0;
       var surveysNotRouted = 0;
       var sawSessionExpired = false;
+      var sawThrottled = false;
 
       for (final r in results) {
         final outcome = r.result.outcome;
@@ -191,6 +196,9 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
           }
           if (outcome.stopReason == UploadStopReason.sessionExpired) {
             sawSessionExpired = true;
+          }
+          if (outcome.stopReason == UploadStopReason.throttled) {
+            sawThrottled = true;
           }
         } else {
           surveysNotRouted++;
@@ -204,11 +212,17 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
         SnackBar(
           content: Text(results.isEmpty
               ? _s.noSurveyZipsFound
-              : _httpSync.uploadAllSummary(
-                  totalSynced: totalSynced,
-                  surveysWithFailures: surveysWithFailures,
-                  surveysNotRouted: surveysNotRouted,
-                )),
+              // A throttle needs its own sentence rather than being folded
+              // into the failure count: nothing is wrong with the records,
+              // and "try again in a few minutes" is the only useful next
+              // step. Without this it reads as data loss.
+              : sawThrottled
+                  ? _httpSync.uploadThrottled
+                  : _httpSync.uploadAllSummary(
+                      totalSynced: totalSynced,
+                      surveysWithFailures: surveysWithFailures,
+                      surveysNotRouted: surveysNotRouted,
+                    )),
           backgroundColor: !hasIssues
               ? Colors.green
               : (sawSessionExpired ? Colors.red : Colors.orange),

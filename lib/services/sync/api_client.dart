@@ -133,6 +133,14 @@ class ApiClient {
       logLabel: 'login',
     );
 
+    // Before the 401 branch: a throttled login is not a credential failure,
+    // and it carries a message ("try again in 15 minutes") that the auth path
+    // would discard.
+    if (response.statusCode == 429) {
+      throw SyncThrottledException(_errorMessage(response) ??
+          'Too many sign-in attempts. Please wait and try again.');
+    }
+
     if (response.statusCode == 401 || response.statusCode == 404) {
       throw SyncAuthException(
           _errorMessage(response) ?? 'Invalid project code, username, or password');
@@ -186,6 +194,16 @@ class ApiClient {
     };
 
     final response = await _post(_syncUri, payload, logLabel: 'sync');
+
+    // app-sync does not throttle today -- only app-login does -- but a 429
+    // from anywhere (a gateway, a future per-device limit) must stop the run
+    // rather than be retried as an ordinary transfer failure. Note the 413
+    // batch cap deliberately stays a transfer failure: that one IS the
+    // client's fault and a smaller batch is a sensible retry.
+    if (response.statusCode == 429) {
+      throw SyncThrottledException(_errorMessage(response) ??
+          'The server is asking us to slow down. Try again shortly.');
+    }
 
     if (response.statusCode == 401) {
       throw SyncAuthException(_errorMessage(response) ?? 'Session expired');

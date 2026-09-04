@@ -149,6 +149,101 @@ void main() {
     );
   });
 
+  test('login maps 429 to SyncThrottledException, not to an auth failure',
+      () async {
+    // The throttle is not a credential failure, and the difference is
+    // behavioural: the screen replaces an auth failure's message with generic
+    // "invalid credentials" copy, which would discard the wait time -- the
+    // only part of a throttle response the interviewer can act on.
+    final client = MockClient((request) async => http.Response(
+        json.encode({
+          'error': 'Too many failed attempts. Try again in 15 minutes.',
+        }),
+        429));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'alice',
+        password: 'wrong',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(
+        isA<SyncThrottledException>().having(
+          (e) => e.message,
+          'message',
+          'Too many failed attempts. Try again in 15 minutes.',
+        ),
+      ),
+    );
+  });
+
+  test('login 429 is not classified as a retryable transfer failure', () async {
+    // Before this, an unrecognised 429 fell through to
+    // SyncTransferException('Login failed (429)') -- which callers RETRY.
+    // Retrying a throttle extends the lockout and loads the endpoint that
+    // just asked us to stop.
+    final client = MockClient(
+        (request) async => http.Response(json.encode({'error': 'slow down'}), 429));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'a',
+        password: 'b',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isNot(isA<SyncTransferException>())),
+    );
+  });
+
+  test('login 429 with no error field still carries usable copy', () async {
+    final client = MockClient((request) async => http.Response('', 429));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.login(
+        projectCode: 'demo',
+        username: 'a',
+        password: 'b',
+        deviceId: 'd',
+        deviceInfo: const {},
+      ),
+      throwsA(isA<SyncThrottledException>()
+          .having((e) => e.message, 'message', contains('try again'))),
+    );
+  });
+
+  test('postSync maps 429 to SyncThrottledException', () async {
+    // app-sync does not throttle today, but a 429 from a gateway or a future
+    // per-device limit must stop the run rather than be retried.
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'slow down'}), 429));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.postSync(token: 't', submissions: const [], formchanges: const []),
+      throwsA(isA<SyncThrottledException>()),
+    );
+  });
+
+  test('postSync keeps 413 (batch too large) retryable', () async {
+    // Deliberately NOT a throttle: an oversized batch is the client's own
+    // fault and a smaller one is a sensible retry.
+    final client = MockClient((request) async =>
+        http.Response(json.encode({'error': 'Batch too large'}), 413));
+    final api = ApiClient(client: client);
+
+    await expectLater(
+      api.postSync(token: 't', submissions: const [], formchanges: const []),
+      throwsA(isA<SyncTransferException>()),
+    );
+  });
+
   test('login maps a 500 to SyncTransferException', () async {
     final client = MockClient((request) async =>
         http.Response(json.encode({'error': 'Internal server error'}), 500));

@@ -45,6 +45,9 @@ class HttpSyncStrings {
   String get sessionExpired => 'Session expired -- please log in again.';
   String get tooManyFailures =>
       'Upload stopped after repeated failures. Some records were not sent.';
+  String get uploadThrottled =>
+      'The server asked us to slow down. Upload stopped -- nothing was lost, '
+      'try again in a few minutes.';
   String get connectionFailed =>
       'Could not reach the server. Check your connection and try again.';
   String get invalidCredentials =>

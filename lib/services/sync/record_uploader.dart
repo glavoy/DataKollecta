@@ -37,7 +37,7 @@ class UploadFailure {
 /// an enum rather than an exception message so a caller can exhaustively
 /// switch into a user-facing string instead of sniffing text the
 /// DataKollecta reference branch's UI did (`message.contains('404')`).
-enum UploadStopReason { none, sessionExpired, tooManyFailures }
+enum UploadStopReason { none, sessionExpired, tooManyFailures, throttled }
 
 class UploadOutcome {
   final int syncedCount;
@@ -124,6 +124,16 @@ class RecordUploader {
           syncedCount: syncedCount,
           failures: failures,
           stopReason: UploadStopReason.sessionExpired,
+        );
+      } on SyncThrottledException {
+        // Deliberately before the general SyncException branch, and a stop
+        // rather than a counted failure: the server has asked us to slow
+        // down, so burning the remaining retries against it is the one
+        // response guaranteed to make things worse.
+        return UploadOutcome(
+          syncedCount: syncedCount,
+          failures: failures,
+          stopReason: UploadStopReason.throttled,
         );
       } on SyncException catch (e) {
         consecutiveFailures++;

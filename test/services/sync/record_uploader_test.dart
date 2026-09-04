@@ -170,6 +170,44 @@ void main() {
     expect(outcome.syncedCount, 0);
   });
 
+  test('a throttled batch stops the run instead of spending its retries',
+      () async {
+    // The distinction from an ordinary transfer failure. A SyncException the
+    // uploader treats as retryable would call send() three times before
+    // giving up; against a server that just asked us to slow down, those two
+    // extra calls are the worst possible response.
+    var sendCalls = 0;
+
+    final outcome = await uploader.upload(
+      sourceName: 'enrollee',
+      fetchBatch: (after, limit) async => [row(1), row(2)],
+      markSynced: (_) async {},
+      send: (batch) async {
+        sendCalls++;
+        throw const SyncThrottledException('Slow down');
+      },
+    );
+
+    expect(sendCalls, 1, reason: 'a throttle must not be retried');
+    expect(outcome.stopReason, UploadStopReason.throttled);
+  });
+
+  test('a throttle is reported as its own stop reason, not as too many failures',
+      () async {
+    // They land in the same UI branch otherwise, and "upload stopped after
+    // repeated failures" reads as data loss when nothing is wrong with the
+    // records at all.
+    final outcome = await uploader.upload(
+      sourceName: 'enrollee',
+      fetchBatch: (after, limit) async => [row(1)],
+      markSynced: (_) async {},
+      send: (batch) async => throw const SyncThrottledException('Slow down'),
+    );
+
+    expect(outcome.stopReason, isNot(UploadStopReason.tooManyFailures));
+    expect(outcome.stopReason, UploadStopReason.throttled);
+  });
+
   test('a success after earlier failures resets the circuit breaker',
       () async {
     final allRows = List.generate(6, (i) => row(i + 1));
