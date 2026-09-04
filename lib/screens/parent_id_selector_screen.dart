@@ -47,6 +47,20 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
   /// Display-field subtitle text per linking value (e.g. participant's name)
   final Map<String, String> _subtitleByLinkingValue = {};
 
+  /// The next increment value per linking value, resolved once in
+  /// [_loadAvailableIds]. A parent absent from the map has no children yet.
+  ///
+  /// Held as state rather than fetched from the subtitle's builder: the
+  /// previous `FutureBuilder(future: _getNextIncrementNumber(id))` was
+  /// constructed inside `build`, so it launched a fresh full-table read for
+  /// every visible row on every rebuild -- including on each keystroke in the
+  /// search box.
+  final Map<String, int> _nextIncrementByLinkingValue = {};
+
+  /// True when the increment could not be read at all, so the subtitle shows
+  /// nothing rather than a number that is really a guess.
+  bool _incrementReadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -149,6 +163,27 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
         }
       }
 
+      // Resolve every parent's next increment in one grouped query, rather
+      // than one query per parent (or, as before, a full-table read per
+      // visible row per rebuild).
+      _nextIncrementByLinkingValue.clear();
+      _incrementReadFailed = false;
+      if (widget.incrementField != null && widget.incrementField!.isNotEmpty) {
+        final childTable =
+            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
+        final nextValues = await DbService.tryGetNextIncrementValues(
+          surveyId: surveyId,
+          tableName: childTable,
+          incrementField: widget.incrementField!,
+          linkingField: widget.linkingField,
+        );
+        if (nextValues == null) {
+          _incrementReadFailed = true;
+        } else {
+          _nextIncrementByLinkingValue.addAll(nextValues);
+        }
+      }
+
       // Sort the IDs
       _availableIds = uniqueIds.toList()..sort();
       _filteredIds = List.from(_availableIds);
@@ -206,10 +241,17 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
       widget.linkingField: selectedId,
     };
 
-    // If there's an increment field, calculate the next number
+    // If there's an increment field, carry the next number through. Note that
+    // `SurveyScreen._calculateLineNum` recomputes and overwrites this for a
+    // new record, so this value is advisory; it is passed so the child is not
+    // briefly missing a field the questionnaire declares.
+    //
+    // Stored as a String, matching what `_calculateLineNum` writes. This used
+    // to pass an int, so the same column arrived with two different Dart
+    // types depending on which screen the interviewer came through.
     if (widget.incrementField != null) {
-      final nextNumber = await _getNextIncrementNumber(selectedId);
-      prepopulatedAnswers[widget.incrementField!] = nextNumber;
+      final nextNumber = _nextIncrementByLinkingValue[selectedId] ?? 1;
+      prepopulatedAnswers[widget.incrementField!] = nextNumber.toString();
     }
 
     if (!mounted) return;
@@ -229,43 +271,6 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
     );
   }
 
-  /// Gets the next increment number for a given parent ID
-  Future<int> _getNextIncrementNumber(String parentId) async {
-    try {
-      // Get the table name from the questionnaire filename
-      final tableName =
-          widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-
-      // Get active survey ID
-      final surveyConfig = SurveyConfigService();
-      final surveyId = await surveyConfig.getActiveSurveyId();
-      if (surveyId == null) return 1;
-
-      // Get all records for this parent ID
-      final records = await DbService.getExistingRecords(surveyId, tableName);
-
-      // Find the maximum increment number for this parent ID
-      int maxIncrement = 0;
-
-      for (final record in records) {
-        if (record[widget.linkingField]?.toString() == parentId) {
-          final incrementValue = record[widget.incrementField];
-          if (incrementValue != null) {
-            final increment = int.tryParse(incrementValue.toString());
-            if (increment != null && increment > maxIncrement) {
-              maxIncrement = increment;
-            }
-          }
-        }
-      }
-
-      return maxIncrement + 1;
-    } catch (e) {
-      debugPrint('Error getting next increment: $e');
-      return 1;
-    }
-  }
-
   /// Builds the list-item subtitle: the configured display_fields text
   /// (e.g. the participant's name) and, for repeating children, the next
   /// increment number. Returns null when there is nothing to show.
@@ -278,18 +283,11 @@ class _ParentIdSelectorScreenState extends State<ParentIdSelectorScreen> {
           displayText,
           style: TextStyle(color: Colors.grey[700]),
         ),
-      if (widget.incrementField != null)
-        FutureBuilder<int>(
-          future: _getNextIncrementNumber(id),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              return Text(
-                _s.nextIncrement(widget.incrementField!, snapshot.data!),
-                style: TextStyle(color: Colors.grey[600]),
-              );
-            }
-            return const SizedBox.shrink();
-          },
+      if (widget.incrementField != null && !_incrementReadFailed)
+        Text(
+          _s.nextIncrement(
+              widget.incrementField!, _nextIncrementByLinkingValue[id] ?? 1),
+          style: TextStyle(color: Colors.grey[600]),
         ),
     ];
 

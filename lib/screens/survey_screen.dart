@@ -275,30 +275,40 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final tableName =
           widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
 
-      // Get the primary key fields from the CRFs table
       final surveyId = await SurveyConfigService().getActiveSurveyId();
       if (surveyId == null) return;
 
-      final primaryKeyFields =
-          await DbService.getPrimaryKeyFields(surveyId, tableName);
+      // Children are grouped by the CRF's `linkingfield` -- the column that
+      // defines parentage and the one the foreign key is declared on. This
+      // used to read `crfs.primarykey`'s first field, which agreed with
+      // `linkingfield` only by luck: nothing constrains a dictionary to list
+      // the linking field first, and `primarykey = 'linenum,hhid'` would have
+      // grouped every child in the survey by linenum.
+      final crfConfig = await DbService.getCrfConfig(surveyId, tableName);
+      final linkingField =
+          crfConfig?['linkingfield']?.toString() ?? widget.linkingField;
 
-      if (primaryKeyFields.isEmpty) {
-        debugPrint(
-            'No primary key fields found for $tableName, defaulting $incrementFieldName to 1');
-        _answers[incrementFieldName] = '1';
+      if (linkingField == null || linkingField.isEmpty) {
+        // A form with an incrementfield but no linkingfield is a mis-authored
+        // dictionary: there is no column to group siblings by, so any number
+        // here is a guess. Issue the degraded value rather than 1, which is
+        // indistinguishable from a legitimate first child.
+        debugPrint('No linkingfield configured for $tableName -- issuing '
+            '$incrementFieldName=${DbService.degradedIncrementValue}');
+        _answers[incrementFieldName] =
+            DbService.degradedIncrementValue.toString();
         return;
       }
 
-      // The first field in the primary key is the base field (e.g., hhid)
-      final primaryKeyField = primaryKeyFields.first;
+      final linkingValue = _answers[linkingField];
 
-      // Get the value of the primary key field from answers
-      final primaryKeyValue = _answers[primaryKeyField];
-
-      if (primaryKeyValue == null || primaryKeyValue.toString().isEmpty) {
-        debugPrint(
-            'Primary key field $primaryKeyField not set, defaulting $incrementFieldName to 1');
-        _answers[incrementFieldName] = '1';
+      if (linkingValue == null || linkingValue.toString().isEmpty) {
+        // Same reasoning: without the parent's key there is no sibling set to
+        // count, so 1 would be a guess dressed as a fact.
+        debugPrint('Linking field $linkingField not set -- issuing '
+            '$incrementFieldName=${DbService.degradedIncrementValue}');
+        _answers[incrementFieldName] =
+            DbService.degradedIncrementValue.toString();
         return;
       }
 
@@ -307,17 +317,19 @@ class _SurveyScreenState extends State<SurveyScreen> {
         surveyId: surveyId,
         tableName: tableName,
         incrementField: incrementFieldName,
-        primaryKeyField: primaryKeyField,
-        primaryKeyValue: primaryKeyValue.toString(),
+        linkingField: linkingField,
+        linkingValue: linkingValue.toString(),
       );
 
       _answers[incrementFieldName] = nextValue.toString();
       debugPrint(
-          'Calculated $incrementFieldName=$nextValue for $primaryKeyField=${primaryKeyValue.toString()}');
+          'Calculated $incrementFieldName=$nextValue for $linkingField=$linkingValue');
     } catch (e) {
       if (widget.incrementField != null && widget.incrementField!.isNotEmpty) {
-        debugPrint('Error calculating ${widget.incrementField}: $e');
-        _answers[widget.incrementField!] = '1'; // Default to 1 on error
+        debugPrint('Error calculating ${widget.incrementField} -- issuing '
+            '${DbService.degradedIncrementValue}: $e');
+        _answers[widget.incrementField!] =
+            DbService.degradedIncrementValue.toString();
       }
     }
   }

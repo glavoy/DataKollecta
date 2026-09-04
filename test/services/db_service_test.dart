@@ -561,8 +561,8 @@ void main() {
           db,
           tableName: table,
           incrementField: field,
-          primaryKeyField: keyField,
-          primaryKeyValue: key,
+          linkingField: keyField,
+          linkingValue: key,
         );
 
     test('is 1 for a parent with no children yet', () async {
@@ -608,9 +608,138 @@ void main() {
       );
     });
 
-    test('refuses a primary-key column it cannot safely quote', () async {
+    test('refuses a linking column it cannot safely quote', () async {
       expect(
         () => nextFor(keyField: 'hhid" --'),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
+    // Decision 1 of the parent/child integrity work: children are grouped by
+    // `crfs.linkingfield`, not by `crfs.primarykey`'s first field. The two
+    // agree in every current dictionary, so a test has to construct a case
+    // where they differ to pin the choice down at all.
+    test('groups by the linking column, not by another key column', () async {
+      await db.execute(
+          'CREATE TABLE odd_child (linenum TEXT, hhid TEXT, other TEXT)');
+      // Two households, each with children numbered from 1. Grouping by
+      // `hhid` gives 3 for HH001; grouping by `linenum` (what a
+      // `primarykey = 'linenum,hhid'` sheet would have handed the old code)
+      // would instead scan rows sharing a linenum and answer nonsense.
+      await db.insert('odd_child',
+          {'hhid': 'HH001', 'linenum': '1', 'other': 'x'});
+      await db.insert('odd_child',
+          {'hhid': 'HH001', 'linenum': '2', 'other': 'x'});
+      await db.insert('odd_child',
+          {'hhid': 'HH002', 'linenum': '1', 'other': 'y'});
+
+      expect(
+        await DbService.nextIncrementValueIn(
+          db,
+          tableName: 'odd_child',
+          incrementField: 'linenum',
+          linkingField: 'hhid',
+          linkingValue: 'HH001',
+        ),
+        3,
+      );
+      expect(
+        await DbService.nextIncrementValueIn(
+          db,
+          tableName: 'odd_child',
+          incrementField: 'linenum',
+          linkingField: 'hhid',
+          linkingValue: 'HH002',
+        ),
+        2,
+      );
+    });
+
+    // The degraded value. `0` rather than `1` because a child counter starts
+    // at 1, so `0` is a value no legitimate record holds -- where `1` was
+    // indistinguishable from a legitimate first child and so left no trace.
+    test('a failed read issues the degraded value, not 1', () async {
+      const unopened = 'survey-that-was-never-opened';
+
+      expect(
+        await DbService.getNextIncrementValue(
+          surveyId: unopened,
+          tableName: 'hh_members',
+          incrementField: 'linenum',
+          linkingField: 'hhid',
+          linkingValue: 'HH001',
+        ),
+        DbService.degradedIncrementValue,
+      );
+      expect(DbService.degradedIncrementValue, 0);
+    });
+
+    // The reason `0` was chosen over a top-of-range sentinel: it sits below
+    // every legitimate value, so one failed read cannot poison the sequence.
+    // A stored 999 would have pushed the next child to 1000, then 1001,
+    // forever, unless the MAX query excluded it explicitly.
+    test('a stored degraded value does not poison the counter', () async {
+      for (final n in ['1', '2', '3', '4']) {
+        await db.insert('hh_members', {'hhid': 'HH001', 'linenum': n});
+      }
+      await db.insert('hh_members', {
+        'hhid': 'HH001',
+        'linenum': DbService.degradedIncrementValue.toString(),
+      });
+
+      expect(await nextFor(), 5);
+    });
+  });
+
+  group('nextIncrementValuesIn', () {
+    // The grouped form, which the parent-ID selector uses to put a number
+    // beside every parent in one query instead of a full-table read per
+    // visible row per rebuild.
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute('CREATE TABLE hh_members (hhid TEXT, linenum TEXT)');
+    });
+
+    tearDown(() => db.close());
+
+    Future<Map<String, int>> valuesFor({String table = 'hh_members'}) =>
+        DbService.nextIncrementValuesIn(
+          db,
+          tableName: table,
+          incrementField: 'linenum',
+          linkingField: 'hhid',
+        );
+
+    test('answers per parent in one query', () async {
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '1'});
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '2'});
+      await db.insert('hh_members', {'hhid': 'HH002', 'linenum': '7'});
+
+      expect(await valuesFor(), {'HH001': 3, 'HH002': 8});
+    });
+
+    test('omits a parent with no children, rather than reporting 1', () async {
+      // Absent means "no children", which the caller reads as 1. Keeping it
+      // absent is what lets a caller tell that apart from a failed read,
+      // which surfaces as a null map from tryGetNextIncrementValues.
+      expect(await valuesFor(), isEmpty);
+    });
+
+    test('is empty for a table this survey does not have', () async {
+      expect(await valuesFor(table: 'not_a_table'), isEmpty);
+    });
+
+    test('refuses identifiers it cannot safely quote', () async {
+      expect(
+        () => DbService.nextIncrementValuesIn(
+          db,
+          tableName: 'hh_members',
+          incrementField: 'linenum',
+          linkingField: 'hhid" --',
+        ),
         throwsA(isA<DatabaseException>()),
       );
     });

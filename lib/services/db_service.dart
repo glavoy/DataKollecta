@@ -681,21 +681,17 @@ class DbService {
   /// increment 1 out of a failure's empty list is what handed a second subject
   /// an already-enrolled ID.
   ///
-  /// **That is a rule with a live violation, not a guarantee.** This comment
-  /// previously read as though every caller obeyed it.
-  /// `parent_id_selector_screen._getNextIncrementNumber` derives a child
-  /// increment straight from this method, so a failed read there becomes an
-  /// empty list, becomes increment 1, becomes a duplicate linenum inside one
-  /// household -- exactly the shape the paragraph above describes, still open.
-  ///
-  /// It is not fixed here on purpose. That screen and
-  /// [getNextIncrementValue] are two different implementations of the same
-  /// counter and they group a household's children by different columns
-  /// (`crfs.primarykey`'s first field versus `crfs.linkingfield`), so which
-  /// answer an interviewer gets depends only on which screen they came
-  /// through. Collapsing them needs a decision about which column is
-  /// authoritative, which is the parent/child integrity work's first
-  /// question, not something to settle in a comment.
+  /// The child-increment violation this comment used to describe is closed.
+  /// `parent_id_selector_screen._getNextIncrementNumber` derived a child
+  /// increment straight from this method, so a failed read there became an
+  /// empty list, became increment 1, became a duplicate linenum inside one
+  /// household. It was also a second, disagreeing implementation of
+  /// [getNextIncrementValue]: the two grouped a household's children by
+  /// different columns (`crfs.primarykey`'s first field versus
+  /// `crfs.linkingfield`), so which answer an interviewer got depended only
+  /// on which screen they came through. Both call sites now go through
+  /// [getNextIncrementValue], which groups by `linkingfield` -- the column
+  /// parentage and the foreign key are both defined on.
   static Future<List<Map<String, dynamic>>> getExistingRecords(
       String surveyId, String tableName,
       {String? orderBy}) async {
@@ -918,13 +914,46 @@ class DbService {
     }
   }
 
-  /// Get the next auto-increment value for a field (e.g., linenum, netnum)
+  /// The value written into an increment field when the counter could not be
+  /// read.
+  ///
+  /// Zero, because a child counter starts at 1 -- so `0` is a value no
+  /// legitimate record can hold, and `WHERE <incrementfield> = 0` finds every
+  /// degraded row. The old fallback of `1` was indistinguishable from a
+  /// legitimate first child, so a duplicate left no trace and nobody ever
+  /// found out.
+  ///
+  /// Deliberately *not* a reserved band at the top of a range, the way
+  /// [IdGenerator] does it for subject IDs. That band is derived from
+  /// `idconfig.incrementLength`, which sizes a primary key's optional numeric
+  /// suffix and says nothing about how many children a parent may have --
+  /// nothing bounds that, so there is no width to derive a band from.
+  ///
+  /// Zero also needs no exclusion from the `MAX` in [nextIncrementValueIn]:
+  /// `MAX(1,2,3,4,0)` is still 4, so one failed read cannot poison that
+  /// parent's sequence. A top-of-range sentinel would have needed an extra
+  /// `AND` to avoid pushing every subsequent child to 1000, 1001 and upward
+  /// forever.
+  ///
+  /// It does not need to be collision-free. Every row carries a `uniqueid`
+  /// and every child carries its parent's `parent_uniqueid`, so parentage no
+  /// longer depends on this ordinal and several zeroes under one parent stay
+  /// reconcilable after the fact.
+  static const int degradedIncrementValue = 0;
+
+  /// Get the next auto-increment value for a field (e.g., linenum, netnum).
+  ///
+  /// Children are grouped by the CRF's `linkingfield` -- the column that
+  /// defines parentage, and the one the foreign key is declared on. This used
+  /// to be `crfs.primarykey`'s *first* field here and `linkingfield` in
+  /// `parent_id_selector_screen`, so which answer an interviewer got depended
+  /// only on which screen they came through.
   static Future<int> getNextIncrementValue({
     required String surveyId,
     required String tableName,
     required String incrementField,
-    required String primaryKeyField,
-    required String primaryKeyValue,
+    required String linkingField,
+    required String linkingValue,
   }) async {
     try {
       final db = await _getDbOrThrow(surveyId);
@@ -932,23 +961,21 @@ class DbService {
         db,
         tableName: tableName,
         incrementField: incrementField,
-        primaryKeyField: primaryKeyField,
-        primaryKeyValue: primaryKeyValue,
+        linkingField: linkingField,
+        linkingValue: linkingValue,
       );
     } catch (e) {
       // Same shape of hazard as the subject-ID counter (see
-      // IdGenerator._getNextIncrement): a failed read here restarts this
-      // parent's child counter at 1 and produces a duplicate
-      // linenum/netnum within the household. Unlike that one this used to
-      // swallow the error without even a log line, so the duplicate had no
-      // trace at all. Logging is the floor, not the fix -- an unpadded
-      // counter has no spare range to carry a sentinel value the way a
-      // padded subject ID does.
+      // IdGenerator._getNextIncrement): a failed read here used to restart
+      // this parent's child counter at 1 and produce a duplicate
+      // linenum/netnum within the household -- with no trace, because `1` is
+      // exactly what a legitimate first child gets.
       _logError(
           'Error getting next $incrementField for $tableName '
-          '($primaryKeyField=$primaryKeyValue) -- restarting at 1, which may '
-          'duplicate an existing $incrementField: $e');
-      return 1;
+          '($linkingField=$linkingValue) -- issuing '
+          '$degradedIncrementValue so the record is still saved and the '
+          'degraded value is identifiable: $e');
+      return degradedIncrementValue;
     }
   }
 
@@ -958,14 +985,14 @@ class DbService {
   /// part worth testing, and resolving a surveyId to a database is not
   /// reachable from a test. Throws rather than returning a fallback -- the
   /// caller owns the failure policy, and today that policy is
-  /// [getNextIncrementValue]'s logged `return 1`.
+  /// [getNextIncrementValue]'s logged [degradedIncrementValue].
   @visibleForTesting
   static Future<int> nextIncrementValueIn(
     Database db, {
     required String tableName,
     required String incrementField,
-    required String primaryKeyField,
-    required String primaryKeyValue,
+    required String linkingField,
+    required String linkingValue,
   }) async {
     if (!await _tableExists(db, tableName)) return 1;
 
@@ -975,12 +1002,12 @@ class DbService {
     // the subject-ID query. This was the one place that bypassed the guard.
     final column = _quoteIdentifier(incrementField);
     final table = _quoteIdentifier(tableName);
-    final keyColumn = _quoteIdentifier(primaryKeyField);
+    final keyColumn = _quoteIdentifier(linkingField);
 
     final results = await db.rawQuery(
       'SELECT MAX(CAST($column AS INTEGER)) as maxValue '
       'FROM $table WHERE $keyColumn = ?',
-      [primaryKeyValue],
+      [linkingValue],
     );
 
     if (results.isEmpty || results.first['maxValue'] == null) return 1;
@@ -992,6 +1019,75 @@ class DbService {
       return (int.tryParse(maxValue) ?? 0) + 1;
     }
     return 1;
+  }
+
+  /// The next [incrementField] for **every** parent in [tableName], keyed by
+  /// linking value. `null` means the read failed.
+  ///
+  /// One grouped query for the whole table, because the caller
+  /// (`parent_id_selector_screen`) needs a number beside every parent in a
+  /// list. Asking [getNextIncrementValue] once per parent would be a query per
+  /// household; the screen it replaced was worse still -- a full-table read
+  /// into Dart per visible row per rebuild.
+  ///
+  /// A parent with no children yet is simply absent from the map, which the
+  /// caller reads as 1. That keeps "no children" and "read failed" distinct at
+  /// this level, the same distinction [tryGetMaxIdIncrement] preserves.
+  static Future<Map<String, int>?> tryGetNextIncrementValues({
+    required String surveyId,
+    required String tableName,
+    required String incrementField,
+    required String linkingField,
+  }) async {
+    try {
+      final db = await _getDbOrThrow(surveyId);
+      return await nextIncrementValuesIn(
+        db,
+        tableName: tableName,
+        incrementField: incrementField,
+        linkingField: linkingField,
+      );
+    } catch (e) {
+      _logError('Error getting next $incrementField values for $tableName '
+          'grouped by $linkingField: $e');
+      return null;
+    }
+  }
+
+  /// The SQL half of [tryGetNextIncrementValues], against an open [db].
+  @visibleForTesting
+  static Future<Map<String, int>> nextIncrementValuesIn(
+    Database db, {
+    required String tableName,
+    required String incrementField,
+    required String linkingField,
+  }) async {
+    if (!await _tableExists(db, tableName)) return const {};
+
+    // Identifiers come from a data dictionary's crfs sheet and cannot be
+    // bound, so they are quoted -- same guard as [nextIncrementValueIn].
+    final column = _quoteIdentifier(incrementField);
+    final table = _quoteIdentifier(tableName);
+    final keyColumn = _quoteIdentifier(linkingField);
+
+    final results = await db.rawQuery(
+      'SELECT $keyColumn AS linkingValue, '
+      'MAX(CAST($column AS INTEGER)) AS maxValue '
+      'FROM $table WHERE $keyColumn IS NOT NULL GROUP BY $keyColumn',
+    );
+
+    final next = <String, int>{};
+    for (final row in results) {
+      final key = row['linkingValue']?.toString();
+      if (key == null || key.isEmpty) continue;
+      final maxValue = row['maxValue'];
+      if (maxValue is int) {
+        next[key] = maxValue + 1;
+      } else if (maxValue is String) {
+        next[key] = (int.tryParse(maxValue) ?? 0) + 1;
+      }
+    }
+    return next;
   }
 
   static Future<void> updateInterview({
