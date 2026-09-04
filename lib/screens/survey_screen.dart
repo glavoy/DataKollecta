@@ -156,28 +156,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
       }
 
-      // 4b) Load existing primary keys for duplicate checking (New Record Mode only)
-      if (widget.existingAnswers == null) {
-        final surveyId = await SurveyConfigService().getActiveSurveyId();
-        if (surveyId != null) {
-          final tableName =
-              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-          _pkFields = await DbService.getPrimaryKeyFields(surveyId, tableName);
-
-          if (_pkFields.isNotEmpty) {
-            final allKeys = await DbService.getAllPrimaryKeys(
-                surveyId, tableName, _pkFields);
-
-            _existingPrimaryKeys = allKeys.map((row) {
-              return _pkFields.map((f) => row[f]?.toString() ?? '').join('|');
-            }).toSet();
-
-            debugPrint(
-                'Loaded ${_existingPrimaryKeys.length} existing primary keys for duplicate check');
-          }
-        }
-      }
-
       // 5) Calculate linenum if needed (for new records only)
       if (widget.existingAnswers == null) {
         await _calculateLineNum(questions);
