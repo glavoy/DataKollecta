@@ -146,6 +146,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
             final allKeys = await DbService.getAllPrimaryKeys(
                 surveyId, tableName, _pkFields);
 
+            // Both sides of the comparison are built the same way, from the
+            // same lowercased field list, so a case difference between the
+            // worksheet and the XML cannot make them disagree. The snapshot
+            // is loaded once per screen, which is enough: the auto-repeat
+            // loop pushes a fresh SurveyScreen per child, so each child sees
+            // its siblings.
             _existingPrimaryKeys = allKeys.map((row) {
               return _pkFields.map((f) => row[f]?.toString() ?? '').join('|');
             }).toSet();
@@ -506,30 +512,55 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
 
       // Real-time duplicate check (New Record Mode only)
-      if (widget.existingAnswers == null &&
-          _pkFields.contains(q.fieldName.toLowerCase())) {
-        // Check if all PK fields have values
-        bool allPkPresent = true;
-        for (final pkField in _pkFields) {
-          if (_answers[pkField] == null ||
-              _answers[pkField].toString().isEmpty) {
-            allPkPresent = false;
-            break;
-          }
-        }
-
-        if (allPkPresent) {
-          final signature =
-              _pkFields.map((f) => _answers[f]?.toString() ?? '').join('|');
-          if (_existingPrimaryKeys.contains(signature)) {
-            // Duplicate found!
-            _showDuplicateErrorDialog(q.fieldName);
-            // Don't clear the answer, but set logic error to prevent proceeding
-            _logicError = _s.duplicateRecordMessage;
-          }
-        }
+      if (_pkFields.contains(q.fieldName.toLowerCase()) &&
+          _isDuplicatePrimaryKey()) {
+        _showDuplicateErrorDialog(q.fieldName);
+        // Don't clear the answer, but set logic error to prevent proceeding
+        _logicError = _s.duplicateRecordMessage;
       }
     });
+  }
+
+  /// Reads an answer by field name, ignoring case.
+  ///
+  /// `_pkFields` are lowercased crfs values while `_answers` is keyed by the
+  /// XML's own fieldname, so the two only line up when the dictionary happens
+  /// to agree with itself about case.
+  dynamic _answerFor(String fieldName) {
+    if (_answers.containsKey(fieldName)) return _answers[fieldName];
+    final target = fieldName.toLowerCase();
+    for (final entry in _answers.entries) {
+      if (entry.key.toLowerCase() == target) return entry.value;
+    }
+    return null;
+  }
+
+  /// Whether the primary key now in `_answers` already exists in this table.
+  ///
+  /// Pure, and separate from [_onAnswerChanged], because that method only
+  /// runs for the question the interviewer is *on* -- so a primary key made
+  /// entirely of `automatic` fields could never trigger it. In PRISM CSS both
+  /// halves of `(hhid, linenum)` are `type='automatic'` with no
+  /// `<calculation>`, so neither ever renders and this check has never once
+  /// fired for that survey. [_processAutomaticQuestion] now calls it too,
+  /// where the key is actually computed.
+  ///
+  /// New records only: an existing record's own key is in the snapshot, so
+  /// editing one would always look like a duplicate of itself.
+  bool _isDuplicatePrimaryKey() {
+    if (widget.existingAnswers != null) return false;
+    if (_pkFields.isEmpty || _existingPrimaryKeys.isEmpty) return false;
+
+    final values = <String>[];
+    for (final pkField in _pkFields) {
+      final value = _answerFor(pkField)?.toString() ?? '';
+      // A partial key cannot be compared -- every record would collide on the
+      // same half-empty signature.
+      if (value.isEmpty) return false;
+      values.add(value);
+    }
+
+    return _existingPrimaryKeys.contains(values.join('|'));
   }
 
   void _showDuplicateErrorDialog(String fieldName) {
@@ -857,6 +888,26 @@ class _SurveyScreenState extends State<SurveyScreen> {
         surveyId: _activeSurveyId,
       );
       _answers[q.fieldName] = value;
+    }
+
+    // The duplicate check has to run here, not only in _onAnswerChanged.
+    // That method fires for the question the interviewer is *on*, so a
+    // primary key built entirely from `automatic` fields -- which is exactly
+    // what PRISM CSS's `(hhid, linenum)` is -- never rendered and never
+    // triggered it. Now the check runs where the key is computed.
+    //
+    // Telling the interviewer here, while `hhnum` can still be corrected, is
+    // the whole point: hh_info declares `incrementLength: 0`, so `hhid` is a
+    // pure function of typed answers with no spare digit to move. There is no
+    // degraded value available for a duplicate household -- only prevention
+    // at entry, with the UNIQUE constraint as the visible backstop.
+    if (_pkFields.contains(q.fieldName.toLowerCase()) &&
+        _isDuplicatePrimaryKey()) {
+      if (!mounted) return;
+      setState(() {
+        _logicError = _s.duplicateRecordMessage;
+      });
+      _showDuplicateErrorDialog(q.fieldName);
     }
   }
 

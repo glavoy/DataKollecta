@@ -1072,4 +1072,110 @@ void main() {
       expect(ordered, hasLength(2));
     });
   });
+
+  group('tryGetRecordCount and getPrimaryKeyFields', () {
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      DbService.registerDatabaseForTest('s-count', db);
+      addTearDown(() => DbService.unregisterDatabaseForTest('s-count'));
+    });
+
+    tearDown(() => db.close());
+
+    test('a failed read is null, not 0', () async {
+      // RepeatCountService writes this number onto the parent, so a failure
+      // arriving as 0 could set `nmembers = 0` on a household with five
+      // members. Until this contract existed, the only thing preventing that
+      // was the count question happening to declare minvalue='1'.
+      const unopened = 'survey-that-was-never-opened';
+
+      expect(
+        await DbService.tryGetRecordCount(
+            surveyId: unopened, tableName: 'hh_members'),
+        isNull,
+      );
+      // The lossy wrapper still exists for callers that only display a count.
+      expect(
+        await DbService.getRecordCount(
+            surveyId: unopened, tableName: 'hh_members'),
+        0,
+      );
+    });
+
+    test('a missing table is 0, not null', () async {
+      // A table that does not exist genuinely holds no rows.
+      expect(
+        await DbService.tryGetRecordCount(
+            surveyId: 's-count', tableName: 'not_a_table'),
+        0,
+      );
+    });
+
+    test('counts one parent\'s children', () async {
+      await db.execute('CREATE TABLE hh_members (hhid TEXT, linenum TEXT)');
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '1'});
+      await db.insert('hh_members', {'hhid': 'HH001', 'linenum': '2'});
+      await db.insert('hh_members', {'hhid': 'HH002', 'linenum': '1'});
+
+      expect(
+        await DbService.tryGetRecordCount(
+          surveyId: 's-count',
+          tableName: 'hh_members',
+          where: 'hhid = ?',
+          whereArgs: ['HH001'],
+        ),
+        2,
+      );
+    });
+
+    test('refuses a table name it cannot safely quote', () async {
+      await db.execute('CREATE TABLE "odd""name" (hhid TEXT)');
+
+      // The table name used to be interpolated raw here while only whereArgs
+      // were bound.
+      expect(
+        await DbService.tryGetRecordCount(
+            surveyId: 's-count', tableName: 'odd"name'),
+        isNull,
+      );
+    });
+
+    test('primary key fields are lowercased, whatever the worksheet said',
+        () async {
+      await DbService.syncCrfsTableForTesting('s-count', db, {
+        'crfs': [
+          {'tablename': 'hh_members', 'primarykey': 'HHID, LineNum'},
+        ]
+      });
+
+      // The cell is typed by hand into a worksheet, while callers compare
+      // these names against lowercased fieldnames and against the lowercased
+      // keys getAllPrimaryKeys returns -- so mixed case used to make every
+      // one of those comparisons miss in silence.
+      expect(
+        await DbService.getPrimaryKeyFields('s-count', 'hh_members'),
+        ['hhid', 'linenum'],
+      );
+    });
+
+    test('existing primary keys come back under lowercased column names',
+        () async {
+      await db.execute('CREATE TABLE hh_members (HHID TEXT, LineNum TEXT)');
+      await db.insert('hh_members', {'HHID': 'HH001', 'LineNum': '1'});
+
+      final rows = await DbService.getAllPrimaryKeys(
+          's-count', 'hh_members', ['hhid', 'linenum']);
+
+      // The caller joins these lookups into a duplicate-check signature. When
+      // the keys came back as SQLite reported them, a lowercase lookup found
+      // nothing and every record collapsed to the same empty signature.
+      expect(rows, hasLength(1));
+      expect(rows.single['hhid'], 'HH001');
+      expect(rows.single['linenum'], '1');
+    });
+  });
 }

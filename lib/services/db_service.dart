@@ -1571,7 +1571,18 @@ END''';
           whereArgs: [tableName]);
       if (result.isEmpty) return [];
       final pkString = result.first['primarykey'] as String;
-      return pkString.split(',').map((s) => s.trim()).toList();
+      // Lowercased, like every other crfs consumer here. The cell is typed by
+      // hand into a worksheet, and callers compare these names against
+      // lowercased fieldnames and against the lowercased keys
+      // [getAllPrimaryKeys] returns -- so a sheet saying `HHID` used to make
+      // every one of those comparisons miss silently. SQLite matches column
+      // names case-insensitively, so a query built from these still works
+      // whatever case the column was created with.
+      return pkString
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .where((s) => s.isNotEmpty)
+          .toList();
     } catch (e) {
       return [];
     }
@@ -1589,19 +1600,43 @@ END''';
     }
   }
 
+  /// Every existing primary-key tuple in [tableName], keyed by lowercased
+  /// column name.
+  ///
+  /// Lowercasing the keys matters. `pkFields` comes from `crfs.primarykey`
+  /// verbatim -- a worksheet cell -- while the returned column names come from
+  /// SQLite, so a sheet saying `HHID` against a column named `hhid` produced
+  /// rows whose values all read as null. The caller builds a duplicate-check
+  /// signature by joining those lookups, so every record collapsed to the
+  /// same empty signature: either every new record looked like a duplicate,
+  /// or (once one such row existed) none of them did.
   static Future<List<Map<String, dynamic>>> getAllPrimaryKeys(
       String surveyId, String tableName, List<String> pkFields) async {
     try {
       final db = await _getDbOrThrow(surveyId);
       // Select only the primary key fields
-      return await db.query(tableName, columns: pkFields);
+      final rows = await db.query(tableName, columns: pkFields);
+      return rows
+          .map((row) => row.map((k, v) => MapEntry(k.toLowerCase(), v)))
+          .toList();
     } catch (e) {
       _logError('Failed to get all primary keys: $e');
       return [];
     }
   }
 
-  static Future<int> getRecordCount({
+  /// How many rows [tableName] holds, or `null` if the read **failed**.
+  ///
+  /// The same distinction [tryGetMaxIdIncrement] preserves, and for the same
+  /// reason. [getRecordCount] reports a failure as `0`, and that zero used to
+  /// reach `RepeatCountService`, which could then write `nmembers = 0` onto a
+  /// household that has five members. The only thing preventing that was the
+  /// count question happening to declare `minvalue='1'`; a dictionary that
+  /// omits the `numeric_check` had no protection at all.
+  ///
+  /// A **missing table** is `0`, not `null`: a table that does not exist
+  /// genuinely holds no rows.
+  static Future<int?> tryGetRecordCount({
     required String surveyId,
     required String tableName,
     String? where,
@@ -1611,8 +1646,15 @@ END''';
       final db = await _getDbOrThrow(surveyId);
       if (!await _tableExists(db, tableName)) return 0;
 
+      // `tableName` and `where` come from a data dictionary's crfs sheet and
+      // cannot be bound, so the table goes through the identifier guard.
+      // `where` is built by the caller from a crfs column name plus a `?`
+      // placeholder, and its values are always bound via [whereArgs].
+      final table = _quoteIdentifier(tableName);
+
       final results = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM $tableName${where != null ? ' WHERE $where' : ''}',
+        'SELECT COUNT(*) as count FROM $table'
+        '${where != null ? ' WHERE $where' : ''}',
         whereArgs,
       );
 
@@ -1620,9 +1662,27 @@ END''';
       return (results.first['count'] as int?) ?? 0;
     } catch (e) {
       _logError('Error counting records in $tableName: $e');
-      return 0;
+      return null;
     }
   }
+
+  /// How many rows [tableName] holds, with a failed read reported as `0`.
+  ///
+  /// Callers that only display a number are fine with this. Anything that
+  /// *writes* the count back must use [tryGetRecordCount] and handle `null`.
+  static Future<int> getRecordCount({
+    required String surveyId,
+    required String tableName,
+    String? where,
+    List<dynamic>? whereArgs,
+  }) async =>
+      await tryGetRecordCount(
+        surveyId: surveyId,
+        tableName: tableName,
+        where: where,
+        whereArgs: whereArgs,
+      ) ??
+      0;
 
   /// Reads a single column from the first row matching [where].
   ///

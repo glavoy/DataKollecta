@@ -142,12 +142,19 @@ class RepeatCountService {
     final displayName = crf['displayname']?.toString() ?? childTableName;
     final mode = parseEnforceMode(crf['repeat_enforce_count']);
 
-    final actualCount = await DbService.getRecordCount(
+    // Null means the read failed, which is not the same as "no children".
+    // Reconciliation writes this number onto the parent, so a failure that
+    // arrived as 0 could set `nmembers = 0` on a household with five members.
+    // Until now the only thing stopping that was the count question happening
+    // to declare `minvalue='1'` -- the range gate further down -- so a
+    // dictionary that omits its `numeric_check` had no protection at all.
+    final actualCount = await DbService.tryGetRecordCount(
       surveyId: surveyId,
       tableName: childTableName,
       where: '$linkingField = ?',
       whereArgs: [linkingValue],
     );
+    if (actualCount == null) return null;
 
     final declaredRaw = await DbService.getFieldValue(
       surveyId: surveyId,
