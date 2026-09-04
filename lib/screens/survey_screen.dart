@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../widgets/question_views.dart';
+import '../services/answer_validation_service.dart';
 import '../services/child_increment_service.dart';
 import '../services/duplicate_key_service.dart';
 import '../services/db_service.dart';
@@ -344,81 +345,40 @@ class _SurveyScreenState extends State<SurveyScreen> {
   void _onAnswerChanged(String fieldName, dynamic oldValue, dynamic newValue) {
     if (_loadedQuestions == null || !mounted) return;
 
-    // Check if it's a "logical" change (numeric-aware)
-    if (oldValue != null && newValue != null) {
-      final s1 = oldValue.toString();
-      final s2 = newValue.toString();
-      if (s1 == s2) return; // Exact match, no change
+    // Exact match, no change
+    if (oldValue != null &&
+        newValue != null &&
+        oldValue.toString() == newValue.toString()) {
+      return;
+    }
 
-      final n1 = num.tryParse(s1);
-      final n2 = num.tryParse(s2);
-      if (n1 != null && n2 != null && n1 == n2) {
-        // Numeric equivalent, ignore as a change for cascade clearing
-        debugPrint(
-            '[SurveyScreen] Ignoring padding-only change for $fieldName: "$s1" -> "$s2"');
-        // Still update logic checks for the current question
-        setState(() {
-          final q = _loadedQuestions![_currentQuestion];
-          _logicError = LogicService.evaluateLogicChecks(q, _answers);
-        });
-        return;
-      }
+    if (AnswerValidationService.isPaddingOnlyChange(oldValue, newValue)) {
+      // Numeric equivalent, ignore as a change for cascade clearing
+      debugPrint('[SurveyScreen] Ignoring padding-only change for $fieldName: '
+          '"$oldValue" -> "$newValue"');
+      // Still update logic checks for the current question
+      setState(() {
+        final q = _loadedQuestions![_currentQuestion];
+        _logicError = LogicService.evaluateLogicChecks(q, _answers);
+      });
+      return;
     }
 
     _clearDependents(fieldName);
 
     setState(() {
       final q = _loadedQuestions![_currentQuestion];
-      _logicError = LogicService.evaluateLogicChecks(q, _answers);
+      final validation = AnswerValidationService.evaluate(q, _answers, _s);
+      _logicError = validation.message;
 
-      // Perform numeric check validation
-      if (q.type == QuestionType.text) {
-        final raw = _answers[q.fieldName]?.toString() ?? '';
-
-        // Strict length check (if configured with <maxCharacters>=N)
-        if (q.fixedLength && q.maxCharacters != null) {
-          if (raw.length != q.maxCharacters) {
-            // Incomplete input: keep Next disabled, but HIDE error message
-            _logicError = null;
-            return; // Skip further validation until length is met
-          }
-        }
-
-        // Special responses (don't know / refuse) bypass the numeric range check
-        final isSpecialResponse = raw.isNotEmpty &&
-            ((q.dontKnow != null && raw == q.dontKnow) ||
-                (q.refuse != null && raw == q.refuse));
-
-        if (_logicError == null && raw.isNotEmpty && !isSpecialResponse) {
-          // "12." is a number the interviewer has not finished typing. Flag it
-          // on any decimal field, not just one that also declares a range.
-          if (NumericValidationService.isIncompleteDecimal(q.fieldType, raw,
-              hasRangeCheck: q.numericCheck != null)) {
-            _logicError = _s.incompleteDecimalValue;
-            return;
-          }
-
-          final parsed = num.tryParse(raw);
-          if (q.numericCheck != null && parsed != null) {
-            final nc = q.numericCheck!;
-            if (!NumericValidationService.isWithinRange(nc, parsed)) {
-              // The generator writes this sentence in English whatever the
-              // build, so the app supplies the wording. A message the author
-              // wrote is already in the dictionary's language: use it as-is.
-              final ownWording =
-                  _s.numberMustBeBetween(nc.minValue ?? '', nc.maxValue ?? '');
-              _logicError =
-                  SurveyLoader.isGeneratedNumericRangeMessage(nc.message)
-                      ? ownWording
-                      : (nc.message ?? ownWording);
-            }
-          }
-        }
-      }
+      // A half-typed fixed-length field or an unfinished decimal stops here,
+      // and deliberately does not reach the duplicate check below -- that is
+      // what the bare `return` inside this closure used to do. Running the
+      // check on a partial key would be new behaviour, not a tidy-up.
+      if (validation.stopsFurtherChecks) return;
 
       // Real-time duplicate check (New Record Mode only)
-      if (_duplicateKeys.isKeyField(q.fieldName) &&
-          _isDuplicatePrimaryKey()) {
+      if (_duplicateKeys.isKeyField(q.fieldName) && _isDuplicatePrimaryKey()) {
         _showDuplicateErrorDialog(q.fieldName);
         // Don't clear the answer, but set logic error to prevent proceeding
         _logicError = _s.duplicateRecordMessage;
