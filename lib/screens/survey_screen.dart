@@ -5,6 +5,7 @@ import '../models/question.dart';
 import '../services/survey_loader.dart';
 import '../widgets/question_views.dart';
 import '../services/child_increment_service.dart';
+import '../services/duplicate_key_service.dart';
 import '../services/db_service.dart';
 import '../services/auto_fields.dart';
 import '../config/app_config.dart';
@@ -78,8 +79,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   static const AppStrings _s = AppStrings(AppConfig.isFrench);
 
   // Duplicate check variables
-  Set<String> _existingPrimaryKeys = {};
-  List<String> _pkFields = [];
+  DuplicateKeySnapshot _duplicateKeys = DuplicateKeySnapshot.empty;
 
   String? _logicError; // Holds the current logic check error message
 
@@ -126,30 +126,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
       // 4b) Load existing primary keys for duplicate checking (New Record Mode only)
       if (widget.existingAnswers == null) {
-        final surveyId = await SurveyConfigService().getActiveSurveyId();
-        if (surveyId != null) {
-          final tableName =
-              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-          _pkFields = await DbService.getPrimaryKeyFields(surveyId, tableName);
-
-          if (_pkFields.isNotEmpty) {
-            final allKeys = await DbService.getAllPrimaryKeys(
-                surveyId, tableName, _pkFields);
-
-            // Both sides of the comparison are built the same way, from the
-            // same lowercased field list, so a case difference between the
-            // worksheet and the XML cannot make them disagree. The snapshot
-            // is loaded once per screen, which is enough: the auto-repeat
-            // loop pushes a fresh SurveyScreen per child, so each child sees
-            // its siblings.
-            _existingPrimaryKeys = allKeys.map((row) {
-              return _pkFields.map((f) => row[f]?.toString() ?? '').join('|');
-            }).toSet();
-
-            debugPrint(
-                'Loaded ${_existingPrimaryKeys.length} existing primary keys for duplicate check');
-          }
-        }
+        _duplicateKeys = await DuplicateKeySnapshot.load(
+          surveyId: surveyId,
+          tableName: widget.questionnaireFilename
+              .toLowerCase()
+              .replaceAll('.xml', ''),
+        );
       }
 
       // 5) Calculate linenum if needed (for new records only).
@@ -435,7 +417,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       }
 
       // Real-time duplicate check (New Record Mode only)
-      if (_pkFields.contains(q.fieldName.toLowerCase()) &&
+      if (_duplicateKeys.isKeyField(q.fieldName) &&
           _isDuplicatePrimaryKey()) {
         _showDuplicateErrorDialog(q.fieldName);
         // Don't clear the answer, but set logic error to prevent proceeding
@@ -452,7 +434,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   /// null rather than an empty string keeps the distinction visible at the
   /// call site instead of writing a blank join key.
   String? _parentUniqueIdForChildren() {
-    final value = _answerFor('uniqueid')?.toString();
+    final value =
+        DuplicateKeySnapshot.answerFor(_answers, 'uniqueid')?.toString();
     if (value == null || value.isEmpty) {
       debugPrint('[SurveyScreen] No uniqueid on this record, so children '
           'started from here will have an empty '
@@ -462,46 +445,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
     return value;
   }
 
-  /// Reads an answer by field name, ignoring case.
-  ///
-  /// `_pkFields` are lowercased crfs values while `_answers` is keyed by the
-  /// XML's own fieldname, so the two only line up when the dictionary happens
-  /// to agree with itself about case.
-  dynamic _answerFor(String fieldName) {
-    if (_answers.containsKey(fieldName)) return _answers[fieldName];
-    final target = fieldName.toLowerCase();
-    for (final entry in _answers.entries) {
-      if (entry.key.toLowerCase() == target) return entry.value;
-    }
-    return null;
-  }
-
   /// Whether the primary key now in `_answers` already exists in this table.
   ///
-  /// Pure, and separate from [_onAnswerChanged], because that method only
-  /// runs for the question the interviewer is *on* -- so a primary key made
-  /// entirely of `automatic` fields could never trigger it. In PRISM CSS both
-  /// halves of `(hhid, linenum)` are `type='automatic'` with no
-  /// `<calculation>`, so neither ever renders and this check has never once
-  /// fired for that survey. [_processAutomaticQuestion] now calls it too,
-  /// where the key is actually computed.
-  ///
-  /// New records only: an existing record's own key is in the snapshot, so
-  /// editing one would always look like a duplicate of itself.
+  /// The comparison lives in [DuplicateKeySnapshot]; what stays here is the
+  /// edit-mode gate. In edit mode no snapshot is loaded at all, so this is
+  /// belt and braces -- an existing record's own key would be in the snapshot,
+  /// and checking it would always report a duplicate of itself.
   bool _isDuplicatePrimaryKey() {
     if (widget.existingAnswers != null) return false;
-    if (_pkFields.isEmpty || _existingPrimaryKeys.isEmpty) return false;
-
-    final values = <String>[];
-    for (final pkField in _pkFields) {
-      final value = _answerFor(pkField)?.toString() ?? '';
-      // A partial key cannot be compared -- every record would collide on the
-      // same half-empty signature.
-      if (value.isEmpty) return false;
-      values.add(value);
-    }
-
-    return _existingPrimaryKeys.contains(values.join('|'));
+    return _duplicateKeys.isDuplicate(_answers);
   }
 
   void _showDuplicateErrorDialog(String fieldName) {
@@ -834,7 +786,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // pure function of typed answers with no spare digit to move. There is no
     // degraded value available for a duplicate household -- only prevention
     // at entry, with the UNIQUE constraint as the visible backstop.
-    if (_pkFields.contains(q.fieldName.toLowerCase()) &&
+    if (_duplicateKeys.isKeyField(q.fieldName) &&
         _isDuplicatePrimaryKey()) {
       if (!mounted) return;
       setState(() {
