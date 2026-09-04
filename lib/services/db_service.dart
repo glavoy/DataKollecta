@@ -18,6 +18,7 @@ import '../config/app_config.dart';
 import '../models/question.dart';
 import 'csv_data_service.dart';
 import 'database_exception.dart';
+import 'db_backup.dart';
 import 'settings_service.dart';
 import 'survey_loader.dart';
 import 'survey_table_schema.dart';
@@ -693,9 +694,9 @@ class DbService {
       // Backup: Log INSERT statement
       try {
         final columns = rowData.keys.join(', ');
-        final values = rowData.values.map((v) => _escapeSqlValue(v)).join(', ');
+        final values = rowData.values.map((v) => DbBackup.escapeSqlValue(v)).join(', ');
         final sql = 'INSERT INTO $tableName ($columns) VALUES ($values);';
-        await _writeBackup(surveyId, tableName, sql);
+        await DbBackup.write(surveyId, tableName, sql);
       } catch (e) {
         _logError('Failed to write backup for INSERT: $e');
       }
@@ -926,31 +927,6 @@ class DbService {
     return [for (final key in order) bestByKey[key]!];
   }
 
-  static Future<DateTime?> getLastBackupTime(String surveyId) async {
-    try {
-      final backupsDir = await _getBackupsDirectory();
-      final surveyBackupDir = Directory(p.join(backupsDir.path, surveyId));
-      if (!await surveyBackupDir.exists()) return null;
-
-      final files = await surveyBackupDir.list().toList();
-      if (files.isEmpty) return null;
-
-      DateTime? lastModified;
-      for (final file in files) {
-        if (file is File) {
-          final stat = await file.stat();
-          if (lastModified == null || stat.modified.isAfter(lastModified)) {
-            lastModified = stat.modified;
-          }
-        }
-      }
-      return lastModified;
-    } catch (e) {
-      _logError('Error getting last backup time: $e');
-      return null;
-    }
-  }
-
   static Future<Map<String, dynamic>?> getRecordByUniqueId(
       String surveyId, String tableName, String uniqueId) async {
     try {
@@ -1177,11 +1153,11 @@ class DbService {
       // Backup: Log UPDATE statement
       try {
         final setClause = rowData.entries
-            .map((e) => '${e.key} = ${_escapeSqlValue(e.value)}')
+            .map((e) => '${e.key} = ${DbBackup.escapeSqlValue(e.value)}')
             .join(', ');
         final sql =
-            "UPDATE $tableName SET $setClause WHERE uniqueid = '${_escapeSqlString(uniqueId)}';";
-        await _writeBackup(surveyId, tableName, sql);
+            "UPDATE $tableName SET $setClause WHERE uniqueid = '${DbBackup.escapeSqlString(uniqueId)}';";
+        await DbBackup.write(surveyId, tableName, sql);
       } catch (e) {
         _logError('Failed to write backup for UPDATE: $e');
       }
@@ -1579,55 +1555,6 @@ class DbService {
     } catch (e) {
       return [];
     }
-  }
-
-  static Future<void> _writeBackup(
-      String surveyId, String tableName, String sql) async {
-    try {
-      final backupsDir = await _getBackupsDirectory();
-      final surveyBackupDir = Directory(p.join(backupsDir.path, surveyId));
-      if (!await surveyBackupDir.exists()) {
-        await surveyBackupDir.create(recursive: true);
-      }
-
-      final backupFile = File(p.join(surveyBackupDir.path, '${tableName}_bak'));
-
-      // Append mode
-      await backupFile.writeAsString('$sql\n', mode: FileMode.append);
-    } catch (e) {
-      _logError('Failed to write backup: $e');
-    }
-  }
-
-  static String _escapeSqlValue(dynamic value) {
-    if (value == null) return 'NULL';
-    if (value is num) return value.toString();
-    if (value is DateTime) return "'${value.toIso8601String()}'";
-    return "'${_escapeSqlString(value.toString())}'";
-  }
-
-  static String _escapeSqlString(String str) {
-    return str.replaceAll("'", "''");
-  }
-
-  static Future<Directory> _getBackupsDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      baseDir = await getApplicationSupportDirectory();
-    }
-    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'backups'));
   }
 
   static Future<Directory> _getSurveysDirectory() async {
