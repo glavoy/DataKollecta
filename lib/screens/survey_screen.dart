@@ -20,6 +20,7 @@ import '../services/change_summary_service.dart';
 import '../services/app_strings.dart';
 import '../services/numeric_validation_service.dart';
 import '../services/repeat_count_service.dart';
+import '../services/repeat_plan_service.dart';
 
 class SurveyScreen extends StatefulWidget {
   final String questionnaireFilename;
@@ -1233,107 +1234,45 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final allCrfs = await DbService.getExistingRecords(surveyId, 'crfs');
       if (!context.mounted) return;
 
-      // Sort by display_order to ensure repeats happen in correct sequence
-      final sortedCrfs = List<Map<String, dynamic>>.from(allCrfs);
-      sortedCrfs.sort((a, b) {
-        final orderA = (a['display_order'] as int?) ?? 0;
-        final orderB = (b['display_order'] as int?) ?? 0;
-        return orderA.compareTo(orderB);
-      });
+      final repeats = RepeatPlanService.plan(
+        crfs: allCrfs,
+        parentTableName: tableName,
+        answers: _answers,
+      );
 
-      for (final crf in sortedCrfs) {
+      for (final item in repeats) {
         // Re-checked per iteration, not just once above: the prompt and the
         // repeat loop below both await, so a later pass can resume after the
         // user has already left this screen.
         if (!context.mounted) return;
 
-        final childTableName = crf['tablename']?.toString();
-        final parentTable = crf['parenttable']?.toString();
+        if (item.autoStartRepeat == 1) {
+          // Prompt mode
+          final shouldStart = await _promptStartRepeatSurveys(
+            context,
+            item.childTableName,
+            item.displayName,
+            item.repeatCount,
+          );
 
-        // Safely parse auto_start_repeat, handling both int and String
-        int autoStartRepeat = 0;
-        final autoStartVal = crf['auto_start_repeat'];
-        if (autoStartVal is int) {
-          autoStartRepeat = autoStartVal;
-        } else if (autoStartVal is String) {
-          autoStartRepeat = int.tryParse(autoStartVal) ?? 0;
+          if (shouldStart != true) {
+            // User declined to start this repeat section - skip to next
+            continue;
+          }
+          if (!context.mounted) return;
         }
 
-        // Check if this is a child of the current survey
-        // Use parentTable
-        if (childTableName != null &&
-            parentTable == tableName &&
-            autoStartRepeat > 0) {
-          // Get the repeat count field
-          final repeatCountField = crf['repeat_count_field']?.toString();
-          if (repeatCountField == null || repeatCountField.isEmpty) {
-            continue;
-          }
-
-          // Get the repeat count from the answers
-          final repeatCountValue = _answers[repeatCountField];
-          if (repeatCountValue == null) {
-            continue;
-          }
-
-          final repeatCount = int.tryParse(repeatCountValue.toString());
-          if (repeatCount == null || repeatCount <= 0) {
-            continue;
-          }
-
-          // Get the linking field to pass to child surveys
-          final linkingField = crf['linkingfield']?.toString();
-          if (linkingField == null) {
-            continue;
-          }
-
-          final linkingValue = _answers[linkingField];
-          if (linkingValue == null) {
-            continue;
-          }
-
-          // Prompt user to start repeat surveys
-          final displayName = crf['displayname']?.toString() ?? childTableName;
-
-          if (autoStartRepeat == 1) {
-            // Prompt mode
-            final shouldStart = await _promptStartRepeatSurveys(
-              context,
-              childTableName,
-              displayName,
-              repeatCount,
-            );
-
-            if (shouldStart == true) {
-              if (!context.mounted) return;
-              await _startRepeatSurveyLoop(
-                context,
-                childTableName,
-                displayName,
-                repeatCount,
-                linkingField,
-                linkingValue.toString(),
-                crf,
-              );
-              // Don't return - continue to check for more repeating sections
-            } else {
-              // User declined to start this repeat section - skip to next
-              continue;
-            }
-          } else if (autoStartRepeat == 2) {
-            // Force mode - auto start
-            await _startRepeatSurveyLoop(
-              context,
-              childTableName,
-              displayName,
-              repeatCount,
-              linkingField,
-              linkingValue.toString(),
-              crf,
-            );
-            // Don't return - continue to check for more repeating sections
-          }
-        }
+        // Prompt mode with a yes, or force mode. Either way, run the loop --
+        // and do not return, so later repeating sections are still offered.
+        await _startRepeatSurveyLoop(
+          context,
+          item.childTableName,
+          item.displayName,
+          item.repeatCount,
+          item.linkingField,
+          item.linkingValue,
+          item.crf,
+        );
       }
 
       // No auto-repeat configured, show success dialog
