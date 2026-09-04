@@ -1,115 +1,225 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:datakollecta/services/db_service.dart';
 import 'package:datakollecta/services/id_generator.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   // Mirrors the AVERT survey config: country(1) + deviceid(3) + mrc(3),
   // with a 4-digit auto-increment suffix.
   const baseId = '2105005';
   const incrementLength = 4;
 
-  int nextFor(List<Map<String, dynamic>> records, {String field = 'subjid'}) {
-    return IdGenerator.nextIncrementFrom(
-      records: records,
+  /// The counter as production computes it: the MAX query against a real
+  /// SQLite table, then the arithmetic.
+  ///
+  /// These cases used to drive a pure Dart scan over a list of row maps, which
+  /// was a faithful test of a function that no longer exists -- the counter is
+  /// now derived by SQL (M2), so the SQL is what has to be tested. Every case
+  /// below is the same assertion it always was, restated against a database.
+  Future<int> nextFor(
+    List<Map<String, Object?>> rows, {
+    String field = 'subjid',
+    List<String> columns = const ['subjid'],
+  }) async {
+    sqfliteFfiInit();
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(db.close);
+
+    await db.execute(
+      'CREATE TABLE enrollee (${columns.map((c) => '$c TEXT').join(', ')})',
+    );
+    for (final row in rows) {
+      await db.insert('enrollee', row);
+    }
+
+    final maxIncrement = await DbService.maxIdIncrementIn(
+      db,
+      tableName: 'enrollee',
+      fieldName: field,
+      baseId: baseId,
+      incrementLength: incrementLength,
+      sentinelFloor: IdGenerator.sentinelFloorFor(incrementLength),
+    );
+
+    return IdGenerator.nextIncrementAfter(
+      maxIncrement: maxIncrement,
       fieldName: field,
       baseId: baseId,
       incrementLength: incrementLength,
     );
   }
 
-  test('increments past the highest existing ID', () {
-    final next = nextFor([
-      {'subjid': '21050050001'},
-      {'subjid': '21050050002'},
-      {'subjid': '21050050003'},
-    ]);
-
-    expect(next, 4);
+  test('increments past the highest existing ID', () async {
+    expect(
+      await nextFor([
+        {'subjid': '21050050001'},
+        {'subjid': '21050050002'},
+        {'subjid': '21050050003'},
+      ]),
+      4,
+    );
   });
 
-  test('starts at 1 when the table is empty', () {
-    expect(nextFor([]), 1);
+  test('starts at 1 when the table is empty', () async {
+    expect(await nextFor([]), 1);
   });
 
-  test('ignores other columns that share the base ID prefix', () {
+  test('ignores other columns that share the base ID prefix', () async {
     // A value in a non-ID column that matches the base ID prefix and the
     // increment suffix length would previously inflate the counter, skipping
-    // IDs. Only the ID column itself may drive the counter.
-    final next = nextFor([
-      {'subjid': '21050050001', 'villagecode': '21050059999'},
-      {'subjid': '21050050002', 'villagecode': '21050058888'},
-    ]);
-
-    expect(next, 3);
+    // IDs. Only the ID column itself may drive the counter -- which the query
+    // now guarantees structurally, by naming that one column.
+    expect(
+      await nextFor(
+        [
+          {'subjid': '21050050001', 'villagecode': '21050059999'},
+          {'subjid': '21050050002', 'villagecode': '21050058888'},
+        ],
+        columns: ['subjid', 'villagecode'],
+      ),
+      3,
+    );
   });
 
-  test('ignores barcodes and other unrelated identifiers', () {
-    final next = nextFor([
-      {'subjid': '21050050001', 'barcode': 'R21B-005-YHSU'},
-      {'subjid': '21050050002', 'barcode': 'R21B-005-HGU5'},
-    ]);
-
-    expect(next, 3);
+  test('ignores barcodes and other unrelated identifiers', () async {
+    expect(
+      await nextFor(
+        [
+          {'subjid': '21050050001', 'barcode': 'R21B-005-YHSU'},
+          {'subjid': '21050050002', 'barcode': 'R21B-005-HGU5'},
+        ],
+        columns: ['subjid', 'barcode'],
+      ),
+      3,
+    );
   });
 
-  test('only counts the named field when several ID columns exist', () {
+  test('only counts the named field when several ID columns exist', () async {
     // Composite primary keys (e.g. "subjid,visitnum") still generate into a
     // single field; sibling ID columns must not contribute.
-    final next = nextFor([
-      {'subjid': '21050050001', 'parentid': '21050050050'},
-      {'subjid': '21050050002', 'parentid': '21050050051'},
-    ]);
-
-    expect(next, 3);
-  });
-
-  test('matches the field name case-insensitively', () {
-    // getExistingRecords lowercases column names, but XML fieldnames may not be.
-    final next = nextFor(
-      [
-        {'subjid': '21050050007'},
-      ],
-      field: 'SubjID',
+    expect(
+      await nextFor(
+        [
+          {'subjid': '21050050001', 'parentid': '21050050050'},
+          {'subjid': '21050050002', 'parentid': '21050050051'},
+        ],
+        columns: ['subjid', 'parentid'],
+      ),
+      3,
     );
-
-    expect(next, 8);
   });
 
-  test('ignores values whose suffix is the wrong length', () {
-    final next = nextFor([
-      {'subjid': '21050050002'},
-      {'subjid': '2105005123456'},
-      {'subjid': '210500599'},
-    ]);
-
-    expect(next, 3);
+  test('matches the field name as the dictionary spelled it', () async {
+    // SQLite column names are case-insensitive, so an XML fieldname of
+    // "SubjID" still resolves to the "subjid" column. The old Dart scan had to
+    // lowercase the key itself to achieve this.
+    expect(
+      await nextFor(
+        [
+          {'subjid': '21050050007'},
+        ],
+        field: 'SubjID',
+      ),
+      8,
+    );
   });
 
-  test('ignores values whose suffix is not numeric', () {
-    final next = nextFor([
-      {'subjid': '21050050002'},
-      {'subjid': '2105005ABCD'},
-    ]);
-
-    expect(next, 3);
+  test('ignores values whose suffix is the wrong length', () async {
+    expect(
+      await nextFor([
+        {'subjid': '21050050002'},
+        {'subjid': '2105005123456'},
+        {'subjid': '210500599'},
+      ]),
+      3,
+    );
   });
 
-  test('ignores records from other base IDs', () {
-    final next = nextFor([
-      {'subjid': '21050050002'},
-      {'subjid': '21060060099'},
-    ]);
-
-    expect(next, 3);
+  test('ignores values whose suffix is not numeric', () async {
+    // The reason the query tests the suffix with GLOB rather than relying on
+    // CAST: `CAST('ABCD' AS INTEGER)` is 0, but `CAST('12x' AS INTEGER)` is
+    // 12, so a CAST alone would let a malformed value advance the counter.
+    expect(
+      await nextFor([
+        {'subjid': '21050050002'},
+        {'subjid': '2105005ABCD'},
+        {'subjid': '210500512x9'},
+      ]),
+      3,
+    );
   });
 
-  test('tolerates null and missing ID values', () {
-    final next = nextFor([
-      {'subjid': null},
-      {'barcode': 'R21B-005-YHSU'},
-      {'subjid': '21050050004'},
-    ]);
+  test('ignores records from other base IDs', () async {
+    expect(
+      await nextFor([
+        {'subjid': '21050050002'},
+        {'subjid': '21060060099'},
+      ]),
+      3,
+    );
+  });
 
-    expect(next, 5);
+  test('tolerates null and missing ID values', () async {
+    expect(
+      await nextFor(
+        [
+          {'subjid': null},
+          {'barcode': 'R21B-005-YHSU'},
+          {'subjid': '21050050004'},
+        ],
+        columns: ['subjid', 'barcode'],
+      ),
+      5,
+    );
+  });
+
+  test('matches the base ID case-sensitively', () async {
+    // `LIKE '<baseId>%'` would have matched both of these, because SQLite's
+    // LIKE is ASCII-case-insensitive by default. `substr(...) = ?` does not,
+    // which is what String.startsWith did.
+    expect(
+      await nextFor(
+        [
+          {'subjid': 'gx570001'},
+        ],
+        columns: ['subjid'],
+      ),
+      1,
+    );
+  });
+
+  group('a prefix carrying SQL wildcard characters', () {
+    // The other reason the prefix test is substr-based: a dictionary prefix
+    // containing % or _ would be a wildcard inside LIKE, so `A_1` would have
+    // matched `AB1` and counted another base ID's records as its own.
+    Future<int> nextForPrefix(String prefix, List<String> ids) async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('CREATE TABLE enrollee (subjid TEXT)');
+      for (final id in ids) {
+        await db.insert('enrollee', {'subjid': id});
+      }
+      final max = await DbService.maxIdIncrementIn(
+        db,
+        tableName: 'enrollee',
+        fieldName: 'subjid',
+        baseId: prefix,
+        incrementLength: 3,
+        sentinelFloor: IdGenerator.sentinelFloorFor(3),
+      );
+      return max;
+    }
+
+    test('does not treat _ as a single-character wildcard', () async {
+      expect(await nextForPrefix('A_1', ['AB1007', 'A_1002']), 2);
+    });
+
+    test('does not treat % as a multi-character wildcard', () async {
+      expect(await nextForPrefix('A%1', ['ABC1007', 'A%1002']), 2);
+    });
   });
 
   group('the reserved sentinel band', () {
@@ -131,29 +241,33 @@ void main() {
       expect(IdGenerator.sentinelFloorFor(3), 990);
     });
 
-    test('does not poison the counter after a degraded ID was issued', () {
-      // The whole reason the band is excluded from MAX. Records 1-3 plus one
+    test('does not poison the counter after a degraded ID was issued',
+        () async {
+      // The whole reason the band is excluded from MAX -- now excluded in the
+      // WHERE clause rather than in a Dart loop. Records 1-3 plus one
       // sentinel: the next ordinary ID is 4, not 10000 (which would not fit
       // four digits and would then fail the capacity check forever).
-      final next = nextFor([
-        {'subjid': '21050050001'},
-        {'subjid': '21050050002'},
-        {'subjid': '21050050003'},
-        {'subjid': '21050059999'},
-      ]);
-
-      expect(next, 4);
+      expect(
+        await nextFor([
+          {'subjid': '21050050001'},
+          {'subjid': '21050050002'},
+          {'subjid': '21050050003'},
+          {'subjid': '21050059999'},
+        ]),
+        4,
+      );
     });
 
-    test('ignores every value in the band, not just the top one', () {
-      final next = nextFor([
-        {'subjid': '21050050007'},
-        {'subjid': '21050059990'},
-        {'subjid': '21050059995'},
-        {'subjid': '21050059999'},
-      ]);
-
-      expect(next, 8);
+    test('ignores every value in the band, not just the top one', () async {
+      expect(
+        await nextFor([
+          {'subjid': '21050050007'},
+          {'subjid': '21050059990'},
+          {'subjid': '21050059995'},
+          {'subjid': '21050059999'},
+        ]),
+        8,
+      );
     });
   });
 
@@ -204,21 +318,21 @@ void main() {
   });
 
   group('running out of range', () {
-    test('throws rather than return a value that will not fit', () {
+    test('throws rather than return a value that will not fit', () async {
       // padLeft does not truncate, so returning 9990 here would have produced
       // an 11-character ID in a 10-character scheme once padded -- and 10000
       // an even longer one. Both silently break joins and exports.
-      expect(
-        () => nextFor([
+      await expectLater(
+        nextFor([
           {'subjid': '21050059989'},
         ]),
         throwsA(isA<IdCapacityException>()),
       );
     });
 
-    test('the message names the field that needs a wider increment', () {
-      expect(
-        () => nextFor([
+    test('the message names the field that needs a wider increment', () async {
+      await expectLater(
+        nextFor([
           {'subjid': '21050059989'},
         ]),
         throwsA(
@@ -231,8 +345,8 @@ void main() {
       );
     });
 
-    test('the last usable value before the band is still issued', () {
-      final next = nextFor([
+    test('the last usable value before the band is still issued', () async {
+      final next = await nextFor([
         {'subjid': '21050059988'},
       ]);
 

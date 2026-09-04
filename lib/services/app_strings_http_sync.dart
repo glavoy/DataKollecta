@@ -94,4 +94,19 @@ class HttpSyncStrings {
   String downloadCollision(String surveyId, String existingProjectCode) =>
       'Survey "$surveyId" is already linked to project "$existingProjectCode" '
       'on this device and cannot also be downloaded from a different project.';
+
+  // -- Upload tuning --
+
+  String get uploadSettings => 'Upload';
+  String get recordsPerUpload => 'Records per upload';
+
+  /// Says what the number does in terms of the thing an interviewer can
+  /// actually observe -- whether uploads keep failing on this connection --
+  /// rather than in terms of HTTP batches.
+  String get recordsPerUploadHelp =>
+      'How many records are sent at a time. Lower this if uploads keep failing '
+      'on a weak connection; raise it to upload faster on a good one.';
+
+  String recordsPerUploadSaved(int size) =>
+      'Uploads will now send $size record${size == 1 ? '' : 's'} at a time.';
 }

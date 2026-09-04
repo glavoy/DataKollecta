@@ -642,13 +642,18 @@ class DbService {
   /// for anything deriving a counter: an empty list means "this table holds no
   /// records", which is the normal first-record case, while `null` means "the
   /// contents are unknown". Treating a failed read as an empty table is what
-  /// let [IdGenerator] restart a subject-ID counter at 1 and hand out an ID
+  /// let `IdGenerator` restart a subject-ID counter at 1 and hand out an ID
   /// that was already enrolled -- silently, because the error never surfaced
   /// past this method.
   ///
   /// A **missing table** is deliberately reported as empty rather than `null`:
   /// a table that does not exist cannot hold a colliding ID, so starting a
   /// counter at 1 there is correct. Only an actual failure is `null`.
+  ///
+  /// The subject-ID counter no longer comes through here at all -- it uses
+  /// [tryGetMaxIdIncrement], which carries the same `null` contract without
+  /// materialising the table. This method stays because the record-list
+  /// screens genuinely want every row.
   static Future<List<Map<String, dynamic>>?> tryGetExistingRecords(
       String surveyId, String tableName,
       {String? orderBy}) async {
@@ -671,12 +676,137 @@ class DbService {
   /// Every row of [tableName], with a failed read reported as no rows.
   ///
   /// Callers that only display records are fine with this. Anything deriving
-  /// an identifier must use [tryGetExistingRecords] and handle `null`.
+  /// an identifier must use [tryGetMaxIdIncrement] (or [tryGetExistingRecords]
+  /// where whole rows are genuinely needed) and handle `null` -- reading
+  /// increment 1 out of a failure's empty list is what handed a second subject
+  /// an already-enrolled ID.
   static Future<List<Map<String, dynamic>>> getExistingRecords(
       String surveyId, String tableName,
       {String? orderBy}) async {
     return await tryGetExistingRecords(surveyId, tableName, orderBy: orderBy) ??
         const [];
+  }
+
+  /// A SQLite identifier, ready to interpolate into a raw statement.
+  ///
+  /// Table and column names cannot be bound as parameters, so they have to be
+  /// interpolated -- and every such name here comes from a data dictionary
+  /// rather than from the code. Double-quoting covers every name SurveyGen can
+  /// produce (it restricts FieldName to letters, digits and underscores); a
+  /// name carrying a double quote is refused rather than escaped, because at
+  /// that point the dictionary is wrong and guessing is worse than stopping.
+  static String _quoteIdentifier(String name) {
+    if (name.isEmpty || name.contains('"')) {
+      throw DatabaseException('Unusable SQL identifier: "$name".');
+    }
+    return '"$name"';
+  }
+
+  /// The highest increment already issued under [baseId] in [fieldName], or
+  /// `null` if the read **failed**.
+  ///
+  /// `0` means no record carries this base ID yet -- the ordinary first-record
+  /// case. `null` carries the same meaning it does in [tryGetExistingRecords]
+  /// and is what drives [IdGenerator]'s degraded-ID path, so the distinction
+  /// between "empty" and "unknown" survives this method too.
+  ///
+  /// Replaces reading the entire table into Dart to compute one integer. On a
+  /// 20,000-row survey table that read mapped and lowercased every key of every
+  /// row while the interviewer waited; the work here is bounded by the number of
+  /// rows sharing [baseId], which the increment width itself caps.
+  static Future<int?> tryGetMaxIdIncrement({
+    required String surveyId,
+    required String tableName,
+    required String fieldName,
+    required String baseId,
+    required int incrementLength,
+    required int sentinelFloor,
+  }) async {
+    try {
+      final db = await _getDbOrThrow(surveyId);
+      // A table that does not exist cannot hold a colliding ID, so a counter
+      // starting at 1 there is correct -- the same reason
+      // tryGetExistingRecords reports a missing table as empty, not as a
+      // failure.
+      if (!await _tableExists(db, tableName)) return 0;
+
+      return await maxIdIncrementIn(
+        db,
+        tableName: tableName,
+        fieldName: fieldName,
+        baseId: baseId,
+        incrementLength: incrementLength,
+        sentinelFloor: sentinelFloor,
+      );
+    } catch (e) {
+      _logError(
+          'Error reading the highest "$fieldName" under "$baseId" in '
+          '"$tableName": $e');
+      return null;
+    }
+  }
+
+  /// The SQL half of [tryGetMaxIdIncrement], against an already-open database.
+  ///
+  /// Separated so the query can be tested against a real SQLite file without
+  /// standing up the survey-database registry, following
+  /// [syncCrfsTableForTesting].
+  ///
+  /// Three conditions between them accept exactly the values the old Dart scan
+  /// accepted, which is what makes this a faithful replacement rather than a
+  /// near-enough one:
+  ///
+  /// * `substr(<col>, 1, n) = <baseId>` is the case-sensitive prefix test
+  ///   (`String.startsWith`). It is used in preference to `LIKE '<baseId>%'`
+  ///   because `LIKE` is case-insensitive for ASCII in SQLite *and* would treat
+  ///   `%` or `_` inside a dictionary-supplied prefix as a wildcard.
+  /// * `length(<col>) = n + incrementLength` is the exact-suffix-width test.
+  /// * `substr(<col>, n + 1) GLOB '[0-9][0-9]...'` is the numeric-suffix test.
+  ///   `GLOB` rather than a bare `CAST`, because `CAST('12x' AS INTEGER)` is
+  ///   `12` in SQLite while `int.tryParse('12x')` is null -- without this a
+  ///   malformed value could advance the counter.
+  ///
+  /// The reserved sentinel band is excluded here rather than after the fact,
+  /// for the reason [IdGenerator.nextIncrementAfter] documents: a degraded ID
+  /// must not push `MAX` to the top of the range and exhaust it forever.
+  @visibleForTesting
+  static Future<int> maxIdIncrementIn(
+    Database db, {
+    required String tableName,
+    required String fieldName,
+    required String baseId,
+    required int incrementLength,
+    required int sentinelFloor,
+  }) async {
+    final table = _quoteIdentifier(tableName);
+    final column = _quoteIdentifier(fieldName);
+    final suffixStart = baseId.length + 1;
+    final digitPattern = '[0-9]' * incrementLength;
+
+    final rows = await db.rawQuery(
+      'SELECT MAX(CAST(substr($column, ?) AS INTEGER)) AS max_increment '
+      'FROM $table '
+      'WHERE substr($column, 1, ?) = ? '
+      'AND length($column) = ? '
+      'AND substr($column, ?) GLOB ? '
+      'AND CAST(substr($column, ?) AS INTEGER) < ?',
+      [
+        suffixStart,
+        baseId.length,
+        baseId,
+        baseId.length + incrementLength,
+        suffixStart,
+        digitPattern,
+        suffixStart,
+        sentinelFloor,
+      ],
+    );
+
+    // MAX over no rows is SQL NULL, which is the empty-table case.
+    final value = rows.isEmpty ? null : rows.first['max_increment'];
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 
   /// Collapses rows that share the same `uniqueid`, keeping only the one

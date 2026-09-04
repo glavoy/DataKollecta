@@ -192,15 +192,24 @@ class IdGenerator {
     required String baseId,
     required int incrementLength,
   }) async {
-    // `null` means the read failed; an empty list means the table genuinely
-    // holds no records, which is an ordinary first-record case. The old code
-    // called `getExistingRecords`, which reports both as an empty list -- so a
-    // locked or unreadable database silently produced increment 1 and an ID
-    // that collided with an already-enrolled subject.
-    final records =
-        await DbService.tryGetExistingRecords(surveyId, tableName);
+    // One `SELECT MAX(...)` over just this base ID's own rows, rather than
+    // reading the whole table into Dart to find one integer.
+    //
+    // `null` means the read failed; `0` means the table genuinely holds no
+    // record under this base ID, which is an ordinary first-record case. The
+    // original code called `getExistingRecords`, which reported both as an
+    // empty list -- so a locked or unreadable database silently produced
+    // increment 1 and an ID that collided with an already-enrolled subject.
+    final maxIncrement = await DbService.tryGetMaxIdIncrement(
+      surveyId: surveyId,
+      tableName: tableName,
+      fieldName: fieldName,
+      baseId: baseId,
+      incrementLength: incrementLength,
+      sentinelFloor: sentinelFloorFor(incrementLength),
+    );
 
-    if (records == null) {
+    if (maxIncrement == null) {
       final settings = SettingsService();
       final priorFailures = await settings.idFallbackCount;
       await settings.setIdFallbackCount(priorFailures + 1);
@@ -217,63 +226,39 @@ class IdGenerator {
       return sentinel;
     }
 
-    return nextIncrementFrom(
-      records: records,
+    return nextIncrementAfter(
+      maxIncrement: maxIncrement,
       fieldName: fieldName,
       baseId: baseId,
       incrementLength: incrementLength,
     );
   }
 
-  /// Derives the next increment from [records] by scanning [fieldName] only.
+  /// The increment to issue given [maxIncrement], the highest already in use
+  /// under [baseId].
   ///
-  /// Only the ID column itself is scanned. Scanning every column would pick up
-  /// unrelated values that happen to share the base ID's prefix and suffix
-  /// length (e.g. a barcode or another coded field), inflating the counter and
-  /// skipping IDs.
-  ///
-  /// Values in the reserved sentinel band are ignored, so a degraded ID cannot
-  /// poison the counter: with records 001-042 plus a sentinel 999, the next ID
-  /// is 043. Without that exclusion one transient read failure would push
-  /// `MAX` to 999 and every subsequent record would hit the capacity check
-  /// below -- worse than the bug this replaced.
+  /// Values in the reserved sentinel band are excluded from [maxIncrement] by
+  /// the query that produces it (see [DbService.maxIdIncrementIn]), so a
+  /// degraded ID cannot poison the counter: with records 001-042 plus a
+  /// sentinel 999, the next ID is 043. Without that exclusion one transient
+  /// read failure would push `MAX` to 999 and every subsequent record would
+  /// hit the capacity check below -- worse than the bug this replaced.
   ///
   /// Throws [IdCapacityException] rather than return a value that would not
   /// fit [incrementLength]. `padLeft` does not truncate, so 1000 in a
   /// three-digit scheme silently produced an eight-character `GX571000`.
   ///
-  /// Public to allow counter behavior to be verified without initializing the
-  /// application's survey database registry.
+  /// Public so the counter's arithmetic can be verified without a database.
   @visibleForTesting
-  static int nextIncrementFrom({
-    required List<Map<String, dynamic>> records,
+  static int nextIncrementAfter({
+    required int maxIncrement,
     required String fieldName,
     required String baseId,
     required int incrementLength,
   }) {
-    // getExistingRecords normalizes column names to lowercase
-    final column = fieldName.toLowerCase();
     final sentinelFloor = sentinelFloorFor(incrementLength);
-
-    // Find the maximum increment number for this base ID
-    int maxIncrement = 0;
-
-    for (final record in records) {
-      final value = record[column]?.toString();
-      if (value != null && value.startsWith(baseId)) {
-        // Extract the increment part
-        final incrementPart = value.substring(baseId.length);
-        if (incrementPart.length == incrementLength) {
-          final increment = int.tryParse(incrementPart);
-          if (increment == null || increment >= sentinelFloor) continue;
-          if (increment > maxIncrement) {
-            maxIncrement = increment;
-          }
-        }
-      }
-    }
-
     final next = maxIncrement + 1;
+
     if (next >= sentinelFloor) {
       throw IdCapacityException(
           'Base ID "$baseId" has reached the end of its $incrementLength-digit '

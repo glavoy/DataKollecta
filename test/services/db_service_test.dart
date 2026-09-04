@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// `DatabaseException` is declared by both sqflite_common and db_service.dart;
+// this file wants the latter, which is what _quoteIdentifier throws.
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
 import 'package:datakollecta/services/db_service.dart';
 
 void main() {
@@ -455,6 +457,76 @@ void main() {
       // above -- reading increment 1 out of this empty list is what handed a
       // second subject an already-enrolled ID.
       expect(await DbService.getExistingRecords(unopened, 'enrollee'), isEmpty);
+    });
+
+    test('tryGetMaxIdIncrement reports a failed read as null, not as 0',
+        () async {
+      // The same distinction one level down. 0 means "no record carries this
+      // base ID yet" and yields increment 1; null means "unknown" and sends
+      // IdGenerator down the sentinel path instead. Collapsing them is what
+      // used to hand a second subject an already-enrolled ID.
+      expect(
+        await DbService.tryGetMaxIdIncrement(
+          surveyId: unopened,
+          tableName: 'enrollee',
+          fieldName: 'subjid',
+          baseId: '2105005',
+          incrementLength: 4,
+          sentinelFloor: 9990,
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('maxIdIncrementIn', () {
+    late Database db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute('CREATE TABLE enrollee (subjid TEXT)');
+    });
+
+    tearDown(() => db.close());
+
+    Future<int> maxFor({String field = 'subjid'}) => DbService.maxIdIncrementIn(
+          db,
+          tableName: 'enrollee',
+          fieldName: field,
+          baseId: '2105005',
+          incrementLength: 4,
+          sentinelFloor: 9990,
+        );
+
+    test('is 0 for a table with no rows at all', () async {
+      expect(await maxFor(), 0);
+    });
+
+    test('is 0 when no row carries this base ID', () async {
+      await db.insert('enrollee', {'subjid': '21060060099'});
+
+      expect(await maxFor(), 0);
+    });
+
+    test('reads a value stored as an integer rather than text', () async {
+      // SQLite columns are dynamically typed, and a CSV import or a legacy
+      // row can leave a numeric-looking ID stored as INTEGER. substr() and
+      // length() coerce it to text, so it still counts -- as it did when the
+      // old Dart scan called .toString() on it.
+      await db.rawInsert('INSERT INTO enrollee (subjid) VALUES (?)', [21050050042]);
+
+      expect(await maxFor(), 42);
+    });
+
+    test('refuses an identifier it cannot safely quote', () async {
+      // Table and column names cannot be bound as parameters, so they are
+      // interpolated; a name carrying a double quote stops rather than being
+      // escaped and guessed at.
+      expect(
+        () => maxFor(field: 'subjid" --'),
+        throwsA(isA<DatabaseException>()),
+      );
     });
   });
 }

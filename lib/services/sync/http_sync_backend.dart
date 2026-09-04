@@ -393,7 +393,7 @@ class HttpSyncBackend {
   Future<UploadOutcome> _uploadWithToken(String surveyId, String token) async {
     final db = await DbService.getDatabaseForQueries(surveyId);
     final deviceId = await DeviceIdentity.deviceId();
-    final uploader = RecordUploader(apiClient: _api);
+    final uploader = await RecordUploader.configured(apiClient: _api);
     return uploader.uploadSurvey(db: db, token: token, deviceId: deviceId);
   }
 

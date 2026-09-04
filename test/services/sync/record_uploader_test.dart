@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:datakollecta/services/settings_service.dart';
 import 'package:datakollecta/services/sync/api_client.dart';
 import 'package:datakollecta/services/sync/record_uploader.dart';
 import 'package:datakollecta/services/sync/sync_backend.dart';
@@ -311,6 +313,58 @@ void main() {
       expect(outcome.syncedCount, 1);
       final rows = await db.query('formchanges');
       expect(rows.single['synced_at'], isNotNull);
+    });
+  });
+
+  group('the configured batch size', () {
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('comes from settings, not from the compiled-in default', () async {
+      await SettingsService().setSyncBatchSize(50);
+
+      final configured =
+          await RecordUploader.configured(apiClient: _FakeApiClient());
+
+      expect(configured.batchSize, 50);
+      expect(configured.batchSize, isNot(RecordUploader.defaultBatchSize));
+    });
+
+    test('is 25 on a device that has never set one', () async {
+      final configured =
+          await RecordUploader.configured(apiClient: _FakeApiClient());
+
+      expect(configured.batchSize, SettingsService.defaultSyncBatchSize);
+    });
+
+    test('is re-read per uploader, so a change takes effect on the next sync',
+        () async {
+      // The reason `configured` is a factory rather than a cached field: the
+      // setting is usually changed *because* a sync is failing on the
+      // connection at hand, so waiting for an app restart would defeat it.
+      await SettingsService().setSyncBatchSize(5);
+      expect((await RecordUploader.configured(apiClient: _FakeApiClient()))
+          .batchSize, 5);
+
+      await SettingsService().setSyncBatchSize(100);
+      expect((await RecordUploader.configured(apiClient: _FakeApiClient()))
+          .batchSize, 100);
+    });
+
+    test('a stored value beyond the ceiling is clamped, never sent as-is',
+        () async {
+      // app-sync refuses more than 500 rows with a 413, which RecordUploader
+      // reads as an ordinary transfer failure and retries -- three times,
+      // then it stops the run. Clamping means a bad setting degrades to a
+      // slow sync rather than a stopped one.
+      SharedPreferences.setMockInitialValues({'sync_batch_size': '5000'});
+
+      final configured =
+          await RecordUploader.configured(apiClient: _FakeApiClient());
+
+      expect(configured.batchSize, SettingsService.maxSyncBatchSize);
     });
   });
 }
