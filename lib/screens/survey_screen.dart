@@ -20,6 +20,7 @@ import '../services/change_summary_service.dart';
 import '../services/app_strings.dart';
 import '../services/numeric_validation_service.dart';
 import '../services/repeat_count_service.dart';
+import '../services/repeat_loop_runner.dart';
 import '../services/repeat_plan_service.dart';
 
 class SurveyScreen extends StatefulWidget {
@@ -1242,96 +1243,78 @@ class _SurveyScreenState extends State<SurveyScreen> {
     String linkingValue,
     Map<String, dynamic> crfConfig,
   ) async {
-    final repeatCountField = crfConfig['repeat_count_field']?.toString();
-    final enforceCountMode =
-        RepeatCountService.parseEnforceMode(crfConfig['repeat_enforce_count']);
+    final enforceCountMode = RepeatCountService.parseEnforceMode(
+      crfConfig['repeat_enforce_count'],
+    );
 
-    int completedCount = 0;
-
-    // Convert displayName to singular form for entity name
     // "Household members" -> "Household member"
-    // "Sleeping Structures" -> "Sleeping Structure"
-    String entityName = displayName;
+    var entityName = displayName;
     if (entityName.endsWith('s')) {
       entityName = entityName.substring(0, entityName.length - 1);
     }
 
-    for (int i = 1; i <= repeatCount; i++) {
-      if (!mounted) break;
-
-      // Navigate to child survey
-      final result = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SurveyScreen(
-            questionnaireFilename: '$childTableName.xml',
-            // This loop runs inside the parent's own screen, so `_answers`
-            // still holds the parent's record -- its `uniqueid` is the
-            // immutable join key the child carries alongside the linking
-            // value. Unlike the parent-ID selector, nothing has to be looked
-            // up for it.
-            prepopulatedAnswers: {
-              linkingField: linkingValue,
-              if (_parentUniqueIdForChildren() != null)
-                AutoFields.parentUniqueIdField: _parentUniqueIdForChildren()!,
-            },
-            incrementField: crfConfig['incrementfield']?.toString(),
-            repeatIndex: i,
-            repeatTotal: repeatCount,
-            repeatEntityName: entityName,
-            repeatEntityNamePlural: displayName,
-            repeatEnforceMode: enforceCountMode,
-            repeatCompletedSoFar: completedCount,
+    // The loop itself lives in RepeatLoopRunner so its decisions -- which
+    // enforce mode retries, which lets the interviewer leave -- can be tested
+    // without tapping through a survey. What stays here is the four things
+    // that need a widget: the push, the two dialogs, and the mounted check.
+    final outcome = await const RepeatLoopRunner().run(
+      requested: repeatCount,
+      enforceMode: enforceCountMode,
+      shouldContinue: () => mounted,
+      openChild: (index, completed) async {
+        final result = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SurveyScreen(
+              questionnaireFilename: '$childTableName.xml',
+              // This loop runs inside the parent's own screen, so `_answers`
+              // still holds the parent's record -- its `uniqueid` is the
+              // immutable join key the child carries alongside the linking
+              // value. Unlike the parent-ID selector, nothing has to be
+              // looked up for it.
+              prepopulatedAnswers: {
+                linkingField: linkingValue,
+                if (_parentUniqueIdForChildren() != null)
+                  AutoFields.parentUniqueIdField: _parentUniqueIdForChildren()!,
+              },
+              incrementField: crfConfig['incrementfield']?.toString(),
+              repeatIndex: index,
+              repeatTotal: repeatCount,
+              repeatEntityName: entityName,
+              repeatEntityNamePlural: displayName,
+              repeatEnforceMode: enforceCountMode,
+              repeatCompletedSoFar: completed,
+            ),
           ),
-        ),
-      );
+        );
+        return result == true;
+      },
+      insist: (index, completed) async {
+        if (!context.mounted) return;
+        await _showMustCompleteDialogWithEntity(
+          context,
+          repeatCount,
+          index,
+          entityName,
+          allowExit: false, // Force mode: user cannot exit
+        );
+      },
+      isBelowMinimum: () =>
+          _isBelowDeclaredMinimum(childTableName, linkingValue, entityName),
+      // _isBelowDeclaredMinimum shows its own dialog before returning true, so
+      // there is nothing further to say here.
+      warnBelowMinimum: (index, completed) async {},
+      reconcile: () async {
+        if (!context.mounted) return;
+        await _reconcileRepeatCount(context, childTableName, linkingValue);
+      },
+    );
 
-      // Check if user completed the survey (result == true means saved)
-      if (result == true) {
-        completedCount++;
-      } else {
-        // User exited without saving
-        // Check if we should enforce count
-        if (enforceCountMode == 2) {
-          // Force mode - must complete (no exit option)
-          if (!context.mounted) return;
-          await _showMustCompleteDialogWithEntity(
-            context,
-            repeatCount,
-            i,
-            entityName,
-            allowExit: false, // Force mode: user cannot exit
-          );
-          // In force mode, dialog will always return true (user can only click Continue)
-          i--; // Retry this iteration
-          continue;
-        }
-
-        // Leaving early is allowed in every other mode -- but not below the
-        // floor the count question itself declares. A household cannot have
-        // zero members, so the interviewer must not be able to walk out of
-        // the loop leaving a count the form would have rejected.
-        if (await _isBelowDeclaredMinimum(
-            childTableName, linkingValue, entityName)) {
-          if (!mounted) break;
-          i--; // Retry this iteration
-          continue;
-        }
-
-        // User can exit, but we'll check count at the end
-        break;
-      }
-    }
-
-    if (!context.mounted) return;
-
-    // After loop, reconcile the parent's count with what was actually entered.
-    // This does not show the success dialog -- more repeating sections may
-    // still follow.
-    debugPrint('Repeat loop for $childTableName finished: '
-        '$completedCount of $repeatCount entered '
-        '(count field $repeatCountField, enforce mode $enforceCountMode)');
-    await _reconcileRepeatCount(context, childTableName, linkingValue);
+    debugPrint(
+      'Repeat loop for $childTableName finished: '
+      '${outcome.completed} of ${outcome.requested} entered '
+      '(enforce mode $enforceCountMode)',
+    );
   }
 
   /// Show dialog when user must complete all entities
