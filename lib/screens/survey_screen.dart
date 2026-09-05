@@ -18,7 +18,6 @@ import '../services/survey_navigation_service.dart';
 import '../services/csv_data_service.dart';
 import '../services/change_summary_service.dart';
 import '../services/app_strings.dart';
-import '../services/numeric_validation_service.dart';
 import '../services/repeat_count_service.dart';
 import '../services/repeat_loop_runner.dart';
 import '../services/repeat_plan_service.dart';
@@ -462,86 +461,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
     });
   }
 
-  bool _isAnswered(Question q) {
-    // A question the dictionary marked <optional> may be left blank -- the
-    // Next button stays enabled with no answer. Replaces the old hardcoded
-    // 'comments' fieldname special-case, which applied regardless of what
-    // the XML actually declared and gave every survey exactly one skippable
-    // field, always named 'comments'.
-    if (q.optional) {
-      return true;
-    }
-
-    final val = _answers[q.fieldName];
-
-    switch (q.type) {
-      case QuestionType.text:
-        return (val is String) && val.trim().isNotEmpty;
-      case QuestionType.radio:
-        return val != null && val.toString().isNotEmpty;
-      case QuestionType.checkbox:
-        return (val is List) && val.isNotEmpty;
-      case QuestionType.combobox:
-        return val != null && val.toString().isNotEmpty;
-      case QuestionType.date:
-        // For date questions, must have a date selected or special response
-        if (val == null) return false;
-        final valStr = val.toString();
-        if (valStr.isEmpty) return false;
-        // Special responses (don't know, refuse) are valid
-        if (q.dontKnow != null && valStr == q.dontKnow) return true;
-        if (q.refuse != null && valStr == q.refuse) return true;
-        // Otherwise, must be a valid DateTime
-        return val is DateTime ||
-            (val is String && DateTime.tryParse(valStr) != null);
-      case QuestionType.datetime:
-        return val != null && val.toString().isNotEmpty;
-      case QuestionType.information:
-      case QuestionType.automatic:
-        return true; // not applicable
-    }
-  }
-
-  bool _isValid(Question q) {
-    // For integer text fields, enforce numeric_check range
-    // For text fields with numeric_check, enforce range
-    // For integer text fields, enforce numeric_check range
-    // For text fields with numeric_check, enforce range
-    if (q.type == QuestionType.text) {
-      final raw = _answers[q.fieldName]?.toString() ?? '';
-
-      // Special responses (don't know / refuse) bypass format/length/numeric checks
-      if (raw.isNotEmpty &&
-          ((q.dontKnow != null && raw == q.dontKnow) ||
-              (q.refuse != null && raw == q.refuse))) {
-        return true;
-      }
-
-      // Strict length check
-      if (q.fixedLength && q.maxCharacters != null) {
-        if (raw.length != q.maxCharacters) return false;
-      }
-
-      // A half-typed decimal blocks Next whether or not a range is declared.
-      if (NumericValidationService.isIncompleteDecimal(q.fieldType, raw,
-          hasRangeCheck: q.numericCheck != null)) {
-        return false;
-      }
-
-      if (q.numericCheck != null) {
-        if (raw.isEmpty) return false;
-
-        final parsed = num.tryParse(raw);
-        if (parsed == null) return false;
-
-        if (!NumericValidationService.isWithinRange(q.numericCheck!, parsed)) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
   // Previous question lookup is handled by _history
   /// Process an automatic question by calculating its value
   Future<void> _processAutomaticQuestion(Question q) async {
@@ -662,8 +581,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         final isFirst = _history.isEmpty;
+        // The gate itself lives in AnswerValidationService, so the survey
+        // testing harness walks the form under the same rule rather than a
+        // copy of it. `_logicError` is still read from state rather than
+        // recomputed: it also carries the unique-check and duplicate-key
+        // messages, which are not decidable from the answer map alone.
         final canProceed = (q.type == QuestionType.information ||
-                (_isAnswered(q) && _isValid(q))) &&
+                (AnswerValidationService.isAnswered(q, _answers) &&
+                    AnswerValidationService.isValid(q, _answers))) &&
             _logicError == null;
         final isLast = _currentQuestion == questions.length - 1 ||
             !_hasNextDisplayedQuestion(questions, _currentQuestion);

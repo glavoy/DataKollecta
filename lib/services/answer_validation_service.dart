@@ -100,4 +100,112 @@ class AnswerValidationService {
 
     return AnswerValidation(logicError);
   }
+
+  /// Whether [question] counts as answered, for the Next button.
+  ///
+  /// Moved verbatim out of `SurveyScreen._isAnswered` so the survey-testing
+  /// harness gates on the same rule the app gates on rather than a copy of it.
+  /// The screen still owns the button; this owns the decision.
+  static bool isAnswered(Question question, AnswerMap answers) {
+    // A question the dictionary marked <optional> may be left blank -- the
+    // Next button stays enabled with no answer. Replaces the old hardcoded
+    // 'comments' fieldname special-case, which applied regardless of what
+    // the XML actually declared and gave every survey exactly one skippable
+    // field, always named 'comments'.
+    if (question.optional) {
+      return true;
+    }
+
+    final val = answers[question.fieldName];
+
+    switch (question.type) {
+      case QuestionType.text:
+        return (val is String) && val.trim().isNotEmpty;
+      case QuestionType.radio:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.checkbox:
+        return (val is List) && val.isNotEmpty;
+      case QuestionType.combobox:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.date:
+        // For date questions, must have a date selected or special response
+        if (val == null) return false;
+        final valStr = val.toString();
+        if (valStr.isEmpty) return false;
+        // Special responses (don't know, refuse) are valid
+        if (question.dontKnow != null && valStr == question.dontKnow) {
+          return true;
+        }
+        if (question.refuse != null && valStr == question.refuse) return true;
+        // Otherwise, must be a valid DateTime
+        return val is DateTime ||
+            (val is String && DateTime.tryParse(valStr) != null);
+      case QuestionType.datetime:
+        return val != null && val.toString().isNotEmpty;
+      case QuestionType.information:
+      case QuestionType.automatic:
+        return true; // not applicable
+    }
+  }
+
+  /// Whether [question]'s answer passes its length, decimal and range rules.
+  ///
+  /// Moved verbatim out of `SurveyScreen._isValid`. Deliberately silent: this
+  /// is the half of the gate that disables the button without saying why --
+  /// [evaluate] is what produces the message. Only `QuestionType.text` has
+  /// anything to check.
+  static bool isValid(Question question, AnswerMap answers) {
+    if (question.type == QuestionType.text) {
+      final raw = answers[question.fieldName]?.toString() ?? '';
+
+      // Special responses (don't know / refuse) bypass format/length/numeric checks
+      if (raw.isNotEmpty &&
+          ((question.dontKnow != null && raw == question.dontKnow) ||
+              (question.refuse != null && raw == question.refuse))) {
+        return true;
+      }
+
+      // Strict length check
+      if (question.fixedLength && question.maxCharacters != null) {
+        if (raw.length != question.maxCharacters) return false;
+      }
+
+      // A half-typed decimal blocks Next whether or not a range is declared.
+      if (NumericValidationService.isIncompleteDecimal(question.fieldType, raw,
+          hasRangeCheck: question.numericCheck != null)) {
+        return false;
+      }
+
+      if (question.numericCheck != null) {
+        if (raw.isEmpty) return false;
+
+        final parsed = num.tryParse(raw);
+        if (parsed == null) return false;
+
+        if (!NumericValidationService.isWithinRange(
+            question.numericCheck!, parsed)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /// Whether navigation may leave [question] -- the whole Next-button gate.
+  ///
+  /// Composes the three halves the way `SurveyScreen.build` does: an
+  /// `information` screen always passes, anything else must be answered and
+  /// valid, and no logic check may be failing. An interviewer facing `false`
+  /// here cannot move on and cannot finish; there is no way past it but to
+  /// change the answer.
+  ///
+  /// The screen holds its failing message in `_logicError` across rebuilds,
+  /// so it re-reads state rather than recomputing; this recomputes, which is
+  /// the same decision from the same inputs.
+  static bool canProceed(Question question, AnswerMap answers, AppStrings s) {
+    if (question.type == QuestionType.information) return true;
+    if (!isAnswered(question, answers)) return false;
+    if (!isValid(question, answers)) return false;
+    return evaluate(question, answers, s).message == null;
+  }
 }

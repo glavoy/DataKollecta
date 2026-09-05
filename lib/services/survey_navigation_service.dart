@@ -71,6 +71,10 @@ class SurveyNavigationService {
 
   /// Advances from a displayed question, applying its postskip before traversing
   /// automatic questions and preskips.
+  ///
+  /// [onSkipEvaluated] is told about each skip rule as it is tried. It reaches
+  /// every rule this call evaluates except those inside `_advanceToEnd`, which
+  /// evaluates none -- once a "skip to end" has fired the walk is unconditional.
   static Future<int> advanceFromQuestion({
     required List<Question> questions,
     required int currentIndex,
@@ -78,10 +82,14 @@ class SurveyNavigationService {
     required AutomaticQuestionProcessor processAutomaticQuestion,
     Iterable<String> primaryKeyFields = const [],
     bool isEditMode = false,
+    SkipObserver? onSkipEvaluated,
   }) async {
     var startIndex = currentIndex + 1;
-    final postSkipTarget =
-        SkipService.evaluateSkips(questions[currentIndex].postSkips, answers);
+    final postSkipTarget = SkipService.evaluateSkips(
+      questions[currentIndex].postSkips,
+      answers,
+      onEvaluated: onSkipEvaluated,
+    );
 
     if (postSkipTarget != null) {
       if (_isEndOfForm(postSkipTarget)) {
@@ -115,6 +123,7 @@ class SurveyNavigationService {
       processAutomaticQuestion: processAutomaticQuestion,
       primaryKeyFields: primaryKeyFields,
       isEditMode: isEditMode,
+      onSkipEvaluated: onSkipEvaluated,
     );
   }
 
@@ -127,6 +136,7 @@ class SurveyNavigationService {
     required AutomaticQuestionProcessor processAutomaticQuestion,
     Iterable<String> primaryKeyFields = const [],
     bool isEditMode = false,
+    SkipObserver? onSkipEvaluated,
   }) async {
     var index = startIndex;
     final primaryKeys =
@@ -134,8 +144,11 @@ class SurveyNavigationService {
 
     while (index < questions.length) {
       final question = questions[index];
-      final preSkipTarget =
-          SkipService.evaluateSkips(question.preSkips, answers);
+      final preSkipTarget = SkipService.evaluateSkips(
+        question.preSkips,
+        answers,
+        onEvaluated: onSkipEvaluated,
+      );
 
       if (preSkipTarget != null) {
         if (_isEndOfForm(preSkipTarget)) {

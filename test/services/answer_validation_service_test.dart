@@ -220,4 +220,150 @@ void main() {
           isNull);
     });
   });
+
+  group('isAnswered', () {
+    test('an optional question is answered however blank it is', () {
+      final q = Question(
+        fieldName: 'comments',
+        type: QuestionType.text,
+        fieldType: 'text',
+        text: 'Comments',
+        optional: true,
+      );
+      expect(AnswerValidationService.isAnswered(q, {}), isTrue);
+      expect(AnswerValidationService.isAnswered(q, {'comments': ''}), isTrue);
+    });
+
+    test('a text answer of only whitespace is not answered', () {
+      final q = textQuestion();
+      expect(AnswerValidationService.isAnswered(q, {'hhnum': '  '}), isFalse);
+      expect(AnswerValidationService.isAnswered(q, {'hhnum': '4'}), isTrue);
+    });
+
+    test('a checkbox needs at least one box ticked', () {
+      final q = Question(
+        fieldName: 'symptoms',
+        type: QuestionType.checkbox,
+        fieldType: 'text',
+        text: 'Symptoms',
+      );
+      expect(
+          AnswerValidationService.isAnswered(q, {'symptoms': <String>[]}),
+          isFalse);
+      expect(
+          AnswerValidationService.isAnswered(q, {'symptoms': ['1']}), isTrue);
+    });
+
+    test('a date accepts a DateTime, a parseable string, or a sentinel', () {
+      final q = Question(
+        fieldName: 'visit_date',
+        type: QuestionType.date,
+        fieldType: 'date',
+        text: 'Date',
+        dontKnow: '-7',
+      );
+      expect(
+          AnswerValidationService.isAnswered(q, {'visit_date': DateTime(2026)}),
+          isTrue);
+      expect(
+          AnswerValidationService.isAnswered(q, {'visit_date': '2026-01-01'}),
+          isTrue);
+      expect(AnswerValidationService.isAnswered(q, {'visit_date': '-7'}),
+          isTrue);
+      expect(AnswerValidationService.isAnswered(q, {'visit_date': 'soon'}),
+          isFalse);
+    });
+
+    test('information and automatic questions are always answered', () {
+      for (final type in [QuestionType.information, QuestionType.automatic]) {
+        final q = Question(
+          fieldName: 'x',
+          type: type,
+          fieldType: 'n/a',
+          text: 'x',
+        );
+        expect(AnswerValidationService.isAnswered(q, {}), isTrue);
+      }
+    });
+  });
+
+  group('isValid', () {
+    test('a fixed-length field must be exactly that long, and says nothing',
+        () {
+      final q = textQuestion(fixedLength: true, maxCharacters: 7);
+      expect(AnswerValidationService.isValid(q, {'hhnum': 'OP-1234'}), isTrue);
+      expect(AnswerValidationService.isValid(q, {'hhnum': 'OP-123'}), isFalse);
+      // The silence is the point: the button is disabled with no message.
+      expect(
+          AnswerValidationService.evaluate(q, {'hhnum': 'OP-123'}, s).message,
+          isNull);
+    });
+
+    test('a numeric_check question with no answer is invalid', () {
+      final q = textQuestion(
+        numericCheck: const NumericCheck(minValue: 0, maxValue: 99),
+      );
+      expect(AnswerValidationService.isValid(q, {}), isFalse);
+      expect(AnswerValidationService.isValid(q, {'hhnum': '100'}), isFalse);
+      expect(AnswerValidationService.isValid(q, {'hhnum': '99'}), isTrue);
+    });
+
+    test('a sentinel bypasses length and range together', () {
+      final q = textQuestion(
+        fixedLength: true,
+        maxCharacters: 7,
+        numericCheck: const NumericCheck(minValue: 0, maxValue: 99),
+        dontKnow: '-7',
+      );
+      expect(AnswerValidationService.isValid(q, {'hhnum': '-7'}), isTrue);
+    });
+
+    test('nothing but a text question is ever invalid', () {
+      final q = Question(
+        fieldName: 'sex',
+        type: QuestionType.radio,
+        fieldType: 'integer',
+        text: 'Sex',
+      );
+      expect(AnswerValidationService.isValid(q, {}), isTrue);
+    });
+  });
+
+  group('canProceed', () {
+    test('an information screen always lets navigation past', () {
+      final q = Question(
+        fieldName: 'intro',
+        type: QuestionType.information,
+        fieldType: 'n/a',
+        text: 'Welcome',
+      );
+      expect(AnswerValidationService.canProceed(q, {}, s), isTrue);
+    });
+
+    test('a blank non-optional question blocks', () {
+      expect(AnswerValidationService.canProceed(textQuestion(), {}, s),
+          isFalse);
+    });
+
+    test('a failing logic check blocks an otherwise valid answer', () {
+      final q = textQuestion(
+        logicChecks: [
+          LogicCheck(condition: 'hhnum > 5', message: 'Too big'),
+        ],
+      );
+      expect(
+          AnswerValidationService.canProceed(q, {'hhnum': '9'}, s), isFalse);
+      expect(AnswerValidationService.canProceed(q, {'hhnum': '2'}, s), isTrue);
+    });
+
+    test('an out-of-range answer blocks even though it is answered', () {
+      final q = textQuestion(
+        numericCheck: const NumericCheck(
+            minValue: 0, maxValue: 99, message: 'Number must be between 0 and 99!'),
+      );
+      expect(AnswerValidationService.isAnswered(q, {'hhnum': '150'}), isTrue);
+      expect(
+          AnswerValidationService.canProceed(q, {'hhnum': '150'}, s), isFalse);
+    });
+  });
 }
