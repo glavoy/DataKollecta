@@ -49,6 +49,25 @@
   a duplicate means a second copy of a household that already exists.
 
 ### Fixed
+- **A change summary could list an edit that was never recorded.** Four places each decided,
+  their own way, whether two answers are the same answer — the padding check in
+  `AnswerValidationService`, the change summary, the `formchanges` writer in `DbService`, and
+  the has-anything-changed check in `AnswerStorageService`. Only the last treated
+  `2025-12-09 11:22` and `2025-12-09T11:22` as the same moment, and only two read a checkbox
+  answer the way the rest of the codebase reads one.
+
+  That mattered in edit mode, where a stored date is parsed back into a real `DateTime` on
+  load: on every save one side is a `DateTime` and the other is the text it came from. So on a
+  save where something else had genuinely changed, the summary shown to the interviewer could
+  include a date the database never recorded a change for.
+
+  All four now share one rule (`AnswerEquality`), the most tolerant of what the four already
+  intended: same text, or the same number written differently, or the same instant written
+  differently. A consequence worth knowing when comparing across versions — **fewer
+  `formchanges` rows are written**, because a value re-rendered into another format no longer
+  counts as an edit. That is the intended effect, not data loss; every row that stops being
+  written was recording a change that did not happen.
+
 - **The child increment counter had two implementations that disagreed.**
   `survey_screen._calculateLineNum` grouped a household's children by `crfs.primarykey`'s
   *first* field via a `SELECT MAX`, while `parent_id_selector_screen._getNextIncrementNumber`

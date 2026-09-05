@@ -1,4 +1,5 @@
 import '../models/question.dart';
+import 'answer_equality.dart';
 import 'survey_loader.dart';
 import 'csv_data_service.dart';
 import 'database_response_service.dart';
@@ -36,8 +37,12 @@ class ChangeSummaryService {
       final oldValue = originalAnswers[fieldName];
       final newValue = currentAnswers[fieldName];
 
-      // Use logical equality to ignore padding differences
-      if (_isLogicallyEqual(oldValue, newValue)) continue;
+      // Padding, a checkbox List against the string it is stored as, and a
+      // DateTime against the ISO text it was loaded from are all the same
+      // answer written differently -- see AnswerEquality. This used to have
+      // its own rule that handled only the first, so an edit could be listed
+      // here that formchanges never recorded.
+      if (AnswerEquality.sameAnswer(oldValue, newValue)) continue;
 
       // Find the question definition
       final question = questions.firstWhere(
@@ -86,21 +91,6 @@ class ChangeSummaryService {
     }
 
     return summary;
-  }
-
-  static bool _isLogicallyEqual(dynamic v1, dynamic v2) {
-    if (v1 == v2) return true;
-    if (v1 == null || v2 == null) return false;
-
-    final s1 = v1.toString();
-    final s2 = v2.toString();
-
-    // Check numeric equivalence
-    final n1 = num.tryParse(s1);
-    final n2 = num.tryParse(s2);
-    if (n1 != null && n2 != null) return n1 == n2;
-
-    return s1 == s2;
   }
 
   static Future<String> _resolveLabel({

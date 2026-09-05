@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 // this file wants the latter, which is what
 // `SurveyTableSchema.quoteIdentifier` throws. It now lives in
 // database_exception.dart and is re-exported by db_service.dart.
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
 import 'package:datakollecta/services/auto_fields.dart';
 import 'package:datakollecta/services/db_service.dart';
@@ -1508,6 +1509,146 @@ void main() {
           throwsA(isA<DatabaseException>()));
       expect(SurveyTableSchema.quoteIdentifier('Region Name'),
           '"Region Name"');
+    });
+  });
+
+  group('what the shared equality rule changed about formchanges', () {
+    // updateField and _recordChanges both decide "did this value actually
+    // change" and both stamp oldvalue/newvalue. Those two jobs used to be done
+    // by a private pair here that handled padding but not dates; they now go
+    // through AnswerEquality, so this pins both what stayed the same (the text
+    // written) and what deliberately changed (which rows get written at all).
+
+    late Database db;
+
+    setUp(() async {
+      // _recordChanges reads the surveyor id and, unlike updateField, does not
+      // guard that read -- a missing plugin aborts the whole audit write. Same
+      // approach as settings_service_test.dart.
+      SharedPreferences.setMockInitialValues({});
+      sqfliteFfiInit();
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('CREATE TABLE visit ('
+          'uniqueid TEXT PRIMARY KEY, hhid TEXT, seen_at TEXT, count TEXT, '
+          'lastmod TEXT, synced_at TEXT)');
+      await db.execute('CREATE TABLE formchanges ('
+          'tablename TEXT, fieldname TEXT, uniqueid TEXT, oldvalue TEXT, '
+          'newvalue TEXT, changed_at TEXT, changeuniqueid TEXT, '
+          'surveyor_id TEXT, synced_at DATETIME)');
+      DbService.registerDatabaseForTest('eq', db);
+      addTearDown(() => DbService.unregisterDatabaseForTest('eq'));
+    });
+
+    Future<void> seed(String column, String value) => db.insert('visit', {
+          'uniqueid': 'v-1',
+          'hhid': '100',
+          column: value,
+          'synced_at': '2026-09-01T00:00:00.000',
+        });
+
+    test('a DateTime answer is still stamped as ISO text, exactly as before',
+        () async {
+      // The canonical form feeds formchanges.oldvalue/newvalue, so it had to
+      // survive the unification byte for byte. updateInterview is the path a
+      // real DateTime answer takes -- updateField writes its value raw and
+      // sqflite refuses a DateTime there, so that path never carries one.
+      await seed('seen_at', '2025-12-09T09:00:00.000');
+
+      await DbService.updateInterview(
+        surveyId: 'eq',
+        surveyFilename: 'visit.xml',
+        answers: {
+          'uniqueid': 'v-1',
+          'seen_at': DateTime.parse('2025-12-09T11:22:00.000'),
+        },
+        uniqueId: 'v-1',
+        originalAnswers: {'uniqueid': 'v-1', 'seen_at': '2025-12-09T09:00:00.000'},
+      );
+
+      final change = (await db.query('formchanges')).single;
+      expect(change['fieldname'], 'seen_at');
+      expect(change['oldvalue'], '2025-12-09T09:00:00.000');
+      expect(change['newvalue'], '2025-12-09T11:22:00.000');
+    });
+
+    test('a DateTime answer equal to the text it was loaded from records '
+        'nothing', () async {
+      // The defect this commit fixes, at the place it was visible. Edit mode
+      // parses the stored ISO string back into a real DateTime, so on every
+      // save one side is a DateTime and the other is text. ChangeSummary
+      // called that a change; formchanges did not. Now neither does.
+      await seed('seen_at', '2025-12-09T11:22:00.000');
+
+      await DbService.updateInterview(
+        surveyId: 'eq',
+        surveyFilename: 'visit.xml',
+        answers: {
+          'uniqueid': 'v-1',
+          'seen_at': DateTime.parse('2025-12-09T11:22:00.000'),
+        },
+        uniqueId: 'v-1',
+        originalAnswers: {'uniqueid': 'v-1', 'seen_at': '2025-12-09T11:22:00.000'},
+      );
+
+      expect(await db.query('formchanges'), isEmpty);
+    });
+
+    test('re-writing the same instant in another format records nothing',
+        () async {
+      // The behaviour this commit changes, and the reason for it: the stored
+      // answer did not move, so there is nothing to audit and nothing to
+      // re-upload. Before, this wrote a formchanges row and cleared synced_at.
+      await seed('seen_at', '2025-12-09T11:22:00.000Z');
+
+      await DbService.updateField(
+        surveyId: 'eq',
+        tableName: 'visit',
+        field: 'seen_at',
+        value: '2025-12-09T13:22:00.000+02:00',
+        where: 'hhid = ?',
+        whereArgs: ['100'],
+      );
+
+      expect(await db.query('formchanges'), isEmpty);
+      // And the row is not re-armed for upload.
+      final row = (await db.query('visit')).single;
+      expect(row['synced_at'], '2026-09-01T00:00:00.000');
+      expect(row['seen_at'], '2025-12-09T11:22:00.000Z');
+    });
+
+    test('padding still records nothing, as it always did', () async {
+      await seed('count', '04');
+
+      await DbService.updateField(
+        surveyId: 'eq',
+        tableName: 'visit',
+        field: 'count',
+        value: '4',
+        where: 'hhid = ?',
+        whereArgs: ['100'],
+      );
+
+      expect(await db.query('formchanges'), isEmpty);
+    });
+
+    test('a genuine change is still recorded and still re-arms the row',
+        () async {
+      await seed('count', '4');
+
+      await DbService.updateField(
+        surveyId: 'eq',
+        tableName: 'visit',
+        field: 'count',
+        value: '5',
+        where: 'hhid = ?',
+        whereArgs: ['100'],
+      );
+
+      final change = (await db.query('formchanges')).single;
+      expect(change['oldvalue'], '4');
+      expect(change['newvalue'], '5');
+      expect((await db.query('visit')).single['synced_at'], isNull);
     });
   });
 }

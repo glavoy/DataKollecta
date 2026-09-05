@@ -23,27 +23,23 @@
 - where did synced_at get introduced?
 
 
-### Code health - found during the M5 decomposition, each its own commit
-- **A total database failure logs the wrong reason.** When the database cannot be read at all,
-  the first read to fail is `DbService.getCrfConfig`, which swallows its error and returns null -
-  so `ChildIncrementService` lands on the no-linkingfield branch and logs "No linkingfield
-  configured for <table>". The value it writes is correct (the degraded 0); the sentence would
-  send someone debugging a real incident after a dictionary problem that does not exist. Pinned
-  in `test/services/child_increment_service_test.dart`.
-- **Three implementations of "are these two answers the same", and they do not agree.**
-  `AnswerValidationService.isPaddingOnlyChange`, `ChangeSummaryService._isLogicallyEqual` and
-  `DbService._isSameStoredValue`. All three handle the numeric case ("04" == "4"); only some
-  handle `DateTime`. Unifying them is a behaviour change, not a tidy-up, so it needs its own
-  commit and its own tests - decide first which rule is the right one.
-- **The identifier guard is not on every raw-SQL path.** Table and column names come from data
-  dictionaries and cannot be bound, so they are interpolated;
-  `SurveyTableSchema.quoteIdentifier` covers most sites but four are still raw: the CSV import's
-  `CREATE TABLE` (filename + header row, the least controlled input), `_syncSurveyTable`'s
-  `ALTER TABLE ADD COLUMN` (the CREATE path is quoted, the ALTER path is not),
-  `isValueUnique` (table and column, and it is on a hot path), and `tryGetRecordCount`'s `where`
-  fragment, which is built by the caller.
-- **`DbBackup.lastBackupTime` has no callers.** None in `lib/` or `test/`, and none before the
-  backup journal was extracted either. Either wire it up or delete it.
+### Code health
+- **`FieldComparator.compare` parses numbers with `double`, not `num`.** So two 17-digit
+  barcodes differing in the last digit compare *equal*, and a skip, logic_check or
+  calculation on a long ID silently takes the wrong branch. `AnswerEquality` deliberately
+  does not reuse it for that reason. Whether to switch it to `num` is a behaviour change
+  for skip/logic/calculation, so it needs its own commit and its own tests.
+- **The identifier guard covers the SQL this codebase writes, not the SQL sqflite writes.**
+  `db.query`/`insert`/`update`/`delete` interpolate the table and column names they are
+  given without quoting them, so any of those calls carrying a dictionary-sourced name is
+  still exposed. `importCsvContent` now builds its own statements for exactly this reason.
+  Closing it properly means validating identifiers where they enter from the dictionary
+  rather than at each use, which is a design change rather than a fix.
+- **`_recordChanges` does not guard its surveyor-id read, and `updateField` does.**
+  `updateField` wraps that read in its own try/catch with a comment saying a settings read
+  that fails must not cost us the write; `_recordChanges` lets the exception abort the
+  whole method, so a settings failure loses the entire audit trail for that save rather
+  than one column of it. Found while testing the answer-equality unification.
 
 
 ## GistXConfig

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/question.dart';
+import 'answer_equality.dart';
 
 /// The pure steps between "the interviewer pressed Finish" and "write the row".
 ///
@@ -40,40 +41,13 @@ class AnswerStorageService {
       // Ignore automatic fields that auto-update
       if (_fieldsThatAlwaysChange.contains(key)) continue;
 
-      final newValue = answers[key];
-      final oldValue = original[key];
-
-      // Handle different types
-      if (newValue is List && oldValue is List) {
-        if (newValue.length != oldValue.length) return true;
-        for (int i = 0; i < newValue.length; i++) {
-          if (newValue[i].toString() != oldValue[i].toString()) return true;
-        }
-      } else if (newValue is DateTime && oldValue is DateTime) {
-        if (newValue != oldValue) return true;
-      } else {
-        if (newValue.toString() != oldValue.toString()) {
-          final s1 = newValue.toString();
-          final s2 = oldValue.toString();
-
-          // Check if they are numeric equivalent (e.g. "04" vs "4")
-          final n1 = num.tryParse(s1);
-          final n2 = num.tryParse(s2);
-          if (n1 != null && n2 != null && n1 == n2) {
-            continue;
-          }
-
-          // Check if they are DateTime equivalent (e.g. "2025-12-09 11:22" vs "2025-12-09T11:22")
-          try {
-            final d1 = DateTime.tryParse(s1);
-            final d2 = DateTime.tryParse(s2);
-            if (d1 != null && d2 != null && d1.isAtSameMomentAs(d2)) {
-              continue; // Same moment in time
-            }
-          } catch (_) {}
-
-          return true;
-        }
+      // The three-branch comparison that used to sit here was the most
+      // complete of the four in the codebase -- it alone treated two spellings
+      // of the same instant as equal -- so it became the shared rule rather
+      // than being replaced by one. See [AnswerEquality]; the verdicts are the
+      // same, including that a reordered checkbox still counts as a change.
+      if (!AnswerEquality.sameAnswer(answers[key], original[key])) {
+        return true;
       }
     }
 

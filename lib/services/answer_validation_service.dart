@@ -1,4 +1,5 @@
 import '../models/question.dart';
+import 'answer_equality.dart';
 import 'app_strings.dart';
 import 'logic_service.dart';
 import 'numeric_validation_service.dart';
@@ -37,23 +38,13 @@ class AnswerValidationService {
   /// cascade-clear every dependent field each time a fixed-length field is
   /// re-padded, silently discarding answers the interviewer already gave.
   ///
-  /// Note this is one of three implementations of "are these two answers the
-  /// same" in the codebase -- the others are
-  /// `ChangeSummaryService._isLogicallyEqual` and
-  /// `DbService._isSameStoredValue`. They are deliberately not unified here:
-  /// they do not agree today (only some handle `DateTime`), so making them one
-  /// function is a behaviour change and needs its own commit and its own tests.
-  static bool isPaddingOnlyChange(dynamic oldValue, dynamic newValue) {
-    if (oldValue == null || newValue == null) return false;
-
-    final s1 = oldValue.toString();
-    final s2 = newValue.toString();
-    if (s1 == s2) return false; // exact match is handled by the caller
-
-    final n1 = num.tryParse(s1);
-    final n2 = num.tryParse(s2);
-    return n1 != null && n2 != null && n1 == n2;
-  }
+  /// Kept as a name the screen reads well at its call site; the rule itself
+  /// now lives in [AnswerEquality], which is the single definition the four
+  /// former copies were unified onto. It is slightly wider than what this used
+  /// to do -- a date re-rendered into another format is also a representation
+  /// change, and cascade-clearing on one was never intended either.
+  static bool isPaddingOnlyChange(dynamic oldValue, dynamic newValue) =>
+      AnswerEquality.isRepresentationOnlyChange(oldValue, newValue);
 
   /// The error to display for [question], given the answers now in [answers].
   static AnswerValidation evaluate(

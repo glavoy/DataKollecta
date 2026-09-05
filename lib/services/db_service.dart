@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 
 import '../config/app_config.dart';
 import '../models/question.dart';
+import 'answer_equality.dart';
 import 'csv_data_service.dart';
 import 'database_exception.dart';
 import 'db_backup.dart';
@@ -1253,10 +1254,10 @@ class DbService {
 
         final oldValue = originalAnswers[fieldName];
         final newValue = entry.value;
-        final oldValueStr = _valueToString(oldValue);
-        final newValueStr = _valueToString(newValue);
+        final oldValueStr = AnswerEquality.canonical(oldValue);
+        final newValueStr = AnswerEquality.canonical(newValue);
 
-        if (!_isSameStoredValue(oldValueStr, newValueStr)) {
+        if (!AnswerEquality.sameAnswer(oldValueStr, newValueStr)) {
           await db.insert('formchanges', {
             'tablename': tableName,
             'fieldname': fieldName,
@@ -1274,12 +1275,6 @@ class DbService {
     }
   }
 
-  static String? _valueToString(dynamic value) {
-    if (value == null) return null;
-    if (value is List) return value.map((e) => e.toString()).join(',');
-    if (value is DateTime) return value.toIso8601String();
-    return value.toString();
-  }
 
   /// Whether [value] does not already appear in [tableName].[columnName].
   ///
@@ -1516,7 +1511,7 @@ class DbService {
           await db.query(tableName, where: where, whereArgs: whereArgs);
       if (rows.isEmpty) return;
 
-      final newValueStr = _valueToString(value);
+      final newValueStr = AnswerEquality.canonical(value);
       // The audit trail is a nice-to-have; the corrected value is not. A
       // settings read that fails must not cost us the write itself.
       String? surveyorId;
@@ -1531,9 +1526,9 @@ class DbService {
 
       for (final row in rows) {
         final normalized = row.map((k, v) => MapEntry(k.toLowerCase(), v));
-        final oldValueStr = _valueToString(normalized[field.toLowerCase()]);
+        final oldValueStr = AnswerEquality.canonical(normalized[field.toLowerCase()]);
 
-        if (_isSameStoredValue(oldValueStr, newValueStr)) continue;
+        if (AnswerEquality.sameAnswer(oldValueStr, newValueStr)) continue;
 
         final rowData = <String, dynamic>{field: value};
         // Mirrors _prepareRowData: an edit has to re-upload even if an earlier
@@ -1574,16 +1569,6 @@ class DbService {
     }
   }
 
-  /// True when two stored values are the same answer -- including the "4" vs
-  /// "04" case, which SQLite keeps distinct but the dictionary does not.
-  static bool _isSameStoredValue(String? oldValue, String? newValue) {
-    if (oldValue == newValue) return true;
-    if (oldValue == null || newValue == null) return false;
-
-    final oldNum = num.tryParse(oldValue);
-    final newNum = num.tryParse(newValue);
-    return oldNum != null && newNum != null && oldNum == newNum;
-  }
 
   // --- Helpers ---
 
