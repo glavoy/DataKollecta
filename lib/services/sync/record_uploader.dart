@@ -12,7 +12,8 @@ class UploadRow {
   final String wireId;
   final Map<String, dynamic> data;
 
-  const UploadRow({required this.rowId, required this.wireId, required this.data});
+  const UploadRow(
+      {required this.rowId, required this.wireId, required this.data});
 }
 
 /// What one batch's HTTP call reported, in wire-id terms -- translated back
@@ -137,8 +138,8 @@ class RecordUploader {
         );
       } on SyncException catch (e) {
         consecutiveFailures++;
-        failures.addAll(batch.map((r) =>
-            UploadFailure(sourceName: sourceName, id: r.wireId, error: e.message)));
+        failures.addAll(batch.map((r) => UploadFailure(
+            sourceName: sourceName, id: r.wireId, error: e.message)));
         if (consecutiveFailures >= maxConsecutiveFailures) {
           return UploadOutcome(
             syncedCount: syncedCount,
@@ -176,7 +177,8 @@ class RecordUploader {
       failures.addAll(result.failed.map((f) =>
           UploadFailure(sourceName: sourceName, id: f.id, error: f.error)));
 
-      consecutiveFailures = result.syncedWireIds.isEmpty ? consecutiveFailures + 1 : 0;
+      consecutiveFailures =
+          result.syncedWireIds.isEmpty ? consecutiveFailures + 1 : 0;
       if (consecutiveFailures >= maxConsecutiveFailures) {
         return UploadOutcome(
           syncedCount: syncedCount,
@@ -365,6 +367,7 @@ class RecordUploader {
           .toList(),
     );
     return BatchResult(
-        syncedWireIds: result.formchangesSynced, failed: result.formchangesFailed);
+        syncedWireIds: result.formchangesSynced,
+        failed: result.formchangesFailed);
   }
 }

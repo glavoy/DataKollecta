@@ -11,10 +11,10 @@ library;
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import '../config/app_config.dart';
+import 'app_paths.dart';
 import 'settings_service.dart';
 import 'sync/project_sessions.dart';
 
@@ -24,7 +24,8 @@ class SurveyConfigService {
   SurveyConfigService._internal();
 
   final _settingsService = SettingsService();
-  final ProjectSessionsRepository _sessionsRepo = ProjectSessionsRepository.shared;
+  final ProjectSessionsRepository _sessionsRepo =
+      ProjectSessionsRepository.shared;
 
   // Cache for loaded survey manifests
   final Map<String, Map<String, dynamic>> _manifestCache = {};
@@ -33,8 +34,10 @@ class SurveyConfigService {
   Future<void> initializeSurveys() async {
     try {
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
-      final surveysDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
+      final zipsDir =
+          Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
+      final surveysDir =
+          Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
 
       if (!await zipsDir.exists()) {
         await zipsDir.create(recursive: true);
@@ -105,14 +108,13 @@ class SurveyConfigService {
             if (AppConfig.isDataKollecta) {
               final manifestEntry = _findManifestEntry(archive);
               if (manifestEntry != null) {
-                final manifest = json.decode(
-                        utf8.decode(manifestEntry.content as List<int>))
-                    as Map<String, dynamic>;
+                final manifest =
+                    json.decode(utf8.decode(manifestEntry.content as List<int>))
+                        as Map<String, dynamic>;
                 final zipSurveyId = manifest['surveyId'] as String?;
                 final databaseName = manifest['databaseName'] as String?;
                 if (zipSurveyId != null && databaseName != null) {
-                  final owner =
-                      await findSurveyIdForDatabaseName(databaseName);
+                  final owner = await findSurveyIdForDatabaseName(databaseName);
                   if (owner != null && owner != zipSurveyId) {
                     final doc = await _sessionsRepo.load();
                     final ownerProject = doc.projectFor(owner);
@@ -219,7 +221,8 @@ class SurveyConfigService {
     try {
       final surveysDir = await getSurveysDirectory();
       final baseDir = await _getBaseDir();
-      final zipsDir = Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
+      final zipsDir =
+          Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
 
       // Find the survey folder by name
       final entities = await surveysDir.list().toList();
@@ -269,7 +272,8 @@ class SurveyConfigService {
         // surveyId would spuriously trip the collision guard against its
         // own stale binding.
         if (surveyId != null) {
-          await _sessionsRepo.update((doc) => doc.withoutAssociation(surveyId!));
+          await _sessionsRepo
+              .update((doc) => doc.withoutAssociation(surveyId!));
         }
 
         // If this was the active survey, clear it from settings
@@ -284,65 +288,13 @@ class SurveyConfigService {
     }
   }
 
-  Future<Directory> _getBaseDir() async {
-    if (Platform.isAndroid) {
-      return await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        return Directory(localAppData);
-      } else {
-        return await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      return await getApplicationSupportDirectory();
-    }
-  }
+  Future<Directory> _getBaseDir() => AppPaths.baseDir();
 
   /// Get the local directory where surveys are stored
-  Future<Directory> getSurveysDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      baseDir = await getApplicationSupportDirectory();
-    }
-    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
-  }
+  Future<Directory> getSurveysDirectory() => AppPaths.surveysDir();
 
   /// Get the local directory where outbox files are stored
-  Future<Directory> getOutboxDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      baseDir = await getApplicationSupportDirectory();
-    }
-    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'outbox'));
-  }
+  Future<Directory> getOutboxDirectory() => AppPaths.outboxDir();
 
   /// Get the survey ID from the survey name stored in settings
   /// Returns null if no survey is selected or if survey not found

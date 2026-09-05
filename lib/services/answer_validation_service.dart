@@ -74,7 +74,8 @@ class AnswerValidationService {
       if (logicError == null && raw.isNotEmpty && !isSpecialResponse) {
         // "12." is a number the interviewer has not finished typing. Flag it
         // on any decimal field, not just one that also declares a range.
-        if (NumericValidationService.isIncompleteDecimal(question.fieldType, raw,
+        if (NumericValidationService.isIncompleteDecimal(
+            question.fieldType, raw,
             hasRangeCheck: question.numericCheck != null)) {
           return AnswerValidation(s.incompleteDecimalValue,
               stopsFurtherChecks: true);

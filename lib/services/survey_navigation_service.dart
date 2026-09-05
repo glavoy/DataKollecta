@@ -222,7 +222,8 @@ class SurveyNavigationService {
         await processAutomaticQuestion(question);
       } else if (question.type == QuestionType.automatic) {
         final isCustomCalculation = question.calculation != null &&
-            !protectedAutomaticFields.contains(question.fieldName.toLowerCase());
+            !protectedAutomaticFields
+                .contains(question.fieldName.toLowerCase());
         if (isCustomCalculation) {
           answers[question.fieldName] = null;
         } else {

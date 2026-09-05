@@ -2,9 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import '../config/app_config.dart';
+import 'app_paths.dart';
 
 /// The plain-text SQL journal written alongside every insert and update.
 ///
@@ -61,25 +60,7 @@ class DbBackup {
     return str.replaceAll("'", "''");
   }
 
-  static Future<Directory> _backupsDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      baseDir = await getApplicationSupportDirectory();
-    }
-    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'backups'));
-  }
+  static Future<Directory> _backupsDirectory() => AppPaths.backupsDir();
 
   // The prefix deliberately still reads `[DbService ERROR]`. These lines went
   // to the console under that tag before the split, and this refactor is meant

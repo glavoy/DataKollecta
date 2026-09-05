@@ -316,7 +316,8 @@ class SurveyLoader {
       final q = result[i];
       if (q.fieldName.toLowerCase() == endOfQuestionsField &&
           q.text?.trim() == _generatedEndOfQuestionsText) {
-        result[i] = _withText(q, const AppStrings(AppConfig.isFrench).pressFinishToSave);
+        result[i] = _withText(
+            q, const AppStrings(AppConfig.isFrench).pressFinishToSave);
       }
     }
 

@@ -358,9 +358,9 @@ class AppStrings {
   /// and the generic wording was read as "everything is being discarded."
   String skipRepeatRecordTitle(String entityName) =>
       isFrench ? 'Ignorer $entityName?' : 'Skip This $entityName?';
+
   /// Fallback entity name when a repeat loop's CRF displayname is missing.
-  String get repeatEntityFallback =>
-      isFrench ? 'enregistrement' : 'Record';
+  String get repeatEntityFallback => isFrench ? 'enregistrement' : 'Record';
   String get skipRepeatRecordMessage => isFrench
       ? "Cet enregistrement ne sera pas sauvegardé. Tout ce que vous avez déjà saisi est conservé."
       : "This record won't be saved. Anything you've already entered stays.";
@@ -445,9 +445,11 @@ class AppStrings {
       : 'Update Count to $actual';
   String get countAutoUpdated =>
       isFrench ? 'Compte Mis à Jour' : 'Count Updated';
-  String countAutoUpdatedMessage(int expected, String displayName, int actual) => isFrench
-      ? 'Vous avez indiqué $expected ${expected == 1 ? 'enregistrement' : 'enregistrements'} pour $displayName mais seulement $actual ${actual == 1 ? 'a été ajouté' : 'ont été ajoutés'}.\n\nLe compte a été automatiquement mis à jour à $actual.'
-      : 'You indicated $expected ${expected == 1 ? 'record' : 'records'} for $displayName but only added $actual.\n\nThe count has been automatically updated to $actual.';
+  String countAutoUpdatedMessage(
+          int expected, String displayName, int actual) =>
+      isFrench
+          ? 'Vous avez indiqué $expected ${expected == 1 ? 'enregistrement' : 'enregistrements'} pour $displayName mais seulement $actual ${actual == 1 ? 'a été ajouté' : 'ont été ajoutés'}.\n\nLe compte a été automatiquement mis à jour à $actual.'
+          : 'You indicated $expected ${expected == 1 ? 'record' : 'records'} for $displayName but only added $actual.\n\nThe count has been automatically updated to $actual.';
   String mustEnterAtLeast(int minimum, String entityNamePlural) => isFrench
       ? 'Au moins $minimum $entityNamePlural'
       : 'At Least $minimum $entityNamePlural Required';
@@ -456,11 +458,9 @@ class AppStrings {
       isFrench
           ? 'Ce questionnaire exige au moins $minimum $entityNamePlural. Vous en avez saisi $actual.\n\nVeuillez continuer.'
           : 'This questionnaire requires at least $minimum $entityNamePlural. You have entered $actual.\n\nPlease continue.';
-  String countExceedsMaximum(
-          int actual, String displayName, int maximum) =>
-      isFrench
-          ? 'Il y a maintenant $actual enregistrements pour $displayName, mais le maximum autorisé est $maximum.\n\nLe compte n\'a pas été mis à jour -- veuillez corriger les données.'
-          : 'There are now $actual records for $displayName, but the declared maximum is $maximum.\n\nThe count was not updated -- please correct the data.';
+  String countExceedsMaximum(int actual, String displayName, int maximum) => isFrench
+      ? 'Il y a maintenant $actual enregistrements pour $displayName, mais le maximum autorisé est $maximum.\n\nLe compte n\'a pas été mis à jour -- veuillez corriger les données.'
+      : 'There are now $actual records for $displayName, but the declared maximum is $maximum.\n\nThe count was not updated -- please correct the data.';
   String get allDone => isFrench ? 'Terminé!' : 'All done!';
   String get recordUpdatedSuccess => isFrench
       ? 'Merci! Enregistrement mis à jour avec succès.'

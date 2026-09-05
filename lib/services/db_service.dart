@@ -9,12 +9,12 @@ import 'package:flutter/foundation.dart';
 // way `db_service_test.dart` has always hidden it.
 import 'package:sqflite/sqflite.dart' hide DatabaseException;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../config/app_config.dart';
+import 'app_paths.dart';
 import '../models/question.dart';
 import 'answer_equality.dart';
 import 'csv_data_service.dart';
@@ -153,33 +153,7 @@ class DbService {
       // Windows: %LOCALAPPDATA%/<AppConfig.storageFolder>/databases/
       // Android: External Files Dir (accessible)
 
-      Directory baseDbDir;
-      if (Platform.isAndroid) {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir == null) {
-          // Fallback to internal if external not available
-          baseDbDir = await getApplicationSupportDirectory();
-        } else {
-          baseDbDir = extDir;
-        }
-      } else if (Platform.isWindows) {
-        // Windows: Use LOCALAPPDATA for AppData\Local
-        final localAppData = Platform.environment['LOCALAPPDATA'];
-        if (localAppData != null) {
-          baseDbDir = Directory(localAppData);
-        } else {
-          // Fallback if LOCALAPPDATA not set (unlikely)
-          baseDbDir = await getApplicationSupportDirectory();
-        }
-      } else {
-        // Linux/Mac: Use standard application support directory
-        baseDbDir = await getApplicationSupportDirectory();
-      }
-
-      final dbDir = Directory(p.join(baseDbDir.path, AppConfig.storageFolder, 'databases'));
-      if (!await dbDir.exists()) {
-        await dbDir.create(recursive: true);
-      }
+      final dbDir = await AppPaths.databasesDir();
 
       final dbPath = p.join(dbDir.path, dbName);
       _log('Database path for $surveyId: $dbPath');
@@ -448,9 +422,8 @@ class DbService {
               continue;
             }
             // idconfig arrives as a nested object and is stored as JSON text.
-            rowData[entry.key] = entry.value is Map
-                ? json.encode(entry.value)
-                : entry.value;
+            rowData[entry.key] =
+                entry.value is Map ? json.encode(entry.value) : entry.value;
           }
 
           await txn.insert('crfs', rowData);
@@ -542,8 +515,7 @@ class DbService {
       final rows = await db.query('crfs');
       final byTable = <String, Map<String, dynamic>>{};
       for (final row in rows) {
-        final normalized =
-            row.map((k, v) => MapEntry(k.toLowerCase(), v));
+        final normalized = row.map((k, v) => MapEntry(k.toLowerCase(), v));
         final name = normalized['tablename']?.toString().trim().toLowerCase();
         if (name == null || name.isEmpty) continue;
         byTable[name] = normalized;
@@ -596,8 +568,7 @@ class DbService {
           parentCrf: parentTable.isEmpty ? null : crfsByTable[parentTable],
           referencedColumnSets:
               SurveyTableSchema.referencedColumnSetsFor(tableName, crfsByTable),
-          onSkippedConstraint: (message) =>
-              _logError('[$surveyId] $message'),
+          onSkippedConstraint: (message) => _logError('[$surveyId] $message'),
         );
 
         for (final statement in statements) {
@@ -624,8 +595,8 @@ class DbService {
           if (!existingColumns.contains(q.fieldName.toLowerCase())) {
             try {
               final column = SurveyTableSchema.quoteIdentifier(q.fieldName);
-              await db.execute(
-                  'ALTER TABLE $quotedTable ADD COLUMN $column TEXT');
+              await db
+                  .execute('ALTER TABLE $quotedTable ADD COLUMN $column TEXT');
               _log('Added column ${q.fieldName} to $tableName');
             } catch (e) {
               _logError('Failed to add column ${q.fieldName}: $e');
@@ -719,7 +690,8 @@ class DbService {
       // Backup: Log INSERT statement
       try {
         final columns = rowData.keys.join(', ');
-        final values = rowData.values.map((v) => DbBackup.escapeSqlValue(v)).join(', ');
+        final values =
+            rowData.values.map((v) => DbBackup.escapeSqlValue(v)).join(', ');
         final sql = 'INSERT INTO $tableName ($columns) VALUES ($values);';
         await DbBackup.write(surveyId, tableName, sql);
       } catch (e) {
@@ -831,8 +803,7 @@ class DbService {
         sentinelFloor: sentinelFloor,
       );
     } catch (e) {
-      _logError(
-          'Error reading the highest "$fieldName" under "$baseId" in '
+      _logError('Error reading the highest "$fieldName" under "$baseId" in '
           '"$tableName": $e');
       return null;
     }
@@ -1025,8 +996,7 @@ class DbService {
       // this parent's child counter at 1 and produce a duplicate
       // linenum/netnum within the household -- with no trace, because `1` is
       // exactly what a legitimate first child gets.
-      _logError(
-          'Error getting next $incrementField for $tableName '
+      _logError('Error getting next $incrementField for $tableName '
           '($linkingField=$linkingValue) -- issuing '
           '$degradedIncrementValue so the record is still saved and the '
           'degraded value is identifiable: $e');
@@ -1275,7 +1245,6 @@ class DbService {
     }
   }
 
-
   /// Whether [value] does not already appear in [tableName].[columnName].
   ///
   /// **Fails open: any error reports "unique".** That is pre-existing and
@@ -1470,8 +1439,7 @@ class DbService {
           where: where, whereArgs: whereArgs, limit: 1);
       if (rows.isEmpty) return null;
 
-      final normalized =
-          rows.first.map((k, v) => MapEntry(k.toLowerCase(), v));
+      final normalized = rows.first.map((k, v) => MapEntry(k.toLowerCase(), v));
       return normalized[field.toLowerCase()];
     } catch (e) {
       _logError('Error reading field $field from $tableName: $e');
@@ -1526,7 +1494,8 @@ class DbService {
 
       for (final row in rows) {
         final normalized = row.map((k, v) => MapEntry(k.toLowerCase(), v));
-        final oldValueStr = AnswerEquality.canonical(normalized[field.toLowerCase()]);
+        final oldValueStr =
+            AnswerEquality.canonical(normalized[field.toLowerCase()]);
 
         if (AnswerEquality.sameAnswer(oldValueStr, newValueStr)) continue;
 
@@ -1569,7 +1538,6 @@ class DbService {
     }
   }
 
-
   // --- Helpers ---
 
   static Future<bool> _tableExists(Database db, String tableName) async {
@@ -1606,25 +1574,7 @@ class DbService {
     }
   }
 
-  static Future<Directory> _getSurveysDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      // Windows: Use LOCALAPPDATA for AppData\Local
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      // Linux/Mac
-      baseDir = await getApplicationSupportDirectory();
-    }
-    return Directory(p.join(baseDir.path, AppConfig.storageFolder, 'surveys'));
-  }
+  static Future<Directory> _getSurveysDirectory() => AppPaths.surveysDir();
 
   static void _log(String message) {
     if (AppConfig.enableDebugLogging) {

@@ -150,7 +150,9 @@ class IdGenerator {
   /// The lowest reserved value. Ordinary IDs run from 1 up to this minus one.
   @visibleForTesting
   static int sentinelFloorFor(int incrementLength) =>
-      maxIncrementFor(incrementLength) - sentinelBandSizeFor(incrementLength) + 1;
+      maxIncrementFor(incrementLength) -
+      sentinelBandSizeFor(incrementLength) +
+      1;
 
   /// The increment to use when the existing IDs could not be read.
   ///
@@ -218,8 +220,7 @@ class IdGenerator {
         incrementLength: incrementLength,
         priorFailures: priorFailures,
       );
-      debugPrint(
-          '[IdGenerator] Could not read existing "$fieldName" values in '
+      debugPrint('[IdGenerator] Could not read existing "$fieldName" values in '
           '"$tableName". Issuing the reserved increment $sentinel for base '
           '"$baseId" so the record is still saved and the ID is identifiable. '
           'Degraded ID count on this device is now ${priorFailures + 1}.');
@@ -316,7 +317,8 @@ class IdGenerator {
 
       // The base is everything except the last incrementLength characters
       if (completeId.length > config.incrementLength) {
-        return completeId.substring(0, completeId.length - config.incrementLength);
+        return completeId.substring(
+            0, completeId.length - config.incrementLength);
       }
 
       return completeId;
@@ -378,7 +380,8 @@ class IdGenerator {
         answers: answers,
       );
 
-      debugPrint('[IdGenerator] Comparing bases: existing="$existingBase" current="$currentBase"');
+      debugPrint(
+          '[IdGenerator] Comparing bases: existing="$existingBase" current="$currentBase"');
       return existingBase != currentBase;
     } catch (e) {
       debugPrint('Error checking base ID change: $e');

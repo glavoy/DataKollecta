@@ -165,10 +165,12 @@ class RepeatCountService {
       whereArgs: [linkingValue],
     );
     final declaredText = declaredRaw?.toString().trim();
-    final declaredCount =
-        (declaredText == null || declaredText.isEmpty) ? null : int.tryParse(declaredText);
+    final declaredCount = (declaredText == null || declaredText.isEmpty)
+        ? null
+        : int.tryParse(declaredText);
 
-    final check = await countCheckFor(surveyId: surveyId, countField: countField);
+    final check =
+        await countCheckFor(surveyId: surveyId, countField: countField);
 
     RepeatCountReconciliation result(RepeatCountOutcome outcome) {
       return RepeatCountReconciliation(
@@ -232,7 +234,8 @@ class RepeatCountService {
       tableName: reconciliation.parentTable,
       field: reconciliation.countField,
       value: reconciliation.actualCount,
-      where: '${SurveyTableSchema.quoteIdentifier(reconciliation.linkingField)} = ?',
+      where:
+          '${SurveyTableSchema.quoteIdentifier(reconciliation.linkingField)} = ?',
       whereArgs: [reconciliation.linkingValue],
     );
   }

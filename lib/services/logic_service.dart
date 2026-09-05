@@ -215,7 +215,8 @@ class LogicService {
     final match = regex.firstMatch(condition);
 
     if (match == null) {
-      debugPrint('[LogicService]   ERROR: Failed to parse condition: "$condition"');
+      debugPrint(
+          '[LogicService]   ERROR: Failed to parse condition: "$condition"');
       throw FormatException('Invalid condition format: "$condition"');
     }
 
@@ -247,7 +248,8 @@ class LogicService {
     if (valueOrField.startsWith("'") && valueOrField.endsWith("'")) {
       // It's a literal string value (quoted) - could be a date or regular string
       rightRaw = valueOrField.substring(1, valueOrField.length - 1);
-    } else if (int.tryParse(valueOrField) != null || double.tryParse(valueOrField) != null) {
+    } else if (int.tryParse(valueOrField) != null ||
+        double.tryParse(valueOrField) != null) {
       // It's a numeric literal (not a field name)
       rightRaw = valueOrField;
     } else {
@@ -256,7 +258,8 @@ class LogicService {
     }
 
     debugPrint('[LogicService]   Parsed: $fieldName $operator $valueOrField');
-    debugPrint('[LogicService]   Values: leftValue="$leftRaw" (${leftRaw.runtimeType}), rightValue="$rightRaw" (${rightRaw.runtimeType})');
+    debugPrint(
+        '[LogicService]   Values: leftValue="$leftRaw" (${leftRaw.runtimeType}), rightValue="$rightRaw" (${rightRaw.runtimeType})');
 
     // If either value is null, the condition cannot be met
     if (leftRaw == null || rightRaw == null) {

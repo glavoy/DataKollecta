@@ -5,9 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import '../../config/app_config.dart';
+import '../app_paths.dart';
 import 'sync_backend.dart';
 
 /// One authenticated session against the DataKollecta Supabase backend: the
@@ -142,8 +141,8 @@ class ApiClient {
     }
 
     if (response.statusCode == 401 || response.statusCode == 404) {
-      throw SyncAuthException(
-          _errorMessage(response) ?? 'Invalid project code, username, or password');
+      throw SyncAuthException(_errorMessage(response) ??
+          'Invalid project code, username, or password');
     }
 
     final body = _decodeBody(response, logLabel: 'login');
@@ -241,7 +240,8 @@ class ApiClient {
     debugPrint('[ApiClient] GET download (signed URL)');
     final http.Response response;
     try {
-      response = await _client.get(Uri.parse(downloadUrl)).timeout(downloadTimeout);
+      response =
+          await _client.get(Uri.parse(downloadUrl)).timeout(downloadTimeout);
     } on TimeoutException {
       throw SyncConnectionException(
           'Download timed out after $downloadTimeout');
@@ -270,7 +270,8 @@ class ApiClient {
           .post(uri, headers: _headers, body: json.encode(payload))
           .timeout(requestTimeout);
     } on TimeoutException {
-      throw SyncConnectionException('$logLabel timed out after $requestTimeout');
+      throw SyncConnectionException(
+          '$logLabel timed out after $requestTimeout');
     } catch (e) {
       throw SyncConnectionException('Could not reach server: $e');
     }
@@ -293,29 +294,7 @@ class ApiClient {
     return body?['error'] as String?;
   }
 
-  /// Duplicates the platform-base-dir resolution already present in
-  /// FtpService/DbService/SurveyConfigService (each keeps its own copy
-  /// today) rather than introducing a new shared helper unprompted.
-  Future<Directory> _getZipsDirectory() async {
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      baseDir = localAppData != null
-          ? Directory(localAppData)
-          : await getApplicationSupportDirectory();
-    } else {
-      baseDir = await getApplicationSupportDirectory();
-    }
-    final zipsDir =
-        Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
-    if (!await zipsDir.exists()) {
-      await zipsDir.create(recursive: true);
-    }
-    return zipsDir;
-  }
+  Future<Directory> _getZipsDirectory() => AppPaths.zipsDir();
 
   void close() => _client.close();
 }

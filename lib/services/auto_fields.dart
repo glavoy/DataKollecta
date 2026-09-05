@@ -231,7 +231,8 @@ class AutoFields {
             }
             return '';
           } catch (e) {
-            debugPrint('[AutoFields] Auto field query failed, returning empty: $e');
+            debugPrint(
+                '[AutoFields] Auto field query failed, returning empty: $e');
             return '';
           }
 
@@ -440,7 +441,8 @@ class AutoFields {
 
       // Check if separator is a field reference like [[startdate]]
       if (separatorValue.startsWith('[[') && separatorValue.endsWith(']]')) {
-        final fieldName = separatorValue.substring(2, separatorValue.length - 2);
+        final fieldName =
+            separatorValue.substring(2, separatorValue.length - 2);
         final fieldValue = answers[fieldName];
 
         if (fieldValue == null) {
@@ -461,8 +463,7 @@ class AutoFields {
             return '';
           }
         } else {
-          debugPrint(
-              '[AutoFields] Field $fieldName is not a valid date type');
+          debugPrint('[AutoFields] Field $fieldName is not a valid date type');
           return '';
         }
       } else {

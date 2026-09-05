@@ -31,9 +31,12 @@ class HttpSyncStrings {
     required int surveysWithFailures,
     required int surveysNotRouted,
   }) {
-    final parts = <String>['Uploaded $totalSynced record${totalSynced == 1 ? '' : 's'}'];
+    final parts = <String>[
+      'Uploaded $totalSynced record${totalSynced == 1 ? '' : 's'}'
+    ];
     if (surveysWithFailures > 0) {
-      parts.add('$surveysWithFailures survey${surveysWithFailures == 1 ? '' : 's'} had failures');
+      parts.add(
+          '$surveysWithFailures survey${surveysWithFailures == 1 ? '' : 's'} had failures');
     }
     if (surveysNotRouted > 0) {
       parts.add(
@@ -77,16 +80,17 @@ class HttpSyncStrings {
       'password once you\'re back online?';
   String get saveAnyway => 'Save anyway';
   String get removeProject => 'Remove project';
-  String removeProjectWarning(String projectCode, int pendingCount) =>
-      pendingCount == 0
-          ? 'Remove project "$projectCode"? Its surveys will no longer be able to upload.'
-          : 'Remove project "$projectCode"? It has $pendingCount unsynced '
-              'record${pendingCount == 1 ? '' : 's'} that will be stranded until it\'s '
-              'added back. Upload first, or remove anyway?';
+  String removeProjectWarning(String projectCode, int pendingCount) => pendingCount ==
+          0
+      ? 'Remove project "$projectCode"? Its surveys will no longer be able to upload.'
+      : 'Remove project "$projectCode"? It has $pendingCount unsynced '
+          'record${pendingCount == 1 ? '' : 's'} that will be stranded until it\'s '
+          'added back. Upload first, or remove anyway?';
   String get uploadFirst => 'Upload first';
   String get removeAnyway => 'Remove anyway';
   String projectAdded(String projectCode) => 'Added project "$projectCode".';
-  String projectRemoved(String projectCode) => 'Removed project "$projectCode".';
+  String projectRemoved(String projectCode) =>
+      'Removed project "$projectCode".';
 
   // -- Check for Updates / download collisions --
 

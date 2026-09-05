@@ -356,8 +356,8 @@ class HttpSyncBackend {
     }
 
     try {
-      final result = await _login(
-          session.projectCode, session.username, session.password);
+      final result =
+          await _login(session.projectCode, session.username, session.password);
       return TokenResolution.token(result.session.token);
     } on SyncException catch (e) {
       debugPrint(
@@ -443,9 +443,9 @@ class HttpSyncBackend {
             'SELECT COUNT(*) as count FROM $tableName WHERE synced_at IS NULL');
         total += (result.first['count'] as int?) ?? 0;
       }
-      final formchangesResult = await db.rawQuery(
-          'SELECT COUNT(*) as count FROM formchanges '
-          'WHERE changeuniqueid IS NOT NULL AND synced_at IS NULL');
+      final formchangesResult =
+          await db.rawQuery('SELECT COUNT(*) as count FROM formchanges '
+              'WHERE changeuniqueid IS NOT NULL AND synced_at IS NULL');
       total += (formchangesResult.first['count'] as int?) ?? 0;
       return total;
     } catch (e) {

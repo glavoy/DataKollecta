@@ -44,12 +44,11 @@ class SurveyTableSchema {
   }
 
   /// Splits a comma-separated `crfs` cell into trimmed, lowercased names.
-  static List<String> _splitCrfsList(Object? cell) =>
-      (cell?.toString() ?? '')
-          .split(',')
-          .map((s) => s.trim().toLowerCase())
-          .where((s) => s.isNotEmpty)
-          .toList();
+  static List<String> _splitCrfsList(Object? cell) => (cell?.toString() ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .where((s) => s.isNotEmpty)
+      .toList();
 
   /// The statements that create [tableName] with the constraints its `crfs`
   /// row implies: `CREATE TABLE` first, then any indexes.
@@ -158,8 +157,7 @@ class SurveyTableSchema {
             'Table "$tableName" declares parenttable "$parentTable", which is '
             'not a form in this survey -- no foreign key declared.');
       } else if (!linkingCols.every(present.contains)) {
-        onSkippedConstraint?.call(
-            'Table "$tableName" declares linkingfield '
+        onSkippedConstraint?.call('Table "$tableName" declares linkingfield '
             '(${linkingCols.join(',')}) but does not have every one of those '
             'columns -- no foreign key declared.');
       } else {

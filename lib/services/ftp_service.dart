@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:ftpconnect/ftpconnect.dart';
 import 'package:dartssh2/dartssh2.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../config/app_config.dart';
+import 'app_paths.dart';
 import 'app_strings.dart';
 
 /// Wording for the messages an interviewer sees when a sync fails.
@@ -312,25 +312,7 @@ class FtpService {
   /// Download a specific zip file to the local zips folder
   Future<File?> downloadSurveyZip(String filename) async {
     // Resolve local destination regardless of protocol
-    Directory baseDir;
-    if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
-    } else if (Platform.isWindows) {
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null) {
-        baseDir = Directory(localAppData);
-      } else {
-        baseDir = await getApplicationSupportDirectory();
-      }
-    } else {
-      baseDir = await getApplicationSupportDirectory();
-    }
-    final zipsDir =
-        Directory(p.join(baseDir.path, AppConfig.storageFolder, 'zips'));
-    if (!await zipsDir.exists()) {
-      await zipsDir.create(recursive: true);
-    }
+    final zipsDir = await AppPaths.zipsDir();
     final localFile = File(p.join(zipsDir.path, filename));
 
     if (_usesSftp) {

@@ -12,7 +12,8 @@ import 'survey_loader.dart';
 /// Service to cache question definitions from all XML files for a survey
 /// This enables fast lookup of option labels for display purposes
 class QuestionCacheService {
-  static final QuestionCacheService _instance = QuestionCacheService._internal();
+  static final QuestionCacheService _instance =
+      QuestionCacheService._internal();
   factory QuestionCacheService() => _instance;
   QuestionCacheService._internal();
 
@@ -60,7 +61,8 @@ class QuestionCacheService {
   /// Get the display label for a field value
   /// Supports [[fieldname]] syntax to lookup option labels
   /// Returns the original value if no label is found
-  String getDisplayValue(String displayFieldPattern, Map<String, dynamic> record) {
+  String getDisplayValue(
+      String displayFieldPattern, Map<String, dynamic> record) {
     // Check if pattern uses [[fieldname]] syntax
     final match = RegExp(r'^\[\[(.+?)\]\]$').firstMatch(displayFieldPattern);
 
@@ -80,7 +82,8 @@ class QuestionCacheService {
             // Find the matching option
             final option = question.options.firstWhere(
               (opt) => opt.value == storedValue,
-              orElse: () => QuestionOption(value: storedValue, label: storedValue),
+              orElse: () =>
+                  QuestionOption(value: storedValue, label: storedValue),
             );
             return option.label;
           }
