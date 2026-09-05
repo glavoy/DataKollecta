@@ -285,6 +285,47 @@
   into every `flutter test` run, interleaved with the progress line so the tail was unreadable.
   The four that remain in that file all sit behind an `if` or on an error path.
 
+- **The three largest files are decomposed, and `survey_screen.dart` has tests for the first
+  time.** The code review's last open item. `survey_screen.dart` went 2,308 → 1,899,
+  `db_service.dart` 2,004 → 1,589, and `question_views.dart` 1,282 → 1,024. The suite went from
+  392/392/394 to 485/485/487 across the three build axes — 93 new tests, all of them covering
+  code that had none.
+
+  The rule for `SurveyScreen` was that nothing moved unless a test moved with it, because no test
+  file references it and there is no `test/screens/` directory: `flutter analyze` and
+  `flutter test` passing proves nothing about that file. Five services came out with a test file
+  each — `ChildIncrementService` (the sibling ordinal), `DuplicateKeySnapshot` (the real-time
+  primary-key check), `AnswerValidationService` (per-keystroke validation),
+  `AnswerStorageService` (the pure steps of the save path) and `RepeatPlanService` (which child
+  forms auto-repeat). What stayed is everything that needs a `BuildContext`: `build`, the save
+  orchestration, every dialog, and `_processAutomaticQuestion` — an automatic question is
+  computed when navigation reaches it, so moving it can change what a record stores and no test
+  would notice.
+
+  One extraction needed care and is worth recording. The validation rules signalled "incomplete
+  input" with a bare `return` inside a `setState` closure, which also skipped the duplicate-key
+  check that followed. Returning just a message would have started running that check on
+  half-typed keys — a behaviour change wearing a refactor's clothes — so the result carries
+  `stopsFurtherChecks` and there are tests on both sides of the line.
+
+  From `db_service.dart`, the pure schema builders became `SurveyTableSchema` (they were the
+  covered half, so the move is provable) and the SQL backup journal became `DbBackup`.
+  `DatabaseException` moved to its own file so the schema layer need not import `DbService`,
+  which exposed a latent collision: sqflite exports a `DatabaseException` too, and ours only won
+  by being declared locally. sqflite's is now hidden. The survey-table CRUD was deliberately left
+  alone — every write path goes through one chokepoint, and splitting it would cost the property
+  that makes the file readable.
+
+  From `question_views.dart`, the four input formatters and `AppRadioTheme` moved out; the eight
+  render arms did not. The arms are the easy part, and the 246-line seeding layer beneath them is
+  where a silent behaviour change would live.
+
+  Four dead members of `QuestionView` are gone: two `ScrollController`s that were constructed and
+  disposed but never attached to a widget, and the `onRequestNext`/`logicError` parameters, which
+  were passed on every build and read nowhere. `_deepCopyAnswers` is now `_snapshotAnswers`,
+  since it was neither deep nor a copy of anything but lists — and it produces `_originalAnswers`,
+  the baseline every change comparison and the `formchanges` audit are measured against.
+
 ## [1.3.6+17] - 2026-09-01
 
 ### Added
