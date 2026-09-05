@@ -59,7 +59,16 @@ class ChildIncrementService {
       // `linkingfield` only by luck: nothing constrains a dictionary to list
       // the linking field first, and `primarykey = 'linenum,hhid'` would have
       // grouped every child in the survey by linenum.
-      final crfConfig = await DbService.getCrfConfig(surveyId, tableName);
+      //
+      // The throwing read, not the tolerant one. `getCrfConfig` returns null
+      // both when the form has no crfs row and when the database cannot be
+      // read at all, and this method reports *which* fallback it took -- so
+      // with the tolerant read, a total database failure logged "No
+      // linkingfield configured", sending an incident after a dictionary
+      // problem that did not exist. A genuine read failure now falls to the
+      // catch below, which says so. The value written is 0 either way.
+      final crfConfig =
+          await DbService.getCrfConfigOrThrow(surveyId, tableName);
       final linkingField =
           crfConfig?['linkingfield']?.toString() ?? fallbackLinkingField;
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide DatabaseException;
 
@@ -60,6 +61,25 @@ Future<Database> buildSurvey({
   addTearDown(() => DbService.unregisterDatabaseForTest(surveyId));
   addTearDown(db.close);
   return db;
+}
+
+/// Every `debugPrint` line [action] produces.
+///
+/// The degraded paths all write the same value, so the log is the only thing
+/// that tells them apart -- which makes it worth asserting rather than
+/// eyeballing. Same approach as `test/services/sync/api_client_test.dart`.
+Future<List<String>> captureDebugPrint(Future<void> Function() action) async {
+  final captured = <String>[];
+  final original = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) captured.add(message);
+  };
+  try {
+    await action();
+  } finally {
+    debugPrint = original;
+  }
+  return captured;
 }
 
 Question textQuestion(String fieldName) => Question(
@@ -214,12 +234,40 @@ void main() {
       final answers = await assign(answers: {'hhid': '1010001'});
 
       expect(answers['linenum'], '0');
+    });
 
-      // Note for anyone debugging a real occurrence: the first read to fail is
-      // `getCrfConfig`, which swallows its error and returns null, so this
-      // lands on the no-linkingfield branch and logs "No linkingfield
-      // configured for hh_members". The value written is right; the sentence
-      // is misleading, and it predates this service.
+    test('and it says the database failed, not that the dictionary is wrong',
+        () async {
+      // The value above is right on both paths, so only the log distinguishes
+      // them -- which is the whole point: this is the sentence someone reads
+      // at 2am during a real incident. It used to say "No linkingfield
+      // configured", because `getCrfConfig` returned null for an unreadable
+      // database exactly as it does for an unconfigured form, sending the
+      // reader after a dictionary problem that does not exist.
+      final db = await buildSurvey(memberRows: 3);
+      await db.close();
+
+      final logged = await captureDebugPrint(
+        () => assign(answers: {'hhid': '1010001'}),
+      );
+
+      expect(logged.join('\n'), contains('Error calculating linenum'));
+      expect(logged.join('\n'), isNot(contains('No linkingfield configured')));
+    });
+
+    test('while a genuinely mis-authored dictionary still says so', () async {
+      // The other half of the same distinction. This form really does declare
+      // an incrementfield with no linkingfield, so the original sentence is
+      // the correct one and must survive.
+      await buildSurvey(linkingField: null, memberRows: 3);
+
+      final logged = await captureDebugPrint(
+        () => assign(answers: {'hhid': '1010001'}),
+      );
+
+      expect(logged.join('\n'),
+          contains('No linkingfield configured for hh_members'));
+      expect(logged.join('\n'), isNot(contains('Error calculating')));
     });
 
     test('a null answer for the parent key degrades rather than counting all',

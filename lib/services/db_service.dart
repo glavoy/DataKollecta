@@ -1298,13 +1298,36 @@ class DbService {
     }
   }
 
+  /// This form's `crfs` row, or null when the sheet has no row for it.
+  ///
+  /// **Null means "no such row", never "the read failed"** -- that is the
+  /// whole reason this exists alongside [getCrfConfig], which cannot tell the
+  /// two apart. A caller that reports *why* it fell back needs the
+  /// difference: `ChildIncrementService` used to land on its no-linkingfield
+  /// branch when the database could not be read at all, and log a dictionary
+  /// problem that did not exist.
+  ///
+  /// The strict-underneath / tolerant-wrapper pairing [getCrfConfig] uses, the
+  /// same as [maxIdIncrementIn] under [tryGetMaxIdIncrement].
+  static Future<Map<String, dynamic>?> getCrfConfigOrThrow(
+      String surveyId, String tableName) async {
+    final db = await _getDbOrThrow(surveyId);
+    final results =
+        await db.query('crfs', where: 'tablename = ?', whereArgs: [tableName]);
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// This form's `crfs` row, or null if there is none **or the read failed**.
+  ///
+  /// The tolerant reading, for callers that treat an unreadable database and
+  /// an unconfigured form the same way -- both screens and
+  /// `RepeatCountService` do, deliberately: a degraded read there costs a
+  /// feature, not a crash. Anything that names the reason in a log or a
+  /// message wants [getCrfConfigOrThrow] instead.
   static Future<Map<String, dynamic>?> getCrfConfig(
       String surveyId, String tableName) async {
     try {
-      final db = await _getDbOrThrow(surveyId);
-      final results = await db
-          .query('crfs', where: 'tablename = ?', whereArgs: [tableName]);
-      return results.isNotEmpty ? results.first : null;
+      return await getCrfConfigOrThrow(surveyId, tableName);
     } catch (e) {
       return null;
     }
