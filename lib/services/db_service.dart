@@ -654,6 +654,33 @@ class DbService {
     _initializedSurveys.remove(surveyId);
   }
 
+  /// Closes a survey's database and forgets it, so the next [init] reopens it.
+  ///
+  /// [init] is idempotent by design -- `_initializedSurveys` stops it reopening
+  /// a database that is already open, which is what makes it safe to call from
+  /// several screens. That guard also means a survey re-installed *within one
+  /// process* keeps serving the previous version's connection, against a file
+  /// that may since have been replaced.
+  ///
+  /// The field app never hits that: a device installs a package once and
+  /// restarts to change it. DataKollecta-SurveyTest hits it constantly, because
+  /// a designer regenerates a zip and re-runs without quitting.
+  ///
+  /// Unlike [unregisterDatabaseForTest] this actually closes the handle, which
+  /// is what lets the file be deleted afterwards -- Windows refuses to unlink
+  /// an open one. Returns normally when the survey was never opened.
+  static Future<void> closeSurvey(String surveyId) async {
+    final db = _databases.remove(surveyId);
+    _initializedSurveys.remove(surveyId);
+    if (db != null) {
+      try {
+        await db.close();
+      } catch (e) {
+        _logError('Failed to close database for $surveyId: $e');
+      }
+    }
+  }
+
   static Future<void> saveInterview({
     required String surveyId,
     required String surveyFilename,

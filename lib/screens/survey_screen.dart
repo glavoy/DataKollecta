@@ -10,8 +10,8 @@ import '../services/child_increment_service.dart';
 import '../services/duplicate_key_service.dart';
 import '../services/db_service.dart';
 import '../services/auto_fields.dart';
+import '../services/automatic_field_service.dart';
 import '../config/app_config.dart';
-import '../services/id_generator.dart';
 import '../services/logic_service.dart';
 import '../services/survey_config_service.dart';
 import '../services/survey_navigation_service.dart';
@@ -42,7 +42,8 @@ class SurveyScreen extends StatefulWidget {
   // an auto-repeat child form, so the Cancel dialog can warn about the count
   // it's about to leave short, per mode.
   final int? repeatEnforceMode;
-  final int? repeatCompletedSoFar; // Records already saved this loop, before this one
+  final int?
+      repeatCompletedSoFar; // Records already saved this loop, before this one
 
   const SurveyScreen({
     super.key,
@@ -131,9 +132,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       if (widget.existingAnswers == null) {
         _duplicateKeys = await DuplicateKeySnapshot.load(
           surveyId: surveyId,
-          tableName: widget.questionnaireFilename
-              .toLowerCase()
-              .replaceAll('.xml', ''),
+          tableName:
+              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', ''),
         );
       }
 
@@ -147,9 +147,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
           questions: questions,
           answers: _answers,
           surveyId: surveyId,
-          tableName: widget.questionnaireFilename
-              .toLowerCase()
-              .replaceAll('.xml', ''),
+          tableName:
+              widget.questionnaireFilename.toLowerCase().replaceAll('.xml', ''),
           incrementField: widget.incrementField,
           fallbackLinkingField: widget.linkingField,
         );
@@ -545,102 +544,23 @@ class _SurveyScreenState extends State<SurveyScreen> {
   // Previous question lookup is handled by _history
   /// Process an automatic question by calculating its value
   Future<void> _processAutomaticQuestion(Question q) async {
-    // The automatic value calculation is already handled in QuestionView.initState
-    // But we can also do it here for automatic questions we skip over
-
-    // Check if this is a primary key field that needs ID generation. The
-    // predicate lives in SurveyNavigationService so it can be tested --
-    // getting it wrong silently overwrites a correct, already-populated value
-    // with a freshly generated one.
-    final isIdField = SurveyNavigationService.isGeneratedIdField(
-      q,
-      hasRegistryEntry: AutoFields.getRegistry().containsKey(q.fieldName),
+    // The body moved to AutomaticFieldService so it can run without a widget
+    // tree. The call site did not move: an automatic question is computed when
+    // navigation *reaches* it, so `starttime` records the moment it was
+    // crossed, and this stays the AutomaticQuestionProcessor that
+    // SurveyNavigationService invokes.
+    await AutomaticFieldService.compute(
+      question: q,
+      answers: _answers,
+      surveyId:
+          _activeSurveyId ?? await SurveyConfigService().getActiveSurveyId(),
+      tableName:
+          widget.questionnaireFilename.toLowerCase().replaceAll('.xml', ''),
+      idConfig: widget.idConfig,
       linkingField: widget.linkingField,
       incrementField: widget.incrementField,
+      isEditMode: widget.uniqueId != null,
     );
-
-    debugPrint(
-        '[ProcessingAuto] ${q.fieldName} isIdField=$isIdField hasCalculation=${q.calculation != null}');
-    if (q.fieldName == 'hhid') {
-      debugPrint(
-          '[ProcessingAuto] hhid components: vcode=${_answers['vcode']}, mrccode=${_answers['mrccode']}, hhnum=${_answers['hhnum']}');
-      debugPrint('[ProcessingAuto] idConfig: ${widget.idConfig}');
-    }
-
-    // For primary key fields, check if we need to regenerate or preserve existing value
-    if (isIdField && widget.idConfig != null && widget.idConfig!.isNotEmpty) {
-      // This is a primary key field (hhid, subjid, etc.)
-      try {
-        final tableName =
-            widget.questionnaireFilename.toLowerCase().replaceAll('.xml', '');
-        final surveyId = await SurveyConfigService().getActiveSurveyId();
-
-        if (surveyId != null) {
-          // Check if all required fields are present
-          if (IdGenerator.validateIdFields(
-            idConfigJson: widget.idConfig!,
-            answers: _answers,
-          )) {
-            // In edit mode, preserve existing ID if component fields haven't changed
-            final existingId = _answers[q.fieldName]?.toString();
-            final isEditMode = widget.uniqueId != null;
-
-            if (isEditMode &&
-                existingId != null &&
-                existingId.isNotEmpty &&
-                existingId != '-9') {
-              // Check if the base ID components have changed
-              final hasChanged = IdGenerator.hasBaseIdChanged(
-                existingId: existingId,
-                idConfigJson: widget.idConfig!,
-                answers: _answers,
-              );
-
-              if (!hasChanged) {
-                // Component fields haven't changed - preserve existing ID including increment
-                debugPrint(
-                    'Preserving existing ID "$existingId" for field "${q.fieldName}" (no component changes)');
-                return;
-              } else {
-                debugPrint(
-                    'Component fields changed for "${q.fieldName}" - regenerating ID');
-              }
-            }
-
-            // Generate new ID (either new mode or component fields changed)
-            final generatedId = await IdGenerator.generateId(
-              surveyId: surveyId,
-              tableName: tableName,
-              fieldName: q.fieldName,
-              idConfigJson: widget.idConfig!,
-              answers: _answers,
-            );
-            _answers[q.fieldName] = generatedId;
-            debugPrint(
-                'Generated ID "$generatedId" for field "${q.fieldName}" in real-time');
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('Error generating ID for ${q.fieldName}: $e');
-      }
-
-      // Fallback if generation fails
-      _answers[q.fieldName] = '-9';
-    } else {
-      // Regular automatic field (starttime, uniqueid, etc.)
-
-      // Force re-calculation even if value exists (unless preserve is handled by AutoFields)
-      // This ensures dependent fields update when their dependencies change.
-
-      final value = await AutoFields.compute(
-        _answers,
-        q,
-        isEditMode: widget.uniqueId != null,
-        surveyId: _activeSurveyId,
-      );
-      _answers[q.fieldName] = value;
-    }
 
     // The duplicate check has to run here, not only in _onAnswerChanged.
     // That method fires for the question the interviewer is *on*, so a
@@ -653,8 +573,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // pure function of typed answers with no spare digit to move. There is no
     // degraded value available for a duplicate household -- only prevention
     // at entry, with the UNIQUE constraint as the visible backstop.
-    if (_duplicateKeys.isKeyField(q.fieldName) &&
-        _isDuplicatePrimaryKey()) {
+    if (_duplicateKeys.isKeyField(q.fieldName) && _isDuplicatePrimaryKey()) {
       if (!mounted) return;
       setState(() {
         _logicError = _s.duplicateRecordMessage;
@@ -718,7 +637,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         }
 
         if (snap.hasError) {
-          return Scaffold(body: Center(child: Text('${_s.error}: ${snap.error}')));
+          return Scaffold(
+              body: Center(child: Text('${_s.error}: ${snap.error}')));
         }
 
         final questions = snap.data!;
@@ -1427,7 +1347,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Text(_s.mustCompleteAll(entityNamePlural)),
-        content: Text(_s.mustCompleteMessage(total, entityNamePlural, entityName, current)),
+        content: Text(_s.mustCompleteMessage(
+            total, entityNamePlural, entityName, current)),
         actions: [
           if (allowExit)
             TextButton(
@@ -1667,7 +1588,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Text(_s.countAutoUpdated),
-        content: Text(_s.countAutoUpdatedMessage(expected, displayName, actual)),
+        content:
+            Text(_s.countAutoUpdatedMessage(expected, displayName, actual)),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context),
@@ -1695,7 +1617,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         barrierDismissible: false,
         builder: (_) => AlertDialog(
           title: Text(_s.allDone),
-          content: Text(isUpdate ? _s.recordUpdatedSuccess : _s.answersSavedSuccess),
+          content:
+              Text(isUpdate ? _s.recordUpdatedSuccess : _s.answersSavedSuccess),
           actions: [
             TextButton(
               onPressed: () {
