@@ -212,14 +212,29 @@ class _QuestionnaireSelectorScreenState
           ),
         );
       } else {
-        // Navigate directly to new survey screen
+        // Navigate directly to new survey screen.
+        //
+        // `linkingField` is passed only when this form actually has a parent.
+        // It exists to stop `IdGenerator` overwriting a value that arrived
+        // from somewhere else -- the linking value a child receives through
+        // `prepopulatedAnswers` -- and a form with no parent receives nothing,
+        // so there is nothing to protect.
+        //
+        // On a base form the crfs `linkingfield` means the opposite thing: the
+        // key *other* forms link on, which the dictionary is documented to
+        // declare there. Passing it made `SurveyNavigationService`
+        // .isGeneratedIdField refuse to generate exactly the field the
+        // idconfig exists to build, whenever a study named the same column in
+        // both -- which is the ordinary shape. See the test named for this.
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => SurveyScreen(
               questionnaireFilename: questionnaire.filename,
               idConfig: questionnaire.idConfig,
-              linkingField: questionnaire.linkingField,
+              linkingField: questionnaire.parentTable == null
+                  ? null
+                  : questionnaire.linkingField,
               incrementField: questionnaire.incrementField,
             ),
           ),
