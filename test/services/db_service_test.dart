@@ -1394,4 +1394,120 @@ void main() {
       expect(member[SurveyTableSchema.parentUniqueIdColumn], 'hh-1');
     });
   });
+
+  group('the identifier guard is on every statement this file builds', () {
+    // Table and column names come from a data dictionary and cannot be bound
+    // as parameters, so they are interpolated -- and quoteIdentifier is what
+    // stands between that and an injected statement. These four sites built
+    // their own SQL and bypassed it. Each test does both halves: a name that
+    // needs quoting now works, and a name carrying a double quote is refused
+    // rather than executed.
+
+    Future<Database> openDb() async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      return db;
+    }
+
+    test('CSV import quotes the table name and every header', () async {
+      final db = await openDb();
+
+      // A CSV filename and header row are the least controlled identifiers in
+      // the app -- the only ones SurveyGen never sees. `select` is a reserved
+      // word and `Region Name` contains a space; unquoted, both are syntax
+      // errors, so this import used to be skipped with a logged failure.
+      await DbService.importCsvContent(
+        db,
+        'region list',
+        'Region Name,select\nNorth,1\n',
+      );
+
+      // Read back with raw SQL, not db.query -- sqflite's helpers interpolate
+      // the table name they are given without quoting it, which is the same
+      // trap the production code above had to stop relying on.
+      final rows = await db.rawQuery('SELECT * FROM "region list"');
+      expect(rows.single['Region Name'], 'North');
+      expect(rows.single['select'], '1');
+    });
+
+    test('CSV import refuses a name carrying a double quote', () async {
+      final db = await openDb();
+
+      await expectLater(
+        DbService.importCsvContent(db, 'ok', 'a,b"c\n1,2\n'),
+        throwsA(isA<DatabaseException>()),
+      );
+      // Nothing was created: the guard throws before the CREATE runs.
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ok'",
+      );
+      expect(tables, isEmpty);
+    });
+
+    test('isValueUnique quotes both the table and the column', () async {
+      final db = await openDb();
+      await db.execute('CREATE TABLE "order" ("group" TEXT)');
+      await db.rawInsert('INSERT INTO "order" ("group") VALUES (?)', ['taken']);
+      DbService.registerDatabaseForTest('guard_unique', db);
+      addTearDown(() => DbService.unregisterDatabaseForTest('guard_unique'));
+
+      // Both are SQL reserved words, so unquoted this was a syntax error --
+      // which this method reports as "unique", the worst possible answer.
+      expect(
+        await DbService.isValueUnique('guard_unique', 'order', 'group', 'taken'),
+        isFalse,
+      );
+      expect(
+        await DbService.isValueUnique('guard_unique', 'order', 'group', 'free'),
+        isTrue,
+      );
+    });
+
+    test('isValueUnique still fails open when the guard refuses a name',
+        () async {
+      final db = await openDb();
+      DbService.registerDatabaseForTest('guard_open', db);
+      addTearDown(() => DbService.unregisterDatabaseForTest('guard_open'));
+
+      // Pinned deliberately rather than fixed. Every error here reports "no
+      // duplicate", which is the existing call-site policy -- a uniqueCheck
+      // that cannot be evaluated must not block an interviewer mid-form. Worth
+      // knowing that a refused name arrives as a silent pass, not an error.
+      expect(
+        await DbService.isValueUnique('guard_open', 'bad"name', 'col', 'v'),
+        isTrue,
+      );
+    });
+
+    test('the ALTER path quotes what the CREATE path already quoted',
+        () async {
+      final db = await openDb();
+      // A table created by an older build, now gaining a column whose name
+      // needs quoting. The CREATE branch of _syncSurveyTable goes through
+      // SurveyTableSchema and was always quoted; this is the branch that
+      // built its own SQL.
+      await db.execute('CREATE TABLE "group" (uniqueid TEXT)');
+
+      final table = SurveyTableSchema.quoteIdentifier('group');
+      final column = SurveyTableSchema.quoteIdentifier('order');
+      await db.execute('ALTER TABLE $table ADD COLUMN $column TEXT');
+
+      await db.rawInsert(
+          'INSERT INTO "group" (uniqueid, "order") VALUES (?, ?)', ['r-1', '2']);
+      expect((await db.rawQuery('SELECT * FROM "group"')).single['order'], '2');
+    });
+
+    test('quoteIdentifier refuses rather than escaping', () async {
+      // The guard's own contract, stated once here because four call sites
+      // now depend on it: a name carrying a double quote is a broken
+      // dictionary, and guessing what was meant is worse than stopping.
+      expect(() => SurveyTableSchema.quoteIdentifier('a"b'),
+          throwsA(isA<DatabaseException>()));
+      expect(() => SurveyTableSchema.quoteIdentifier(''),
+          throwsA(isA<DatabaseException>()));
+      expect(SurveyTableSchema.quoteIdentifier('Region Name'),
+          '"Region Name"');
+    });
+  });
 }

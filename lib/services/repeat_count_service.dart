@@ -2,6 +2,7 @@ import '../models/question.dart';
 import 'db_service.dart';
 import 'numeric_validation_service.dart';
 import 'question_cache_service.dart';
+import 'survey_table_schema.dart';
 
 /// What reconciling a parent's repeat count against its children should do.
 enum RepeatCountOutcome {
@@ -151,7 +152,7 @@ class RepeatCountService {
     final actualCount = await DbService.tryGetRecordCount(
       surveyId: surveyId,
       tableName: childTableName,
-      where: '$linkingField = ?',
+      where: '${SurveyTableSchema.quoteIdentifier(linkingField)} = ?',
       whereArgs: [linkingValue],
     );
     if (actualCount == null) return null;
@@ -160,7 +161,7 @@ class RepeatCountService {
       surveyId: surveyId,
       tableName: parentTable,
       field: countField,
-      where: '$linkingField = ?',
+      where: '${SurveyTableSchema.quoteIdentifier(linkingField)} = ?',
       whereArgs: [linkingValue],
     );
     final declaredText = declaredRaw?.toString().trim();
@@ -231,7 +232,7 @@ class RepeatCountService {
       tableName: reconciliation.parentTable,
       field: reconciliation.countField,
       value: reconciliation.actualCount,
-      where: '${reconciliation.linkingField} = ?',
+      where: '${SurveyTableSchema.quoteIdentifier(reconciliation.linkingField)} = ?',
       whereArgs: [reconciliation.linkingValue],
     );
   }

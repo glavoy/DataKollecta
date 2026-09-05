@@ -324,22 +324,39 @@ class DbService {
     final headers = rows.first.keys.where((h) => h.isNotEmpty).toList();
     if (headers.isEmpty) return;
 
-    // Treat all columns as TEXT for simplicity and flexibility
-    final buffer = StringBuffer();
-    buffer.write('CREATE TABLE IF NOT EXISTS $tableName (');
-    buffer.write(headers.map((h) => '$h TEXT').join(', '));
-    buffer.write(')');
+    // Treat all columns as TEXT for simplicity and flexibility.
+    //
+    // The table name is a CSV *filename* and the columns are its header row --
+    // the least controlled identifiers that reach SQL anywhere in the app, and
+    // the only ones not written by SurveyGen. Both go through the guard, which
+    // also means a header carrying a space now imports instead of failing the
+    // CREATE with a syntax error.
+    final table = SurveyTableSchema.quoteIdentifier(tableName);
+    final columns =
+        headers.map(SurveyTableSchema.quoteIdentifier).toList(growable: false);
 
-    await db.execute(buffer.toString());
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS $table '
+      '(${columns.map((c) => '$c TEXT').join(', ')})',
+    );
 
-    // Clear existing data (full refresh from CSV)
-    await db.delete(tableName);
+    // Every statement below is built here rather than through sqflite's
+    // `delete`/`insert` helpers, which interpolate the table and column names
+    // they are given **raw**. Quoting only the CREATE was not enough: the
+    // DELETE on the next line failed on the same name the CREATE had just
+    // accepted, so the guard has to run the length of the method or it buys
+    // nothing here.
+    await db.execute('DELETE FROM $table');
+
+    final placeholders = List.filled(columns.length, '?').join(', ');
+    final insert =
+        'INSERT INTO $table (${columns.join(', ')}) VALUES ($placeholders)';
 
     final batch = db.batch();
     for (final row in rows) {
-      batch.insert(tableName, {
-        for (final header in headers) header: row[header] ?? '',
-      });
+      batch.rawInsert(insert, [
+        for (final header in headers) row[header] ?? '',
+      ]);
     }
 
     await batch.commit(noResult: true);
@@ -594,13 +611,20 @@ class DbService {
         // development device picks up this schema. It is not a migration
         // path, and once a survey ships it cannot become one.
       } else {
-        // Alter table logic
+        // Alter table logic.
+        //
+        // The CREATE branch above builds its SQL through SurveyTableSchema and
+        // is quoted; this branch builds its own, so it quotes for itself. Same
+        // dictionary-sourced names, same guard -- the two paths disagreeing was
+        // the whole gap.
+        final quotedTable = SurveyTableSchema.quoteIdentifier(tableName);
         final existingColumns = await _getTableColumns(db, tableName);
         for (final q in dataQuestions) {
           if (!existingColumns.contains(q.fieldName.toLowerCase())) {
             try {
+              final column = SurveyTableSchema.quoteIdentifier(q.fieldName);
               await db.execute(
-                  'ALTER TABLE $tableName ADD COLUMN ${q.fieldName} TEXT');
+                  'ALTER TABLE $quotedTable ADD COLUMN $column TEXT');
               _log('Added column ${q.fieldName} to $tableName');
             } catch (e) {
               _logError('Failed to add column ${q.fieldName}: $e');
@@ -609,8 +633,8 @@ class DbService {
         }
         if (!existingColumns.contains('synced_at')) {
           try {
-            await db
-                .execute('ALTER TABLE $tableName ADD COLUMN synced_at DATETIME');
+            await db.execute(
+                'ALTER TABLE $quotedTable ADD COLUMN synced_at DATETIME');
             _log('Added synced_at column to $tableName');
           } catch (e) {
             _logError('Failed to add synced_at column to $tableName: $e');
@@ -1257,12 +1281,24 @@ class DbService {
     return value.toString();
   }
 
+  /// Whether [value] does not already appear in [tableName].[columnName].
+  ///
+  /// **Fails open: any error reports "unique".** That is pre-existing and
+  /// deliberate at the call site -- a uniqueCheck that cannot be evaluated
+  /// must not block an interviewer mid-form -- but it is worth knowing that a
+  /// name the identifier guard refuses arrives here as a silent pass rather
+  /// than an error. Pinned by test.
   static Future<bool> isValueUnique(String surveyId, String tableName,
       String columnName, String value) async {
     try {
       final db = await _getDbOrThrow(surveyId);
+      // Both come from a data dictionary -- the table from the XML filename,
+      // the column from a question's fieldName -- and neither can be bound.
+      // This is on a hot path: it runs on every commit of a uniqueCheck field.
+      final table = SurveyTableSchema.quoteIdentifier(tableName);
+      final column = SurveyTableSchema.quoteIdentifier(columnName);
       final count = Sqflite.firstIntValue(await db.rawQuery(
-        'SELECT COUNT(*) FROM $tableName WHERE $columnName = ?',
+        'SELECT COUNT(*) FROM $table WHERE $column = ?',
         [value],
       ));
       return (count ?? 0) == 0;
@@ -1381,8 +1417,9 @@ class DbService {
 
       // `tableName` and `where` come from a data dictionary's crfs sheet and
       // cannot be bound, so the table goes through the identifier guard.
-      // `where` is built by the caller from a crfs column name plus a `?`
-      // placeholder, and its values are always bound via [whereArgs].
+      // `where` is a fragment only the caller can build, so the caller quotes
+      // the column in it -- see RepeatCountService, the only place that passes
+      // one -- and its values are always bound via [whereArgs].
       final table = SurveyTableSchema.quoteIdentifier(tableName);
 
       final results = await db.rawQuery(
@@ -1565,7 +1602,11 @@ class DbService {
   static Future<List<String>> _getTableColumns(
       Database db, String tableName) async {
     try {
-      final result = await db.rawQuery('PRAGMA table_info($tableName)');
+      // Two of this method's callers pass a dictionary-sourced table name
+      // (_syncSurveyTable and updateInterview); the rest pass literals. PRAGMA
+      // is still SQL, so the name is quoted like any other.
+      final table = SurveyTableSchema.quoteIdentifier(tableName);
+      final result = await db.rawQuery('PRAGMA table_info($table)');
 
       final columns = result.map((row) {
         // Handle case-insensitive key lookup for 'name'
