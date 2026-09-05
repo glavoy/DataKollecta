@@ -61,36 +61,6 @@ class DbBackup {
     return str.replaceAll("'", "''");
   }
 
-  /// When this survey's journal was last written, or null if there is none.
-  ///
-  /// Nothing calls this today -- it was already unreferenced before the split,
-  /// and is kept because it is the natural read side of this module rather than
-  /// because anything needs it.
-  static Future<DateTime?> lastBackupTime(String surveyId) async {
-    try {
-      final backupsDir = await _backupsDirectory();
-      final surveyBackupDir = Directory(p.join(backupsDir.path, surveyId));
-      if (!await surveyBackupDir.exists()) return null;
-
-      final files = await surveyBackupDir.list().toList();
-      if (files.isEmpty) return null;
-
-      DateTime? lastModified;
-      for (final file in files) {
-        if (file is File) {
-          final stat = await file.stat();
-          if (lastModified == null || stat.modified.isAfter(lastModified)) {
-            lastModified = stat.modified;
-          }
-        }
-      }
-      return lastModified;
-    } catch (e) {
-      _logError('Error getting last backup time: $e');
-      return null;
-    }
-  }
-
   static Future<Directory> _backupsDirectory() async {
     Directory baseDir;
     if (Platform.isAndroid) {
