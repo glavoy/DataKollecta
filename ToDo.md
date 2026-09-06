@@ -24,12 +24,13 @@
 
 
 ### Code health
-- **The identifier guard covers the SQL this codebase writes, not the SQL sqflite writes.**
-  `db.query`/`insert`/`update`/`delete` interpolate the table and column names they are
-  given without quoting them, so any of those calls carrying a dictionary-sourced name is
-  still exposed. `importCsvContent` now builds its own statements for exactly this reason.
-  Closing it properly means validating identifiers where they enter from the dictionary
-  rather than at each use, which is a design change rather than a fix.
+- **A data dictionary is a trusted SQL source on one path, by design.**
+  `<calculation type="query">` hands `config.sql` to `db.rawQuery` verbatim
+  (`auto_fields.dart`), so a dictionary author can run any statement they like. Identifier
+  validation is meaningless there -- the whole statement is theirs. Left as it is because
+  the feature is the point, but worth knowing when reasoning about what a package can do:
+  everything *else* dictionary-sourced is now held to
+  `SurveyTableSchema.validateIdentifier` as it enters.
 
 
 ## GistXConfig

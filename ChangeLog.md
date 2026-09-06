@@ -48,6 +48,34 @@
   there is no equivalent escape: with `incrementLength: 0` there is no spare digit to move, and
   a duplicate means a second copy of a household that already exists.
 
+- **Table and column names from a data dictionary are now checked as they enter the app.**
+  Quoting protected every statement this codebase wrote by hand, but sqflite's own
+  `query`/`insert`/`update`/`delete` interpolate the table and column names they are handed
+  **raw** and offer nowhere to add quoting — and nine of those calls carried a
+  dictionary-sourced name. Validating at each use was never going to close that; the names
+  are now held to a strict allowlist at the three doors they come in by (a question's
+  `fieldname` and a `<responses source="database">` in `SurveyLoader`, every identifier cell
+  of a manifest's `crfs` rows, and the XML filename that becomes a table name), so by the
+  time any query is built a bad name cannot exist.
+
+  A name that is not a bare word — a letter or underscore, then letters, digits and
+  underscores, which is what SurveyGen already restricts `FieldName` to — now **refuses the
+  survey** with a message naming both the identifier and the cell or attribute it came from.
+  A package that relied on, say, a space in a fieldname will stop loading; that is the
+  intent, since the alternative is the field finding out instead of the designer.
+
+  CSV import is the one deliberate exemption: its table name is a filename and its columns
+  are a header row, where `Health Facility` is an ordinary heading, so it keeps relying on
+  quoting — which is why it writes out every statement instead of calling the helpers. CSV
+  *response* sources are exempt for the same reason: there those attributes are keys into a
+  parsed row, never SQL.
+
+  `DatabaseResponseService` was hardened alongside, being the largest hand-written SELECT in
+  the app: its table and column names are quoted as well as validated, and the `<filter>`
+  operator — the one part that can be neither a bound parameter nor an identifier — is now
+  replaced by an entry from an allowlist rather than interpolated, so an unsupported operator
+  is refused instead of passed through.
+
 ### Fixed
 - **A skip or logic check on a long ID could take the wrong branch.**
   `FieldComparator.compare` — the one comparison behind every skip, `logic_check` and `case`

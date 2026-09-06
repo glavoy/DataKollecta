@@ -303,9 +303,16 @@ class DbService {
     //
     // The table name is a CSV *filename* and the columns are its header row --
     // the least controlled identifiers that reach SQL anywhere in the app, and
-    // the only ones not written by SurveyGen. Both go through the guard, which
-    // also means a header carrying a space now imports instead of failing the
-    // CREATE with a syntax error.
+    // the only ones not written by SurveyGen.
+    //
+    // This is the one path deliberately **exempt** from
+    // SurveyTableSchema.validateIdentifier, which everything else dictionary-
+    // sourced now passes through as it enters. A CSV header is not a
+    // dictionary cell: `Health Facility` is a perfectly ordinary column
+    // heading in a lookup file someone exported from Excel, and refusing it
+    // would break imports that work today for no safety gain. Quoting is
+    // enough to make such a name safe -- it just is not enough for sqflite's
+    // helpers, which is why every statement below is written out by hand.
     final table = SurveyTableSchema.quoteIdentifier(tableName);
     final columns =
         headers.map(SurveyTableSchema.quoteIdentifier).toList(growable: false);
@@ -358,6 +365,60 @@ class DbService {
     'entry_condition': 'TEXT',
   };
 
+  /// The `crfs` cells that name a SQL table or column, and nothing else.
+  ///
+  /// `displayname` is prose, `idconfig` is JSON and `entry_condition` is an
+  /// expression -- none of them reach SQL as an identifier, so none of them
+  /// are held to the identifier rule.
+  static const Map<String, bool> _crfsIdentifierCells = {
+    // cell -> whether it holds a comma-separated list of names
+    'tablename': false,
+    'parenttable': false,
+    'incrementfield': false,
+    'repeat_count_field': false,
+    'primarykey': true,
+    'linkingfield': true,
+    'display_fields': true,
+  };
+
+  /// Checks every identifier a manifest `crfs` row supplies, before any of it
+  /// is stored.
+  ///
+  /// The second of the three doors dictionary identifiers come in by (the
+  /// others are `SurveyLoader`, for question fieldnames, and
+  /// [_tableNameFromFilename]). Everything downstream -- `getPrimaryKeyFields`,
+  /// `DuplicateKeyService`, `RepeatCountService`, the `SELECT COUNT(*)` in the
+  /// sync backends -- reads its table and column names out of `crfs`, so a
+  /// name that gets past here is trusted the whole way down.
+  ///
+  /// Throws rather than skipping the row: a `crfs` row is a whole form, and a
+  /// survey quietly missing one of its forms is the failure this exists to
+  /// prevent. The caller runs every row through this before it deletes
+  /// anything, so a refusal leaves the previous configuration untouched.
+  static void _validateCrfsIdentifiers(Map<String, dynamic> item) {
+    for (final cell in _crfsIdentifierCells.entries) {
+      final raw = item[cell.key]?.toString().trim() ?? '';
+      if (raw.isEmpty) continue;
+      for (final name in cell.value ? raw.split(',') : [raw]) {
+        final trimmed = name.trim();
+        if (trimmed.isEmpty) continue;
+        SurveyTableSchema.validateIdentifier(
+            trimmed, 'the "${cell.key}" cell of the crfs worksheet');
+      }
+    }
+  }
+
+  /// The survey table a questionnaire's XML file writes to.
+  ///
+  /// The third door, and the odd one: this identifier is a *filename*, not
+  /// anything a dictionary author typed into a cell. It is checked all the
+  /// same, because it is handed straight to `db.insert`/`db.update`/`db.query`
+  /// -- which interpolate it raw.
+  static String _tableNameFromFilename(String xmlFilename) =>
+      SurveyTableSchema.validateIdentifier(
+          p.basename(xmlFilename).toLowerCase().replaceAll('.xml', ''),
+          'the name of the survey XML file "$xmlFilename"');
+
   /// Public to allow the create-vs-migrate schema path to be verified
   /// without initializing the application's survey database registry.
   @visibleForTesting
@@ -400,6 +461,16 @@ class DbService {
     if (crfsList == null) {
       _logError('No "crfs" section found in manifest for $surveyId');
       return;
+    }
+
+    // Before anything is deleted, and outside the try below: an unusable
+    // identifier is a broken dictionary, not the transient database failure
+    // that catch is written for. Swallowing it would leave the app running on
+    // a stale crfs and hide the reason, which is exactly the outcome
+    // validating at the door is meant to prevent -- so this one throws all the
+    // way out to whoever asked for the survey.
+    for (final item in crfsList) {
+      if (item is Map<String, dynamic>) _validateCrfsIdentifiers(item);
     }
 
     final columns = (await _getTableColumns(db, 'crfs')).toSet();
@@ -534,8 +605,7 @@ class DbService {
     final surveysDir = await _getSurveysDirectory();
     final surveyDir = Directory(p.join(surveysDir.path, surveyId));
     final xmlFile = File(p.join(surveyDir.path, xmlFilename));
-    final tableName =
-        p.basename(xmlFilename).toLowerCase().replaceAll('.xml', '');
+    final tableName = _tableNameFromFilename(xmlFilename);
 
     try {
       List<Question> questions;
@@ -687,7 +757,7 @@ class DbService {
     required AnswerMap answers,
   }) async {
     final db = await _getDbOrThrow(surveyId);
-    final tableName = surveyFilename.toLowerCase().replaceAll('.xml', '');
+    final tableName = _tableNameFromFilename(surveyFilename);
 
     try {
       if (!await _tableExists(db, tableName)) {
@@ -711,6 +781,16 @@ class DbService {
         }
       }
 
+      // Why a bare `db.insert` is safe with a dictionary-sourced table name
+      // and dictionary-sourced column names (`rowData`'s keys are question
+      // fieldnames): sqflite's query/insert/update/delete helpers interpolate
+      // both **raw**, and give no seam to add quoting at. So the names are
+      // held to SurveyTableSchema.validateIdentifier where they enter the app
+      // -- _tableNameFromFilename here, SurveyLoader for the fieldnames,
+      // _validateCrfsIdentifiers for everything crfs supplies -- and by this
+      // point a bad one cannot exist. The same reasoning covers every other
+      // helper call in this file. It does not cover importCsvContent, which is
+      // why that method builds its own statements.
       await db.insert(tableName, rowData,
           conflictAlgorithm: ConflictAlgorithm.abort);
 
@@ -1150,7 +1230,7 @@ class DbService {
     required Map<String, dynamic>? originalAnswers,
   }) async {
     final db = await _getDbOrThrow(surveyId);
-    final tableName = surveyFilename.toLowerCase().replaceAll('.xml', '');
+    final tableName = _tableNameFromFilename(surveyFilename);
 
     try {
       final existingColumns = await _getTableColumns(db, tableName);

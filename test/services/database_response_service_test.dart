@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:datakollecta/models/question.dart';
 import 'package:datakollecta/services/database_response_service.dart';
+import 'package:datakollecta/services/db_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,7 @@ void main() {
 
       expect(
         sql.whereClause,
-        'CAST(linenum AS INTEGER) NOT IN (CAST(? AS INTEGER), CAST(? AS INTEGER))',
+        'CAST("linenum" AS INTEGER) NOT IN (CAST(? AS INTEGER), CAST(? AS INTEGER))',
       );
       expect(sql.whereArgs, ['2', '3']);
     });
@@ -33,7 +34,7 @@ void main() {
 
       expect(
         sql.whereClause,
-        'CAST(linenum AS INTEGER) IN (CAST(? AS INTEGER))',
+        'CAST("linenum" AS INTEGER) IN (CAST(? AS INTEGER))',
       );
       expect(sql.whereArgs, ['4']);
     });
@@ -66,7 +67,7 @@ void main() {
 
       expect(
         sql.whereClause,
-        'CAST(hhid AS INTEGER) = CAST(? AS INTEGER)',
+        'CAST("hhid" AS INTEGER) = CAST(? AS INTEGER)',
       );
       expect(sql.whereArgs, ['17']);
     });
@@ -86,7 +87,7 @@ void main() {
 
       expect(
         sql.whereClause,
-        'CAST(linenum AS INTEGER) NOT IN (CAST(? AS INTEGER))',
+        'CAST("linenum" AS INTEGER) NOT IN (CAST(? AS INTEGER))',
       );
     });
 
@@ -95,7 +96,7 @@ void main() {
         ResponseFilter(column: 'code', operator: 'not in', value: 'A1,B2'),
       ]);
 
-      expect(sql.whereClause, 'code NOT IN (?, ?)');
+      expect(sql.whereClause, '"code" NOT IN (?, ?)');
       expect(sql.whereArgs, ['A1', 'B2']);
     });
 
@@ -119,8 +120,8 @@ void main() {
 
       expect(
         sql.whereClause,
-        'CAST(hhid AS INTEGER) = CAST(? AS INTEGER) AND '
-        'CAST(linenum AS INTEGER) NOT IN (CAST(? AS INTEGER))',
+        'CAST("hhid" AS INTEGER) = CAST(? AS INTEGER) AND '
+        'CAST("linenum" AS INTEGER) NOT IN (CAST(? AS INTEGER))',
       );
       expect(sql.whereArgs, ['17', '2']);
     });
@@ -132,7 +133,7 @@ void main() {
         ResponseFilter(column: 'hhid', operator: '=', value: '04'),
       ]);
 
-      expect(sql.whereClause, 'CAST(hhid AS INTEGER) = CAST(? AS INTEGER)');
+      expect(sql.whereClause, 'CAST("hhid" AS INTEGER) = CAST(? AS INTEGER)');
       expect(sql.whereArgs, ['04']);
     });
 
@@ -141,7 +142,7 @@ void main() {
         ResponseFilter(column: 'region', operator: '=', value: 'Central'),
       ]);
 
-      expect(sql.whereClause, 'region = ?');
+      expect(sql.whereClause, '"region" = ?');
       expect(sql.whereArgs, ['Central']);
     });
 
@@ -241,6 +242,116 @@ void main() {
       ]);
 
       expect(lines, ['2', '4']);
+    });
+  });
+
+  group('the operator allowlist', () {
+    // The operator is the one part of a filter that can be neither a bound
+    // parameter nor a quoted identifier, so it was the one part interpolated
+    // into the WHERE clause verbatim -- and the one thing validating
+    // identifiers at the door cannot reach. It is now replaced by a table
+    // entry rather than sanitized.
+
+    test('every supported spelling still produces its SQL', () {
+      String clause(String op) =>
+          build([ResponseFilter(column: 'age', operator: op, value: 'x')])
+              .whereClause!;
+
+      expect(clause('='), '"age" = ?');
+      expect(clause('=='), '"age" = ?');
+      expect(clause('!='), '"age" != ?');
+      expect(clause('<>'), '"age" <> ?');
+      expect(clause('<'), '"age" < ?');
+      expect(clause('>='), '"age" >= ?');
+      // A dictionary may still carry an entity-encoded operator, and irregular
+      // spacing and case were always accepted -- absorbed the same way
+      // FieldComparator absorbs them.
+      expect(clause('&gt;'), '"age" > ?');
+      expect(clause('&lt;='), '"age" <= ?');
+      expect(clause('  >=  '), '"age" >= ?');
+    });
+
+    test('anything else is refused, not passed through', () {
+      for (final op in [
+        'LIKE',
+        '= 1 OR 1',
+        ';DROP TABLE hh_info;--',
+        '',
+      ]) {
+        expect(
+          () => build([ResponseFilter(column: 'age', operator: op, value: '1')]),
+          throwsA(isA<ArgumentError>()),
+          reason: 'should refuse "$op"',
+        );
+      }
+    });
+  });
+
+  group('getResponseOptions end to end', () {
+    // buildWhere is unit-tested above; this is the whole SELECT, run against
+    // real SQLite. The read-back is the part worth pinning: the query names
+    // its columns quoted, but sqflite keys the returned row by the column's
+    // actual name, so quoting the wrong one silently yields empty labels
+    // rather than an error.
+
+    late Database database;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(database.close);
+      // `order` and `group` are SQLite keywords, so this table can only be
+      // read at all if every identifier in the statement is quoted.
+      await database.execute(
+          'CREATE TABLE "order" ("group" TEXT, code TEXT, district TEXT)');
+      await database.insert('order', {
+        'group': 'North',
+        'code': '1',
+        'district': 'A',
+      });
+      await database.insert('order', {
+        'group': 'South',
+        'code': '2',
+        'district': 'B',
+      });
+      DbService.registerDatabaseForTest('drs', database);
+      addTearDown(() => DbService.unregisterDatabaseForTest('drs'));
+    });
+
+    test('a keyword table and column are queried and read back', () async {
+      final options = await DatabaseResponseService.getResponseOptions(
+        'drs',
+        ResponseConfig(
+          source: ResponseSource.database,
+          table: 'order',
+          displayColumn: 'group',
+          valueColumn: 'code',
+          filters: const [],
+        ),
+        const {},
+      );
+
+      expect(options.map((o) => o.label), ['North', 'South']);
+      expect(options.map((o) => o.value), ['1', '2']);
+    });
+
+    test('a filter narrows it, with the placeholder expanded', () async {
+      final options = await DatabaseResponseService.getResponseOptions(
+        'drs',
+        ResponseConfig(
+          source: ResponseSource.database,
+          table: 'order',
+          displayColumn: 'group',
+          valueColumn: 'code',
+          filters: [
+            ResponseFilter(
+                column: 'district', operator: '=', value: '[[chosen]]'),
+          ],
+        ),
+        const {'chosen': 'B'},
+      );
+
+      expect(options.single.label, 'South');
     });
   });
 }

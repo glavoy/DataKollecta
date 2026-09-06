@@ -357,6 +357,53 @@ void main() {
           ]
         };
 
+    test('a crfs row naming an unusable column refuses the whole sync',
+        () async {
+      // The second door. Everything downstream -- getPrimaryKeyFields,
+      // DuplicateKeyService, the sync backends' SELECT COUNT(*) -- takes its
+      // identifiers from crfs and hands them straight to sqflite, so a name
+      // that gets stored here is trusted the whole way down.
+      final db = await openDb();
+      final bad = manifest();
+      (bad['crfs'] as List)[1]['primarykey'] = 'hhid,line num';
+
+      await expectLater(DbService.syncCrfsTableForTesting('s1', db, bad),
+          throwsA(isA<DatabaseException>()));
+    });
+
+    test('a bad row leaves the previous configuration in place', () async {
+      // A crfs row is a whole form, so the alternative -- skip the row, load
+      // the rest -- is a survey silently missing a questionnaire. Refusing
+      // rolls the transaction back instead, which is the same failure policy
+      // the repopulate path already had.
+      final db = await openDb();
+      await DbService.syncCrfsTableForTesting('s1', db, manifest());
+
+      final bad = manifest();
+      (bad['crfs'] as List)[0]['tablename'] = 'hh info';
+      await expectLater(DbService.syncCrfsTableForTesting('s1', db, bad),
+          throwsA(isA<DatabaseException>()));
+
+      final rows = await db.query('crfs', orderBy: 'display_order ASC');
+      expect(rows, hasLength(2));
+      expect(rows.first['tablename'], 'hh_info');
+    });
+
+    test('a displayname is prose and is not held to the identifier rule',
+        () async {
+      // Only the cells that become SQL identifiers are checked. displayname
+      // is shown to an interviewer, idconfig is JSON, entry_condition is an
+      // expression -- none of them reach SQL as a name.
+      final db = await openDb();
+      final m = manifest();
+      (m['crfs'] as List)[0]['displayname'] = "Household Info (2025); v2";
+
+      await DbService.syncCrfsTableForTesting('s1', db, m);
+
+      expect((await db.query('crfs')).first['displayname'],
+          'Household Info (2025); v2');
+    });
+
     test('a fresh install creates the table and loads every form', () async {
       final db = await openDb();
 
@@ -1418,6 +1465,11 @@ void main() {
       // the app -- the only ones SurveyGen never sees. `select` is a reserved
       // word and `Region Name` contains a space; unquoted, both are syntax
       // errors, so this import used to be skipped with a logged failure.
+      //
+      // This also pins the one exemption from validateIdentifier: neither name
+      // here is a bare word, and both must keep importing. Quoting is what
+      // makes them safe, which is why importCsvContent writes out every
+      // statement instead of calling sqflite's helpers.
       await DbService.importCsvContent(
         db,
         'region list',
@@ -1509,6 +1561,52 @@ void main() {
           throwsA(isA<DatabaseException>()));
       expect(SurveyTableSchema.quoteIdentifier('Region Name'),
           '"Region Name"');
+    });
+
+    test('validateIdentifier accepts what SurveyGen can produce', () {
+      for (final name in [
+        'hhid',
+        'HHID',
+        '_private',
+        'q1_a2_b3',
+        'a' * 63,
+      ]) {
+        expect(SurveyTableSchema.validateIdentifier(name, 'test'), name);
+      }
+    });
+
+    test('validateIdentifier refuses everything else', () {
+      // Not a formatting preference. These names reach db.query/insert/update,
+      // which interpolate them raw, so the strict rule here is what makes
+      // those calls safe -- see the comment above the db.insert in
+      // DbService.saveInterview.
+      for (final name in [
+        '',
+        ' ',
+        'hh id',
+        'hh-id',
+        '1st_visit',
+        'id;--',
+        'a"b',
+        "a'b",
+        'tbl.col',
+        'a' * 64,
+      ]) {
+        expect(() => SurveyTableSchema.validateIdentifier(name, 'test'),
+            throwsA(isA<DatabaseException>()),
+            reason: 'should refuse "\$name"');
+      }
+    });
+
+    test('a refusal names the identifier and where it came from', () {
+      // The audience for this message is a survey designer looking for the
+      // row to fix, not whoever wrote the call site.
+      expect(
+        () => SurveyTableSchema.validateIdentifier(
+            'hh id', 'the fieldname attribute of a <question>'),
+        throwsA(isA<DatabaseException>().having((e) => e.toString(), 'message',
+            allOf(contains('hh id'), contains('fieldname attribute')))),
+      );
     });
   });
 

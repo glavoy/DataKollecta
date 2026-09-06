@@ -328,4 +328,89 @@ void main() {
       expect(notes.optional, isFalse);
     });
   });
+
+  group('identifiers that reach SQL', () {
+    // The first of the three doors dictionary identifiers come in by. A
+    // fieldname becomes a SQL column and a <responses source="database">
+    // names a real table, and both are handed to calls that interpolate them
+    // raw -- so the check belongs here, at the parse, rather than at each of
+    // the dozen places they are later used.
+
+    late Directory tempDir;
+
+    setUp(() =>
+        tempDir = Directory.systemTemp.createTempSync('survey_loader_ids'));
+    tearDown(() => tempDir.deleteSync(recursive: true));
+
+    Future<List<Question>> load(String xml) {
+      final file = File('${tempDir.path}/demo.xml')..writeAsStringSync(xml);
+      return SurveyLoader.loadFromFile(file);
+    }
+
+    String question(String fieldname) => "<?xml version='1.0' encoding='utf-8'?>"
+        "<survey><question type='text' fieldname='$fieldname' "
+        "fieldtype='text'><text>Q</text></question></survey>";
+
+    String dbResponses({
+      String table = 'villages',
+      String display = 'name',
+      String value = 'code',
+      String filter = 'district',
+    }) =>
+        "<?xml version='1.0' encoding='utf-8'?>"
+        "<survey><question type='combobox' fieldname='village' "
+        "fieldtype='text'><text>Village</text>"
+        "<responses source='database' table='$table'>"
+        "<filter column='$filter' operator='=' value='[[district]]'/>"
+        "<display column='$display'/><value column='$value'/>"
+        "</responses></question></survey>";
+
+    test('a well-formed survey still loads', () async {
+      final config = (await load(dbResponses())).first.responseConfig!;
+
+      expect(config.table, 'villages');
+      expect(config.displayColumn, 'name');
+      expect(config.valueColumn, 'code');
+      expect(config.filters.single.column, 'district');
+    });
+
+    test('an unusable fieldname refuses the file', () async {
+      await expectLater(load(question('hh id')), throwsA(isA<Exception>()));
+      await expectLater(load(question('id;--')), throwsA(isA<Exception>()));
+      await expectLater(load(question('1st')), throwsA(isA<Exception>()));
+    });
+
+    test('an unusable database table or column refuses the file', () async {
+      await expectLater(load(dbResponses(table: 'villages; DROP TABLE hh_info')),
+          throwsA(isA<Exception>()));
+      await expectLater(
+          load(dbResponses(display: 'name x')), throwsA(isA<Exception>()));
+      await expectLater(
+          load(dbResponses(value: 'a&quot;b')), throwsA(isA<Exception>()));
+      await expectLater(
+          load(dbResponses(filter: 'dist rict')), throwsA(isA<Exception>()));
+    });
+
+    test('a CSV source keeps taking column names with spaces', () async {
+      // The deliberate exception, and the reason the check is conditional on
+      // the source. For a CSV source these same attributes are keys into a
+      // parsed CSV row, never SQL -- and `Health Facility` is an ordinary
+      // heading in a lookup file someone exported from Excel. The same
+      // asymmetry DbService.importCsvContent carries, for the same reason.
+      final config = (await load("<?xml version='1.0' encoding='utf-8'?>"
+              "<survey><question type='combobox' fieldname='facility' "
+              "fieldtype='text'><text>Facility</text>"
+              "<responses source='csv' file='facilities.csv'>"
+              "<filter column='District Name' operator='=' value='[[d]]'/>"
+              "<display column='Health Facility'/>"
+              "<value column='Facility Code'/>"
+              "</responses></question></survey>"))
+          .first
+          .responseConfig!;
+
+      expect(config.displayColumn, 'Health Facility');
+      expect(config.valueColumn, 'Facility Code');
+      expect(config.filters.single.column, 'District Name');
+    });
+  });
 }

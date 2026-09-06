@@ -16,11 +16,25 @@ import 'database_exception.dart';
 /// `Database`, the `try*`/`*In` seam pairs, and the failure policy around
 /// them. This class only says what the SQL should be, never runs it.
 ///
-/// **[quoteIdentifier] is a safety boundary, not a formatting helper.** Table
-/// and column names come from a data dictionary and cannot be bound as
-/// parameters, so they are interpolated into raw SQL; this is what stands
-/// between that and an injected statement. Anything moved into or out of this
-/// class must keep every dictionary-sourced identifier going through it.
+/// **Identifier safety lives here, in two layers.** Table and column names come
+/// from a data dictionary and cannot be bound as parameters, so they reach SQL
+/// by interpolation.
+///
+/// [validateIdentifier] is the outer layer and the real one: every name the
+/// dictionary supplies is checked against a strict allowlist *as it enters the
+/// app* -- at XML parse, at `crfs` sync -- so by the time any query is built
+/// the name is already known to be a bare word. That is what makes sqflite's
+/// own `query`/`insert`/`update` helpers safe to use, since they interpolate
+/// the table and column names they are handed without quoting them and there
+/// is no seam to add quoting at.
+///
+/// [quoteIdentifier] is the inner layer, kept because one path cannot take the
+/// strict rule: CSV import, whose table name is a filename and whose columns
+/// are a header row (see `DbService.importCsvContent`). There, quoting is the
+/// only protection, which is why that method builds every one of its own
+/// statements instead of calling the helpers.
+///
+/// Anything moved into or out of this class must keep both layers intact.
 class SurveyTableSchema {
   /// The child column holding its parent's immutable `uniqueid`.
   ///
@@ -31,16 +45,57 @@ class SurveyTableSchema {
   /// A SQLite identifier, ready to interpolate into a raw statement.
   ///
   /// Table and column names cannot be bound as parameters, so they have to be
-  /// interpolated -- and every such name here comes from a data dictionary
-  /// rather than from the code. Double-quoting covers every name SurveyGen can
-  /// produce (it restricts FieldName to letters, digits and underscores); a
-  /// name carrying a double quote is refused rather than escaped, because at
-  /// that point the dictionary is wrong and guessing is worse than stopping.
+  /// interpolated. A name carrying a double quote is refused rather than
+  /// escaped, because at that point the dictionary is wrong and guessing is
+  /// worse than stopping.
+  ///
+  /// Most names reaching here have already passed [validateIdentifier], which
+  /// makes this a second line of defence. It is the *only* line on the CSV
+  /// import path, whose identifiers are a filename and a header row and so
+  /// cannot be held to the strict rule -- a header with a space still imports,
+  /// because quoting is enough to make it safe even though it is not a bare
+  /// word.
   static String quoteIdentifier(String name) {
     if (name.isEmpty || name.contains('"')) {
       throw DatabaseException('Unusable SQL identifier: "$name".');
     }
     return '"$name"';
+  }
+
+  /// What a dictionary-supplied identifier is allowed to look like.
+  ///
+  /// Deliberately narrower than SQLite accepts: this is SurveyGen's own
+  /// `FieldName` rule (a letter or underscore, then letters, digits and
+  /// underscores), which is what every name the platform generates already
+  /// satisfies. 63 characters is SQLite's practical column-name comfort zone
+  /// and far past anything a data dictionary produces.
+  static final RegExp _identifierPattern =
+      RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,62}$');
+
+  /// [name], confirmed usable as a SQL identifier, or a throw.
+  ///
+  /// Call this where a name **enters** from the dictionary, not where it is
+  /// used. Validating at each use is what left the sqflite helpers exposed:
+  /// `db.query`/`insert`/`update` interpolate the names they are given raw and
+  /// offer nowhere to intervene, so the only way to make them safe is for a
+  /// bad name never to reach them.
+  ///
+  /// [context] says where the name came from -- an XML attribute, a `crfs`
+  /// cell -- because this error is read by a survey designer looking for the
+  /// row to fix, not by whoever wrote the call site.
+  ///
+  /// Refusing outright is the point. A dictionary that names a column
+  /// `hh id` or `id;--` is wrong, and a survey that half-loads on a wrong
+  /// dictionary is worse than one that does not load: the field would find out
+  /// instead of the designer.
+  static String validateIdentifier(String name, String context) {
+    if (!_identifierPattern.hasMatch(name)) {
+      throw DatabaseException(
+          'Unusable SQL identifier "$name" ($context). A table or column name '
+          'must start with a letter or underscore and contain only letters, '
+          'digits and underscores.');
+    }
+    return name;
   }
 
   /// Splits a comma-separated `crfs` cell into trimmed, lowercased names.

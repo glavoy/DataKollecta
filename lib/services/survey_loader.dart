@@ -5,6 +5,7 @@ import 'package:xml/xml.dart';
 import '../config/app_config.dart';
 import '../models/question.dart';
 import 'app_strings.dart';
+import 'survey_table_schema.dart';
 
 class SurveyLoader {
   /// Load and parse a survey XML from a local File.
@@ -25,7 +26,12 @@ class SurveyLoader {
     final questions = <Question>[];
     for (final q in doc.findAllElements('question')) {
       final type = parseQuestionType(q.getAttribute('type') ?? 'information');
-      final fieldName = q.getAttribute('fieldname') ?? 'unknown';
+      // A fieldname becomes a SQL column, and the sqflite helpers that write
+      // it interpolate the name raw. This is the door it comes in by, so this
+      // is where it is checked -- see SurveyTableSchema.validateIdentifier.
+      final fieldName = SurveyTableSchema.validateIdentifier(
+          q.getAttribute('fieldname') ?? 'unknown',
+          'the fieldname attribute of a <question>');
       final fieldType = q.getAttribute('fieldtype') ?? 'text';
 
       // <text>...</text>
@@ -98,8 +104,21 @@ class SurveyLoader {
         } else {
           // CSV or Database responses
           final file = responsesNode.getAttribute('file');
-          final table = responsesNode.getAttribute('table');
           final filters = <ResponseFilter>[];
+
+          // Only a database source puts these names into SQL. For a CSV
+          // source the very same attributes are keys into a parsed CSV row,
+          // where a header with a space is legitimate and always has been --
+          // the same asymmetry DbService.importCsvContent carries, for the
+          // same reason.
+          final isDbSource = source == ResponseSource.database;
+          String? checkedColumn(String? name, String where) =>
+              name == null || !isDbSource
+                  ? name
+                  : SurveyTableSchema.validateIdentifier(name, where);
+
+          final table = checkedColumn(responsesNode.getAttribute('table'),
+              'the table attribute of a <responses source="database">');
 
           // Parse <filter> elements
           for (final filterNode in responsesNode.findElements('filter')) {
@@ -109,7 +128,8 @@ class SurveyLoader {
 
             if (column.isNotEmpty) {
               filters.add(ResponseFilter(
-                column: column,
+                column: checkedColumn(
+                    column, 'the column attribute of a <filter>')!,
                 value: value,
                 operator: operator,
               ));
@@ -118,10 +138,13 @@ class SurveyLoader {
 
           // Parse <display>, <value>, <distinct>, <empty_message>
           final displayNode = responsesNode.getElement('display');
-          final displayColumn = displayNode?.getAttribute('column');
+          final displayColumn = checkedColumn(
+              displayNode?.getAttribute('column'),
+              'the column attribute of a <display>');
 
           final valueNode = responsesNode.getElement('value');
-          final valueColumn = valueNode?.getAttribute('column');
+          final valueColumn = checkedColumn(valueNode?.getAttribute('column'),
+              'the column attribute of a <value>');
 
           final distinctNode = responsesNode.getElement('distinct');
           final distinct = distinctNode == null

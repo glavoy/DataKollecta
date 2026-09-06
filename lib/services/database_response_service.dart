@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/question.dart';
 import 'db_service.dart';
+import 'survey_table_schema.dart';
 
 /// A SQL WHERE fragment built from a question's response filters.
 class ResponseFilterSql {
@@ -34,27 +35,32 @@ class DatabaseResponseService {
           'display and value columns must be specified for database source');
     }
 
+    // These three came from <responses table>, <display column> and
+    // <value column>, and SurveyLoader has already held them to
+    // SurveyTableSchema.validateIdentifier. They are quoted anyway: this is
+    // the largest hand-written SELECT in the app and the only one whose
+    // identifiers are attributes rather than a schema the app controls, so it
+    // should not be the one place that depends on a check made elsewhere.
+    final quotedTable = SurveyTableSchema.quoteIdentifier(table);
+    final quotedDisplay = SurveyTableSchema.quoteIdentifier(displayColumn);
+    final quotedValue = SurveyTableSchema.quoteIdentifier(valueColumn);
+
     // Build WHERE clause from filters
     final filterSql = buildWhere(config.filters, answers);
     final whereClause = filterSql.whereClause;
     final whereArgs = filterSql.whereArgs;
 
     // Build query with DISTINCT if needed
-    String query;
-    if (config.distinct) {
-      query = 'SELECT DISTINCT $displayColumn, $valueColumn FROM $table';
-      if (whereClause != null) {
-        query += ' WHERE $whereClause';
-      }
-    } else {
-      query = 'SELECT $displayColumn, $valueColumn FROM $table';
-      if (whereClause != null) {
-        query += ' WHERE $whereClause';
-      }
+    final select = config.distinct ? 'SELECT DISTINCT' : 'SELECT';
+    var query = '$select $quotedDisplay, $quotedValue FROM $quotedTable';
+    if (whereClause != null) {
+      query += ' WHERE $whereClause';
     }
 
     final results = await db.rawQuery(query, whereArgs);
 
+    // Bare names, not the quoted ones: quoting is SQL syntax, and sqflite
+    // keys the returned row by the column's actual name.
     final options = results.map((row) {
       final display = row[displayColumn]?.toString() ?? '';
       final value = row[valueColumn]?.toString() ?? '';
@@ -87,6 +93,49 @@ class DatabaseResponseService {
   ///
   /// Public to allow filter SQL to be verified without opening a survey
   /// database.
+  /// Every comparison a `<filter>` may ask for, and nothing else.
+  ///
+  /// The operator is the one part of a filter that cannot be a bound parameter
+  /// and cannot be an identifier either, so neither `?` nor
+  /// [SurveyTableSchema.quoteIdentifier] can protect it -- it was interpolated
+  /// into the WHERE clause verbatim. An allowlist is the only thing that can:
+  /// the value is not sanitized, it is *replaced* by the matching entry here
+  /// or refused.
+  static const Map<String, String> _operators = {
+    '=': '=',
+    '==': '=',
+    '!=': '!=',
+    '<>': '<>',
+    '<': '<',
+    '>': '>',
+    '<=': '<=',
+    '>=': '>=',
+    'in': 'in',
+    'not in': 'not in',
+  };
+
+  /// [operator] as SQL, or a throw.
+  ///
+  /// Spelling differences are absorbed the same way `FieldComparator` absorbs
+  /// them, so a dictionary that writes `&gt;=` or `NOT  IN` keeps working: XML
+  /// entity decoding first (an attribute value may arrive still encoded),
+  /// then trim, lowercase and collapse runs of whitespace.
+  static String _sqlOperator(String operator) {
+    final normalized = operator
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&')
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final sql = _operators[normalized];
+    if (sql == null) {
+      throw ArgumentError.value(operator, 'operator',
+          'Unsupported <filter> operator. Use one of: ${_operators.keys.join(', ')}');
+    }
+    return sql;
+  }
+
   @visibleForTesting
   static ResponseFilterSql buildWhere(
     List<ResponseFilter> filters,
@@ -100,8 +149,8 @@ class DatabaseResponseService {
       final filterValue = _expandPlaceholders(filter.value, answers);
 
       // Normalize "NOT  IN" and similar spellings before matching
-      final operator =
-          filter.operator.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final operator = _sqlOperator(filter.operator);
+      final column = SurveyTableSchema.quoteIdentifier(filter.column);
 
       if (operator == 'in' || operator == 'not in') {
         final items = filterValue
@@ -130,10 +179,10 @@ class DatabaseResponseService {
           final placeholders =
               List.filled(items.length, 'CAST(? AS INTEGER)').join(', ');
           whereClauses.add(
-              'CAST(${filter.column} AS INTEGER) $sqlOperator ($placeholders)');
+              'CAST($column AS INTEGER) $sqlOperator ($placeholders)');
         } else {
           final placeholders = List.filled(items.length, '?').join(', ');
-          whereClauses.add('${filter.column} $sqlOperator ($placeholders)');
+          whereClauses.add('$column $sqlOperator ($placeholders)');
         }
         whereArgs.addAll(items);
         continue;
@@ -142,13 +191,11 @@ class DatabaseResponseService {
       // Use CAST for numeric comparison if the filter value looks like a number
       // this handles padding differences (e.g., '04' matching '4')
       if (num.tryParse(filterValue) != null &&
-          (filter.operator == '=' ||
-              filter.operator == '!=' ||
-              filter.operator == '<>')) {
+          (operator == '=' || operator == '!=' || operator == '<>')) {
         whereClauses.add(
-            'CAST(${filter.column} AS INTEGER) ${filter.operator} CAST(? AS INTEGER)');
+            'CAST($column AS INTEGER) $operator CAST(? AS INTEGER)');
       } else {
-        whereClauses.add('${filter.column} ${filter.operator} ?');
+        whereClauses.add('$column $operator ?');
       }
       whereArgs.add(filterValue);
     }
