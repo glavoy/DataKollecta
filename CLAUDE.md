@@ -257,6 +257,24 @@ GiSTX and DataKollecta are offline-first Flutter survey/data-collection apps bui
 - On survey init, `_syncSurveyTable()` reconciles the table schema against the XML questions: creates the table if missing, otherwise diffs existing columns and runs `ALTER TABLE ... ADD COLUMN` for new fields (added as `TEXT`; existing data and unused old columns are preserved, never dropped).
 - Table name = survey XML filename (lowercase, no extension); column names = question `fieldname` values, so XML fieldnames and DB columns must match exactly (case-sensitive).
 - **Every dictionary-sourced identifier is validated where it enters, not where it is used** — `SurveyTableSchema.validateIdentifier`, applied at three doors: `SurveyLoader` (a question's `fieldname`, and a `<responses source="database">`'s `table`/`column` attributes), `_validateCrfsIdentifiers` (every identifier cell of a manifest `crfs` row, checked before the transaction opens so a refusal keeps the previous configuration), and `_tableNameFromFilename`. This is what makes bare `db.query`/`insert`/`update` calls safe: sqflite interpolates the table and column names it is handed **raw** and offers no seam to add quoting at, so the only defence is that a bad name never reaches them. A non-conforming name refuses the survey rather than degrading. `SurveyTableSchema.quoteIdentifier` remains the second layer, and the *only* layer on the CSV import path, whose identifiers are a filename and a header row and so cannot take the strict rule — which is why `importCsvContent` writes out every one of its own statements.
+- **The fourth door is a whole statement, not a name.** `<calculation type="query">` is
+  the one place a dictionary supplies SQL rather than an identifier, and `AutoFields`
+  hands it to `db.rawQuery` on the survey's ordinary read/write connection, swallowing
+  whatever comes back — so validating identifiers there would be beside the point.
+  `SurveyTableSchema.validateQuerySql`, applied in `SurveyLoader._parseCalculation`
+  (top-level calculations and `<part>`s alike), holds it to **one `SELECT`**: a single
+  statement, no `--` or `/* */` comment outside a literal, and `SELECT` as the leading
+  keyword. `WITH` is refused despite reading as harmless, because SQLite allows
+  `WITH … DELETE`. SurveyGen refuses the same cell at generation time
+  (`calculation_parser.py`), so the designer normally finds out first.
+- **A refusal from any of the four doors travels.** `DbService`'s init path used to log
+  and swallow everything, so a package the app could not use degraded silently into a
+  survey with no table. A `DatabaseException` now propagates out of `_syncSurveyTable`,
+  `_syncDatabaseSchema` and `_initDatabaseForSurvey` while every other failure is still
+  logged and swallowed; `_initializeSurveyDatabases` attempts every survey and then
+  raises the refusals together, so one bad package does not take out an unrelated study
+  already on the device. CSV import keeps its own catch, being deliberately exempt from
+  the strict rule.
 - `crfs` table drives `MainScreen`'s survey list: `filename`, `id_config` (JSON for `IdGenerator`), `primary_keys`, `linking_field` (parent-child hierarchical linking).
 - Updates only write changed fields (diff current vs. `_originalAnswers`); explicit `null`s must still be written to clear previously-skipped answers (see `prepareUpdateRowData` and the null-handling test in `test/services/db_service_test.dart`).
 

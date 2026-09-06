@@ -80,13 +80,29 @@ class DbService {
 
       final List<FileSystemEntity> entities = await surveysDir.list().toList();
       _log('Found ${entities.length} entities in surveys directory');
+
+      // A package whose dictionary this app cannot use is refused, not
+      // skipped -- but not at the cost of the other surveys on the device.
+      // Every survey is attempted, then the refusals are raised together, so
+      // an unrelated study already installed keeps working while nobody can
+      // miss that this one did not load.
+      final refused = <String>[];
       for (final entity in entities) {
         if (entity is Directory) {
           final surveyId = p.basename(entity.path);
           _log('Found survey directory: $surveyId');
-          await _initDatabaseForSurvey(surveyId);
+          try {
+            await _initDatabaseForSurvey(surveyId);
+          } on DatabaseException catch (e) {
+            refused.add(e.message);
+          }
         }
       }
+      if (refused.isNotEmpty) {
+        throw DatabaseException(refused.join('\n'));
+      }
+    } on DatabaseException {
+      rethrow;
     } catch (e) {
       _logError('Error scanning survey directories: $e');
     }
@@ -166,6 +182,21 @@ class DbService {
 
       // 4. Sync Schema (Create CRFS, Survey Tables)
       await _syncDatabaseSchema(surveyId, db, manifest);
+    } on DatabaseException catch (e) {
+      // The dictionary itself is unusable -- a name or a query calculation
+      // this app refuses. That is a permanent verdict on the package rather
+      // than a condition that might clear, so it travels; everything else
+      // here is still logged and swallowed, because a survey that fails to
+      // open for some transient reason must not take the app down.
+      //
+      // The registry entries are undone first: the survey was marked
+      // initialised before the schema ran, and leaving it there would make a
+      // corrected reinstall a no-op.
+      _logError('Refused package $surveyId: $e');
+      _initializedSurveys.remove(surveyId);
+      final opened = _databases.remove(surveyId);
+      if (opened != null) await opened.close();
+      rethrow;
     } catch (e) {
       _logError('Failed to initialize database for $surveyId: $e');
     }
@@ -238,6 +269,12 @@ class DbService {
               crfsByTable: crfsByTable);
         }
       }
+    } on DatabaseException {
+      // See _initDatabaseForSurvey: a dictionary the app cannot use is
+      // refused rather than degraded. Note the CSV import above keeps its own
+      // catch -- a CSV header is not a dictionary cell and is deliberately
+      // exempt from the strict rule (see importCsvContent).
+      rethrow;
     } catch (e) {
       _logError('Error syncing schema for $surveyId: $e');
     }
@@ -683,6 +720,13 @@ class DbService {
           }
         }
       }
+    } on DatabaseException {
+      // The innermost of the four places a dictionary refusal used to be
+      // logged and forgotten. This is where SurveyLoader parses the form, so
+      // it is where a bad fieldname or a query calculation that is not a
+      // single SELECT surfaces -- see _initDatabaseForSurvey for why it
+      // travels instead.
+      rethrow;
     } catch (e) {
       _logError('Error syncing table $tableName: $e');
     }

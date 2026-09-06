@@ -35,6 +35,17 @@ import 'database_exception.dart';
 /// statements instead of calling the helpers.
 ///
 /// Anything moved into or out of this class must keep both layers intact.
+///
+/// **One path hands the dictionary a whole statement, not just a name.**
+/// `<calculation type="query">` carries SQL a designer wrote, and
+/// `AutoFields` runs it through `db.rawQuery` on the survey's ordinary
+/// read/write handle -- so validating identifiers there would be beside the
+/// point, since the statement *is* the dictionary's. [validateQuerySql] is
+/// that path's door: it holds the statement to a single `SELECT`, which is
+/// the lookup the feature exists for and nothing else. It lives here beside
+/// the identifier layers because this is where dictionary-sourced SQL safety
+/// is decided, and because everything in this file is pure enough to pin by
+/// test without opening a connection.
 class SurveyTableSchema {
   /// The child column holding its parent's immutable `uniqueid`.
   ///
@@ -106,6 +117,93 @@ class SurveyTableSchema {
     }
     return name;
   }
+
+  /// [sql], confirmed to be a lookup a data dictionary is allowed to run, or
+  /// a throw.
+  ///
+  /// A `<calculation type="query">` is the one place a dictionary supplies a
+  /// whole statement rather than a name, and it reaches `db.rawQuery` on the
+  /// survey's normal read/write connection. Without this, a cell could carry
+  /// `DELETE`, `DROP`, `ATTACH` or `PRAGMA` as easily as the lookup the
+  /// feature is for -- and `AutoFields` swallows query failures, so it would
+  /// happen silently.
+  ///
+  /// Three rules, and no keyword blocklist:
+  ///
+  /// - Exactly one statement. Outside string literals and quoted identifiers,
+  ///   a `;` is allowed only as the last non-space character.
+  /// - No `--` or `/* */` comment outside a literal. A comment has no use in a
+  ///   dictionary cell and is how a second statement hides from the check
+  ///   below.
+  /// - The leading keyword is `SELECT`.
+  ///
+  /// A `SELECT` cannot modify the database, so those three together are the
+  /// whole guarantee; nothing here enumerates dangerous words, which is the
+  /// approach that leaks.
+  ///
+  /// `WITH` is refused even though a CTE reads as harmless, because SQLite
+  /// allows `WITH ... INSERT/UPDATE/DELETE` -- admitting it would reopen
+  /// exactly what this closes, to buy an expressiveness no dictionary uses.
+  ///
+  /// [context] names the question the SQL came from, for the same reason
+  /// [validateIdentifier]'s does: a survey designer reads this message looking
+  /// for the row to fix.
+  static String validateQuerySql(String sql, String context) {
+    final statement = sql.trim();
+
+    Never refuse(String reason) {
+      throw DatabaseException(
+          'Unusable query calculation ($context): $reason. The SQL of a '
+          '<calculation type="query"> must be a single SELECT statement, with '
+          'no trailing statement and no SQL comment.');
+    }
+
+    if (statement.isEmpty) {
+      refuse('the SQL is empty');
+    }
+
+    // Walk the statement once, tracking whether we are inside a literal. A
+    // doubled quote is SQLite's escape for a quote of the same kind, and the
+    // toggle handles it without a special case: it closes and immediately
+    // reopens.
+    String? quote;
+    for (var i = 0; i < statement.length; i++) {
+      final ch = statement[i];
+      if (quote != null) {
+        if (ch == quote) quote = null;
+        continue;
+      }
+      if (ch == "'" || ch == '"' || ch == '`') {
+        quote = ch;
+        continue;
+      }
+      if (ch == '-' && i + 1 < statement.length && statement[i + 1] == '-') {
+        refuse('it contains a -- comment');
+      }
+      if (ch == '/' && i + 1 < statement.length && statement[i + 1] == '*') {
+        refuse('it contains a /* */ comment');
+      }
+      if (ch == ';' && statement.substring(i + 1).trim().isNotEmpty) {
+        refuse('it contains more than one statement');
+      }
+    }
+    if (quote != null) {
+      refuse('a quote is left open');
+    }
+
+    if (!_selectPattern.hasMatch(statement)) {
+      refuse('it does not begin with SELECT');
+    }
+
+    return sql;
+  }
+
+  /// A statement whose first keyword is `SELECT`.
+  ///
+  /// Anchored and word-bounded, so `SELECTED` is not a SELECT and leading
+  /// whitespace has already been trimmed off by the caller.
+  static final RegExp _selectPattern =
+      RegExp(r'^SELECT\b', caseSensitive: false);
 
   /// Splits a comma-separated `crfs` cell into trimmed, lowercased names.
   static List<String> _splitCrfsList(Object? cell) => (cell?.toString() ?? '')

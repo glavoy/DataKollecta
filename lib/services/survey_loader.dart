@@ -258,7 +258,7 @@ class SurveyLoader {
 
       // Parse calculation
       final calculationNode = q.getElement('calculation');
-      final calculation = _parseCalculation(calculationNode);
+      final calculation = _parseCalculation(calculationNode, fieldName);
 
       // Parse mask
       final maskNode = q.getElement('mask');
@@ -442,7 +442,8 @@ class SurveyLoader {
     }
   }
 
-  static CalculationConfig? _parseCalculation(XmlElement? node) {
+  static CalculationConfig? _parseCalculation(
+      XmlElement? node, String fieldName) {
     if (node == null) return null;
 
     final type = node.getAttribute('type') ?? 'constant';
@@ -457,7 +458,17 @@ class SurveyLoader {
     String? sql;
     Map<String, String>? sqlParams;
     if (type == 'query') {
-      sql = node.getElement('sql')?.innerText.trim();
+      final rawSql = node.getElement('sql')?.innerText.trim();
+      // The one dictionary-sourced *statement*, as opposed to the names
+      // checked above. This is the door it comes in by, so this is where it
+      // is held to a single SELECT -- see
+      // SurveyTableSchema.validateQuerySql. Reached for a <part> too, since
+      // this method recurses into them.
+      sql = rawSql == null
+          ? null
+          : SurveyTableSchema.validateQuerySql(
+              rawSql,
+              'the <calculation type="query"> on question "$fieldName"');
       final params = <String, String>{};
       for (final p in node.findElements('parameter')) {
         final name = p.getAttribute('name');
@@ -474,7 +485,7 @@ class SurveyLoader {
     if (type == 'concat' || type == 'math') {
       parts = [];
       for (final partNode in node.findElements('part')) {
-        final part = _parseCalculation(partNode);
+        final part = _parseCalculation(partNode, fieldName);
         if (part != null) parts.add(part);
       }
     }
@@ -490,7 +501,7 @@ class SurveyLoader {
         final val = whenNode.getAttribute('value');
 
         final resultNode = whenNode.getElement('result');
-        final result = _parseCalculation(resultNode);
+        final result = _parseCalculation(resultNode, fieldName);
 
         if (field != null && val != null && result != null) {
           cases.add(CaseConfig(
@@ -505,7 +516,7 @@ class SurveyLoader {
       final elseNode = node.getElement('else');
       if (elseNode != null) {
         final resultNode = elseNode.getElement('result');
-        defaultValue = _parseCalculation(resultNode);
+        defaultValue = _parseCalculation(resultNode, fieldName);
       }
     }
 

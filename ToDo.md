@@ -23,16 +23,6 @@
 - where did synced_at get introduced?
 
 
-### Code health
-- **A data dictionary is a trusted SQL source on one path, by design.**
-  `<calculation type="query">` hands `config.sql` to `db.rawQuery` verbatim
-  (`auto_fields.dart`), so a dictionary author can run any statement they like. Identifier
-  validation is meaningless there -- the whole statement is theirs. Left as it is because
-  the feature is the point, but worth knowing when reasoning about what a package can do:
-  everything *else* dictionary-sourced is now held to
-  `SurveyTableSchema.validateIdentifier` as it enters.
-
-
 ## GistXConfig
 - look at the code for parsing skips - add multiple logic: if xxx = 1 and yyy < 5, then skip to...
 

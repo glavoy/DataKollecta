@@ -7,6 +7,23 @@
 ## [UNRELEASED] - TBD
 
 ### Changed
+- **A `<calculation type="query">` must now be a single `SELECT`.** It is the one place a
+  data dictionary supplies a whole SQL statement rather than a name, and the app handed it
+  to `db.rawQuery` on the survey's ordinary read/write connection and swallowed whatever
+  came back — so a `sql:` cell could delete or drop as easily as look up, and nothing in
+  the field would have said so. The statement is now checked as it enters
+  (`SurveyTableSchema.validateQuerySql`, called from `SurveyLoader`): one statement, no
+  SQL comment, `SELECT` as the leading keyword. `WITH` is refused because SQLite allows
+  `WITH … DELETE`. Ordinary lookups — the reason the feature exists — are unaffected, and
+  SurveyGen now refuses the same cell at generation time so a designer sees it first.
+
+  A package that fails this is **refused, not degraded**. The init path used to log and
+  swallow every failure, which meant a dictionary the app could not use quietly produced a
+  survey with no table — so the same silence also covered the three identifier doors that
+  were supposed to refuse a package. A dictionary refusal now travels out of init, while
+  every other failure is still logged and swallowed, and the other surveys on the device
+  still initialise.
+
 - **The parent/child relationship is now a constraint the database enforces, not a convention
   the app remembers.** Survey tables were created with every column a plain `TEXT` — no
   `PRIMARY KEY`, no `UNIQUE`, no `FOREIGN KEY` — and `PRAGMA foreign_keys` was never switched

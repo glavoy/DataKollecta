@@ -412,5 +412,46 @@ void main() {
       expect(config.valueColumn, 'Facility Code');
       expect(config.filters.single.column, 'District Name');
     });
+
+    // The fourth door, and the odd one out: here the dictionary supplies a
+    // whole statement rather than a name, so validating identifiers would be
+    // beside the point. SurveyTableSchema.validateQuerySql owns the rule; what
+    // is pinned here is that the parse actually calls it, on a top-level
+    // calculation and on a <part> alike -- the recursion is easy to miss.
+    String calc(String body) => "<?xml version='1.0' encoding='utf-8'?>"
+        "<survey><question type='automatic' fieldname='village' "
+        "fieldtype='text'><text>V</text>$body</question></survey>";
+
+    test('a query calculation is held to a single SELECT', () async {
+      expect(
+        () => load(calc("<calculation type='query'>"
+            '<sql>SELECT name FROM villages WHERE code = @c; DELETE FROM villages</sql>'
+            '</calculation>')),
+        throwsA(isA<Exception>().having((e) => e.toString(), 'message',
+            allOf(contains('village'), contains('single SELECT')))),
+      );
+    });
+
+    test('a query <part> inside a concat is held to the same rule', () async {
+      expect(
+        () => load(calc("<calculation type='concat'>"
+            "<part type='constant' value='x'/>"
+            "<part type='query'><sql>DELETE FROM villages</sql></part>"
+            '</calculation>')),
+        throwsA(isA<Exception>()),
+      );
+    });
+
+    test('an ordinary lookup still parses', () async {
+      const sql = 'SELECT distinct mrcname FROM villages WHERE mrccode = @mrccode';
+      final question = (await load(calc("<calculation type='query'>"
+              '<sql>$sql</sql>'
+              "<parameter name='@mrccode' field='mrccode'/>"
+              '</calculation>')))
+          .firstWhere((q) => q.fieldName == 'village');
+
+      expect(question.calculation?.sql, sql);
+      expect(question.calculation?.sqlParams, {'@mrccode': 'mrccode'});
+    });
   });
 }

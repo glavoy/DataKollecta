@@ -1598,6 +1598,60 @@ void main() {
       }
     });
 
+    test('validateQuerySql accepts the lookups the feature exists for', () {
+      for (final sql in [
+        'SELECT distinct mrcname FROM villages WHERE mrccode = @mrccode',
+        'select name from hh',
+        'SELECT COUNT(*) FROM roster WHERE hhid = @hhid;',
+        // A semicolon inside a literal is not a second statement. The scan
+        // tracks quoting for exactly this case.
+        "SELECT 'a;b' FROM hh",
+        'SELECT "odd name" FROM hh',
+      ]) {
+        expect(SurveyTableSchema.validateQuerySql(sql, 'test'), sql,
+            reason: 'should accept "$sql"');
+      }
+    });
+
+    test('validateQuerySql refuses anything that is not one SELECT', () {
+      // This is the one path where a dictionary supplies a whole statement,
+      // and AutoFields runs it on the survey's read/write handle and swallows
+      // the outcome -- so a package that gets past here writes silently.
+      for (final sql in [
+        '',
+        '   ',
+        'DELETE FROM hh',
+        'DROP TABLE hh',
+        'PRAGMA journal_mode = WAL',
+        'ATTACH DATABASE \'x.db\' AS x',
+        // Refused despite being read-only in isolation: SQLite allows
+        // WITH ... DELETE, so the leading keyword would stop meaning anything.
+        'WITH x AS (SELECT 1) SELECT * FROM x',
+        'WITH x AS (SELECT 1) DELETE FROM hh',
+        'SELECT 1; DROP TABLE hh',
+        // A comment is how a second statement hides from a prefix check.
+        'SELECT 1 -- ; DROP TABLE hh',
+        'SELECT 1 /* ; DROP TABLE hh */',
+        "SELECT 'unclosed FROM hh",
+        'SELECTED FROM hh',
+      ]) {
+        expect(() => SurveyTableSchema.validateQuerySql(sql, 'test'),
+            throwsA(isA<DatabaseException>()),
+            reason: 'should refuse "$sql"');
+      }
+    });
+
+    test('a refused query names the question and what is allowed', () {
+      expect(
+        () => SurveyTableSchema.validateQuerySql('SELECT 1; DROP TABLE hh',
+            'the <calculation type="query"> on question "village"'),
+        throwsA(isA<DatabaseException>().having(
+            (e) => e.toString(),
+            'message',
+            allOf(contains('village'), contains('single SELECT')))),
+      );
+    });
+
     test('a refusal names the identifier and where it came from', () {
       // The audience for this message is a survey designer looking for the
       // row to fix, not whoever wrote the call site.
