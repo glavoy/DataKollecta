@@ -1231,6 +1231,24 @@ class DbService {
     return rowData;
   }
 
+  /// The surveyor id to stamp on a `formchanges` row, or null if it cannot be
+  /// read.
+  ///
+  /// The audit trail is a nice-to-have; the write it accompanies is not. A
+  /// settings read that fails must not cost us the write itself -- and, in
+  /// [_recordChanges], must not cost us the rest of the audit trail either.
+  /// That method wraps its whole body in a `try`, so an unguarded read here
+  /// used to abort every `formchanges` row for the save rather than blanking
+  /// one column of them.
+  static Future<String?> _surveyorIdForChangeLog() async {
+    try {
+      return await SettingsService().surveyorId;
+    } catch (e) {
+      _logError('Could not read surveyor id for change log: $e');
+      return null;
+    }
+  }
+
   static Future<void> _recordChanges({
     required Database db,
     required String tableName,
@@ -1243,7 +1261,7 @@ class DbService {
       if (!await _tableExists(db, 'formchanges')) return;
 
       // Looked up once per call, not per field.
-      final surveyorId = await SettingsService().surveyorId;
+      final surveyorId = await _surveyorIdForChangeLog();
 
       for (final entry in newAnswers.entries) {
         final fieldName = entry.key;
@@ -1507,16 +1525,7 @@ class DbService {
       if (rows.isEmpty) return;
 
       final newValueStr = AnswerEquality.canonical(value);
-      // The audit trail is a nice-to-have; the corrected value is not. A
-      // settings read that fails must not cost us the write itself.
-      String? surveyorId;
-      if (recordChange) {
-        try {
-          surveyorId = await SettingsService().surveyorId;
-        } catch (e) {
-          _logError('Could not read surveyor id for change log: $e');
-        }
-      }
+      final surveyorId = recordChange ? await _surveyorIdForChangeLog() : null;
       final now = DateTime.now().toIso8601String();
 
       for (final row in rows) {

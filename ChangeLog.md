@@ -49,6 +49,13 @@
   a duplicate means a second copy of a household that already exists.
 
 ### Fixed
+- **A settings failure could wipe a save's entire audit trail.** `DbService._recordChanges`
+  read the surveyor id inside its method-wide `try`, so if that read threw — a plugin missing
+  on the platform, a secure-store failure — control jumped straight to the `catch` and *no*
+  `formchanges` row was written for that save. `updateField` had always guarded the same read
+  and degraded to a blank `surveyor_id`; both now share one guarded read, so the cost of a
+  failed settings read is one column rather than the whole trail. The record itself was never
+  at risk either way.
 - **A change summary could list an edit that was never recorded.** Four places each decided,
   their own way, whether two answers are the same answer — the padding check in
   `AnswerValidationService`, the change summary, the `formchanges` writer in `DbService`, and

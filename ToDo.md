@@ -35,11 +35,6 @@
   still exposed. `importCsvContent` now builds its own statements for exactly this reason.
   Closing it properly means validating identifiers where they enter from the dictionary
   rather than at each use, which is a design change rather than a fix.
-- **`_recordChanges` does not guard its surveyor-id read, and `updateField` does.**
-  `updateField` wraps that read in its own try/catch with a comment saying a settings read
-  that fails must not cost us the write; `_recordChanges` lets the exception abort the
-  whole method, so a settings failure loses the entire audit trail for that save rather
-  than one column of it. Found while testing the answer-equality unification.
 
 
 ## GistXConfig

@@ -1522,9 +1522,11 @@ void main() {
     late Database db;
 
     setUp(() async {
-      // _recordChanges reads the surveyor id and, unlike updateField, does not
-      // guard that read -- a missing plugin aborts the whole audit write. Same
-      // approach as settings_service_test.dart.
+      // Both paths read the surveyor id. The read is now guarded on both
+      // (DbService._surveyorIdForChangeLog), so a missing plugin costs one
+      // column rather than the audit trail -- that failure has its own file,
+      // db_service_change_log_test.dart. Mocking it here keeps this group
+      // about the equality rule and nothing else.
       SharedPreferences.setMockInitialValues({});
       sqfliteFfiInit();
       db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
