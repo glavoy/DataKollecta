@@ -91,6 +91,25 @@ If the counter cannot be read, the app writes **`0`** rather than `1`: the count
 at 1, so `0` is a value no real record holds, where `1` was indistinguishable from a
 legitimate first child. `WHERE <incrementfield> = 0` finds every degraded row.
 
+**Every cell that names a table or column must be a plain identifier.** `tablename`,
+`parenttable`, `incrementfield`, `repeat_count_field`, and each name in `primarykey`,
+`linkingfield` and `display_fields` must start with a letter or underscore and contain only
+letters, digits and underscores. So must a question's `FieldName`, and the `table`/`column`
+attributes of a database-backed response list.
+
+The app checks all of these as it reads the package and **refuses the survey** if one fails,
+with a message naming both the identifier and the cell it came from. These names go straight
+into SQL as table and column names, and there is no way to write a query that treats
+`hh id` or `id;--` as a name and still be safe -- so a dictionary that produces one is wrong,
+and stopping at install is the point. Nothing warns you at authoring time yet: SurveyGen does
+not validate `FieldName`, so this surfaces when the package is installed rather than when it
+is generated.
+
+`displayname` is exempt -- it is shown to an interviewer, not used as a name -- and so are
+`idconfig` (JSON) and `entry_condition` (an expression). CSV lookup files are exempt too:
+their table name is a filename and their columns are a header row, so `Health Facility` keeps
+importing.
+
 **These constraints are declared only at `CREATE TABLE`.** SQLite has no
 `ALTER TABLE ... ADD CONSTRAINT`, and `_syncSurveyTable` adds columns but never
 constraints -- so a device that already created a table keeps it unconstrained. Clearing

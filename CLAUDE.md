@@ -256,6 +256,7 @@ GiSTX and DataKollecta are offline-first Flutter survey/data-collection apps bui
 - One SQLite database per surveyId (`Map<surveyId, Database>`), opened via `sqflite` on mobile and `sqflite_common_ffi` on desktop (Windows/Linux/macOS init FFI in `DbService.init()`).
 - On survey init, `_syncSurveyTable()` reconciles the table schema against the XML questions: creates the table if missing, otherwise diffs existing columns and runs `ALTER TABLE ... ADD COLUMN` for new fields (added as `TEXT`; existing data and unused old columns are preserved, never dropped).
 - Table name = survey XML filename (lowercase, no extension); column names = question `fieldname` values, so XML fieldnames and DB columns must match exactly (case-sensitive).
+- **Every dictionary-sourced identifier is validated where it enters, not where it is used** — `SurveyTableSchema.validateIdentifier`, applied at three doors: `SurveyLoader` (a question's `fieldname`, and a `<responses source="database">`'s `table`/`column` attributes), `_validateCrfsIdentifiers` (every identifier cell of a manifest `crfs` row, checked before the transaction opens so a refusal keeps the previous configuration), and `_tableNameFromFilename`. This is what makes bare `db.query`/`insert`/`update` calls safe: sqflite interpolates the table and column names it is handed **raw** and offers no seam to add quoting at, so the only defence is that a bad name never reaches them. A non-conforming name refuses the survey rather than degrading. `SurveyTableSchema.quoteIdentifier` remains the second layer, and the *only* layer on the CSV import path, whose identifiers are a filename and a header row and so cannot take the strict rule — which is why `importCsvContent` writes out every one of its own statements.
 - `crfs` table drives `MainScreen`'s survey list: `filename`, `id_config` (JSON for `IdGenerator`), `primary_keys`, `linking_field` (parent-child hierarchical linking).
 - Updates only write changed fields (diff current vs. `_originalAnswers`); explicit `null`s must still be written to clear previously-skipped answers (see `prepareUpdateRowData` and the null-handling test in `test/services/db_service_test.dart`).
 
@@ -301,7 +302,9 @@ New DataKollecta-only UI copy lives in `app_strings_http_sync.dart` (`HttpSyncSt
 | `db_service.dart` | Per-survey SQLite lifecycle, schema sync, CRUD |
 | `skip_service.dart` | preskip/postskip evaluation |
 | `logic_service.dart` | Cross-field `logic_check` evaluation |
-| `field_comparator.dart` | Shared checkbox-aware text resolution and the numeric/date/string/contains comparison used by skip, logic_check, and calculation |
+| `field_comparator.dart` | Shared checkbox-aware text resolution and the numeric/date/string/contains comparison used by skip, logic_check, and calculation. `tryParseNumber` (`num`, never `double`, so long IDs compare exactly) is the app's single definition of "counts as a number" — `AnswerEquality` parses through it too |
+| `answer_equality.dart` | The one rule for "are these the same answer", shared by the change summary, the `formchanges` writer and the has-anything-changed check |
+| `survey_table_schema.dart` | Survey-table DDL, and both identifier-safety layers (`validateIdentifier` at the door, `quoteIdentifier` in the statement) |
 | `auto_fields.dart` | Computed/automatic field registry |
 | `id_generator.dart` | Subject/record ID generation and validation |
 | `database_response_service.dart` / `csv_data_service.dart` | Dynamic response-option sources for radio/checkbox/combobox |

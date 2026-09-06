@@ -64,11 +64,20 @@ class SurveyTableSchema {
 
   /// What a dictionary-supplied identifier is allowed to look like.
   ///
-  /// Deliberately narrower than SQLite accepts: this is SurveyGen's own
-  /// `FieldName` rule (a letter or underscore, then letters, digits and
-  /// underscores), which is what every name the platform generates already
-  /// satisfies. 63 characters is SQLite's practical column-name comfort zone
-  /// and far past anything a data dictionary produces.
+  /// Deliberately narrower than SQLite accepts: a letter or underscore, then
+  /// letters, digits and underscores.
+  ///
+  /// That is the shape the rest of the platform already assumes without
+  /// anybody stating it. SurveyGen does **not** validate `FieldName` -- but
+  /// its skip grammar matches a field reference with exactly this pattern
+  /// (`skip_parser.py`'s `_IDENTIFIER`), so a name outside it could never be
+  /// referenced by a skip in the first place. This makes the assumption
+  /// explicit and moves the failure to install time, where it names the
+  /// offending cell, instead of leaving it to surface as a mangled skip or a
+  /// SQL syntax error in the field.
+  ///
+  /// 63 characters is SQLite's practical column-name comfort zone and far past
+  /// anything a data dictionary produces.
   static final RegExp _identifierPattern =
       RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,62}$');
 
