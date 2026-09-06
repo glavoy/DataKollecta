@@ -35,6 +35,26 @@ class FieldComparator {
   /// of re-deriving it.
   static String resolveTextOrEmpty(dynamic value) => resolveText(value) ?? '';
 
+  /// [text] as a number, or null if it is not one.
+  ///
+  /// **`num`, never `double`.** A digits-only string round-trips through `num`
+  /// exactly, because `num.tryParse` reaches for `int.tryParse` first and an
+  /// int is arbitrary-precision here. Through `double` it does not: the two
+  /// 17-digit barcodes `12345678901234567` and `12345678901234568` are the
+  /// same double, so a skip, a logic_check or a `case` calculation on a long
+  /// ID compared them equal and took the wrong branch.
+  ///
+  /// This is the app's single definition of "counts as a number" --
+  /// [AnswerEquality.sameAnswer] parses through it too, so the comparison that
+  /// steers a survey and the comparison that decides whether an answer changed
+  /// cannot disagree about what a number is.
+  ///
+  /// One consequence of going through `int.tryParse` first: a `0x`-prefixed
+  /// string parses as hexadecimal where `double.tryParse` refused it. Nothing
+  /// a data dictionary is likely to produce, but it is a real widening and the
+  /// test suite pins it rather than leaving it to be rediscovered.
+  static num? tryParseNumber(String text) => num.tryParse(text);
+
   /// Evaluates `lhsText <operator> rhsText`. Both sides must already be
   /// resolved to text (see [resolveText]/[resolveTextOrEmpty]) -- this
   /// function has no opinion on nulls, Lists, or what an unanswered field
@@ -43,7 +63,7 @@ class FieldComparator {
   /// `=`/`==` and `!=`/`<>` are synonyms, normalized here so no caller needs
   /// its own normalization step. For those and for the four ordering
   /// operators, the comparison tries, in order:
-  ///   1. numeric (`double.tryParse` both sides)
+  ///   1. numeric ([tryParseNumber] both sides)
   ///   2. ISO-8601 date/datetime (`DateTime.tryParse` both sides)
   ///   3. plain string -- equality for `=`/`!=`; lexicographic ordering for
   ///      `<`/`>`/`<=`/`>=`
@@ -62,8 +82,8 @@ class FieldComparator {
       return op == 'contains' ? contains : !contains;
     }
 
-    final lhsNum = double.tryParse(lhsText);
-    final rhsNum = double.tryParse(rhsText);
+    final lhsNum = tryParseNumber(lhsText);
+    final rhsNum = tryParseNumber(rhsText);
     if (lhsNum != null && rhsNum != null) {
       return _compareOrdered(lhsNum.compareTo(rhsNum), op);
     }

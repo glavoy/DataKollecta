@@ -24,11 +24,6 @@
 
 
 ### Code health
-- **`FieldComparator.compare` parses numbers with `double`, not `num`.** So two 17-digit
-  barcodes differing in the last digit compare *equal*, and a skip, logic_check or
-  calculation on a long ID silently takes the wrong branch. `AnswerEquality` deliberately
-  does not reuse it for that reason. Whether to switch it to `num` is a behaviour change
-  for skip/logic/calculation, so it needs its own commit and its own tests.
 - **The identifier guard covers the SQL this codebase writes, not the SQL sqflite writes.**
   `db.query`/`insert`/`update`/`delete` interpolate the table and column names they are
   given without quoting them, so any of those calls carrying a dictionary-sourced name is

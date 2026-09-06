@@ -49,6 +49,17 @@
   a duplicate means a second copy of a household that already exists.
 
 ### Fixed
+- **A skip or logic check on a long ID could take the wrong branch.**
+  `FieldComparator.compare` — the one comparison behind every skip, `logic_check` and `case`
+  calculation — parsed both sides with `double`. Past a double's exact-integer range that is
+  lossy, so the 17-digit barcodes `12345678901234567` and `12345678901234568` were the *same
+  number*: a skip keyed on a participant ID matched the wrong participant, silently. It now
+  parses with `num`, which reaches for `int` first and is exact. `AnswerEquality` had already
+  worked this way and said so in a comment explaining why it could not reuse the comparator;
+  both now share `FieldComparator.tryParseNumber`, so the app has one definition of what
+  counts as a number. Nothing that compared equal through `double` stops doing so — `'1'` and
+  `'1.0'`, `'4'` and `'04'` are still equal — but a `0x`-prefixed string now parses as
+  hexadecimal where it previously fell through to a string comparison.
 - **A settings failure could wipe a save's entire audit trail.** `DbService._recordChanges`
   read the surveyor id inside its method-wide `try`, so if that read threw — a plugin missing
   on the platform, a secure-store failure — control jumped straight to the `catch` and *no*

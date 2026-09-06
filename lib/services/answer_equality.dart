@@ -42,11 +42,18 @@ class AnswerEquality {
   /// equal (`'04'` and `'4'`), **or** both parse as dates and name the same
   /// moment (`'2025-12-09 11:22'` and `'2025-12-09T11:22'`).
   ///
-  /// **`num.tryParse`, never `double.tryParse`.** A 17-digit barcode
-  /// round-trips exactly through `num` and loses precision through `double`,
-  /// which would make two different IDs compare equal. This is why
-  /// [FieldComparator.compare] is not reused here despite looking like it
-  /// would serve -- it parses with `double`.
+  /// Numbers go through [FieldComparator.tryParseNumber], so "counts as a
+  /// number" is defined once for the whole app -- this class and the
+  /// comparison that steers skips, logic checks and calculations cannot drift
+  /// apart on it again. (They did: [FieldComparator.compare] parsed with
+  /// `double` until this rule was shared, so a 17-digit barcode differing in
+  /// the last digit was equal there and different here.)
+  ///
+  /// [FieldComparator.compare] is still not reused wholesale, because the two
+  /// answer different questions. Here a null is never equal to anything, not
+  /// even the empty string, and two dates are the same answer when they name
+  /// the same *moment*; there, an unanswered field is the caller's policy and
+  /// ordering operators matter.
   static bool sameAnswer(dynamic a, dynamic b) {
     final left = canonical(a);
     final right = canonical(b);
@@ -54,8 +61,8 @@ class AnswerEquality {
     if (left == right) return true;
     if (left == null || right == null) return false;
 
-    final leftNum = num.tryParse(left);
-    final rightNum = num.tryParse(right);
+    final leftNum = FieldComparator.tryParseNumber(left);
+    final rightNum = FieldComparator.tryParseNumber(right);
     if (leftNum != null && rightNum != null) return leftNum == rightNum;
 
     final leftDate = DateTime.tryParse(left);

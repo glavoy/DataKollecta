@@ -56,6 +56,41 @@ void main() {
     test('decimals', () {
       expect(FieldComparator.compare('0.5', '<', '0.75'), isTrue);
     });
+
+    test('two long IDs differing in the last digit are not equal', () {
+      // The reason this parses with num and not double. A 17-digit barcode is
+      // past a double's exact-integer range, so as doubles these two are the
+      // same value -- and a skip or logic_check on a long ID took the branch
+      // meant for the other participant.
+      const a = '12345678901234567';
+      const b = '12345678901234568';
+      expect(double.parse(a) == double.parse(b), isTrue,
+          reason: 'guard: if this ever fails, the hazard is gone');
+
+      expect(FieldComparator.compare(a, '=', b), isFalse);
+      expect(FieldComparator.compare(a, '!=', b), isTrue);
+      expect(FieldComparator.compare(a, '<', b), isTrue);
+      expect(FieldComparator.compare(b, '>', a), isTrue);
+      expect(FieldComparator.compare(a, '=', a), isTrue);
+    });
+
+    test('an int and a decimal naming the same value are still equal', () {
+      // num mixes int and double freely, so nothing that used to compare
+      // equal through double stops doing so.
+      expect(FieldComparator.compare('1', '=', '1.0'), isTrue);
+      expect(FieldComparator.compare('4', '=', '04'), isTrue);
+      expect(FieldComparator.compare('1', '<', '1.5'), isTrue);
+      expect(FieldComparator.compare('2', '>', '1.5'), isTrue);
+      expect(FieldComparator.compare('1e3', '=', '1000'), isTrue);
+    });
+
+    test('a 0x-prefixed string now parses as a number', () {
+      // Not a wanted feature -- a consequence of num.tryParse reaching for
+      // int.tryParse, which reads a 0x prefix where double.tryParse refused
+      // it. Pinned so the widening is a recorded decision rather than a
+      // surprise; nothing in a data dictionary is expected to hit it.
+      expect(FieldComparator.compare('0x10', '=', '16'), isTrue);
+    });
   });
 
   group('compare -- dates', () {

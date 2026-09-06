@@ -51,9 +51,10 @@ void main() {
     });
 
     test('two long IDs that differ in the last digit are NOT the same', () {
-      // The reason this uses num.tryParse and not double.tryParse, and the
-      // reason FieldComparator.compare is not reused: as doubles these two
-      // barcodes are the same value, so a real change would vanish.
+      // The reason this parses with num and not double: as doubles these two
+      // barcodes are the same value, so a real change would vanish. The rule
+      // now comes from FieldComparator.tryParseNumber, which is pinned there
+      // too -- both ends of the shared helper are held, not just this one.
       const a = '12345678901234567';
       const b = '12345678901234568';
       expect(double.parse(a) == double.parse(b), isTrue,
