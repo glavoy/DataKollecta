@@ -7,6 +7,14 @@ project(gistx LANGUAGES CXX)
 # an include() rather than a plain variable so CMake treats it as a
 # configure-time dependency and reconfigures automatically when the product
 # changes, instead of silently reusing a stale CMakeCache.txt.
+#
+# `flutter run`/`flutter build` (not CMake) separately determine the exe
+# name by regex-scanning this file for a literal `set(BINARY_NAME "...")`
+# line (see flutter_tools/lib/src/cmake.dart) -- they never process the
+# include() below, so without this literal fallback `flutter run -d windows`
+# tries to launch "null.exe". The include() below still wins for the actual
+# CMake configure, so a tool/build.dart product-swapped build is unaffected.
+set(BINARY_NAME "gistx")
 include("${CMAKE_CURRENT_SOURCE_DIR}/product.cmake")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
