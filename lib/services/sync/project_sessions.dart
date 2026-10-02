@@ -48,6 +48,17 @@ class ProjectSession {
     return expiresAt!.isAfter((now ?? DateTime.now()).add(skew));
   }
 
+  /// The same credentials with the token dropped, so the next
+  /// [isValid] check fails and forces a real login. Used when the server
+  /// rejects a token the device still believes is unexpired -- a credential
+  /// whose password was reset, or which was deleted, on the portal.
+  ProjectSession withoutToken() => ProjectSession(
+        projectCode: projectCode,
+        projectName: projectName,
+        username: username,
+        password: password,
+      );
+
   Map<String, dynamic> toJson() => {
         'projectCode': projectCode,
         if (projectName != null) 'projectName': projectName,

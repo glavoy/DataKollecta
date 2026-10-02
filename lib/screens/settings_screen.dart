@@ -171,9 +171,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _showAddProjectDialog() async {
-    final codeController = TextEditingController();
-    final usernameController = TextEditingController();
+  /// Adds a project, or -- given [existing] -- updates that project's
+  /// stored credentials (e.g. after its password was reset on the portal).
+  /// Both go through the same verified login: nothing is stored unless the
+  /// server accepts the credentials, and a failed update leaves the
+  /// project's existing credentials untouched.
+  Future<void> _showProjectDialog({ProjectSession? existing}) async {
+    final isUpdate = existing != null;
+    final codeController =
+        TextEditingController(text: existing?.projectCode ?? '');
+    final usernameController =
+        TextEditingController(text: existing?.username ?? '');
     final passwordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     var obscure = true;
@@ -184,7 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       barrierDismissible: !submitting,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text(_httpSync.addProject),
+          title: Text(
+              isUpdate ? _httpSync.updateCredentials : _httpSync.addProject),
           content: Form(
             key: formKey,
             child: Column(
@@ -192,6 +201,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 TextFormField(
                   controller: codeController,
+                  // The code is what identifies the project being updated;
+                  // changing it would be adding a different project.
+                  enabled: !isUpdate,
                   decoration: InputDecoration(
                     labelText: _httpSync.projectCode,
                     hintText: _httpSync.projectCodeHint,
@@ -214,29 +226,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: passwordController,
+                  autofocus: isUpdate,
                   obscureText: obscure,
                   decoration: InputDecoration(
                     labelText: _s.password,
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(obscure
-                          ? Icons.visibility
-                          : Icons.visibility_off),
-                      onPressed: () =>
-                          setDialogState(() => obscure = !obscure),
+                      icon: Icon(
+                          obscure ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setDialogState(() => obscure = !obscure),
                     ),
                   ),
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? _s.error : null,
+                  validator: (v) => (v == null || v.isEmpty) ? _s.error : null,
                 ),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: submitting
-                  ? null
-                  : () => Navigator.pop(dialogContext),
+              onPressed: submitting ? null : () => Navigator.pop(dialogContext),
               child: Text(_s.cancel),
             ),
             FilledButton(
@@ -256,47 +264,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content:
-                                  Text(_httpSync.projectAdded(projectCode)),
+                              content: Text(isUpdate
+                                  ? _httpSync.credentialsUpdated(projectCode)
+                                  : _httpSync.projectAdded(projectCode)),
                               backgroundColor: Colors.green,
                             ),
                           );
                         }
                         await _loadProjects();
                       } on SyncConnectionException {
+                        // No "save anyway": credentials are only ever stored
+                        // once the server has verified them, so a typo can't
+                        // sit unnoticed until the first upload, possibly
+                        // days later and far from a connection. The dialog
+                        // stays open with what was typed.
                         setDialogState(() => submitting = false);
-                        if (!dialogContext.mounted) return;
-                        final saveAnyway = await showDialog<bool>(
-                          context: dialogContext,
-                          builder: (c) => AlertDialog(
-                            content: Text(_httpSync.savingAnywayNoConnection),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(c, false),
-                                child: Text(_s.cancel),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(c, true),
-                                child: Text(_httpSync.saveAnyway),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (saveAnyway == true) {
-                          // Stored without a token; resolveToken will try a
-                          // real login the first time this project's survey
-                          // is uploaded, once back online.
-                          await ProjectSessionsRepository.shared.update(
-                            (d) => d.withSession(ProjectSession(
-                              projectCode: projectCode,
-                              username: usernameController.text.trim(),
-                              password: passwordController.text,
-                            )),
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_httpSync.cannotReachServer),
+                              backgroundColor: Colors.red,
+                            ),
                           );
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-                          await _loadProjects();
                         }
                       } on SyncException catch (e) {
                         setDialogState(() => submitting = false);
@@ -314,8 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(_s.save),
             ),
@@ -409,10 +397,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ListTile(
                     leading: const Icon(Icons.badge_outlined),
                     title: Text(session.projectName ?? session.projectCode),
-                    subtitle: Text(session.projectCode),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      onPressed: () => _removeProject(session),
+                    subtitle:
+                        Text('${session.projectCode} · ${session.username}'),
+                    onTap: () => _showProjectDialog(existing: session),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: _httpSync.updateCredentials,
+                          onPressed: () =>
+                              _showProjectDialog(existing: session),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red),
+                          tooltip: _httpSync.removeProject,
+                          onPressed: () => _removeProject(session),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -420,7 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: _showAddProjectDialog,
+          onPressed: () => _showProjectDialog(),
           icon: const Icon(Icons.add),
           label: Text(_httpSync.addProject),
         ),
@@ -494,7 +497,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           size: 20,
                         ),
                         const SizedBox(width: 8),
-                        Text(_themeService.isDarkMode ? _s.darkMode : _s.lightMode),
+                        Text(_themeService.isDarkMode
+                            ? _s.darkMode
+                            : _s.lightMode),
                         const SizedBox(width: 8),
                         Switch(
                           value: _themeService.isDarkMode,
@@ -596,7 +601,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Text(
                         _s.lastSavedCredentials,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                     ],

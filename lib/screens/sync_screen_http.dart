@@ -83,6 +83,8 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
       RoutingFailure.noAssociatedProject => _httpSync.noAssociatedProject,
       RoutingFailure.noSessionForProject => _httpSync.noSessionForProject,
       RoutingFailure.loginFailed => _httpSync.routingLoginFailed,
+      RoutingFailure.noConnection => _httpSync.routingNoConnection,
+      RoutingFailure.loginUnavailable => _httpSync.routingLoginUnavailable,
     };
   }
 
@@ -153,8 +155,8 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_httpSync.downloadCollision(
-                e.surveyId, e.existingProjectCode)),
+            content: Text(
+                _httpSync.downloadCollision(e.surveyId, e.existingProjectCode)),
             backgroundColor: Colors.red,
           ),
         );
@@ -327,8 +329,9 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed:
-                  (_isConnecting || !_hasAnyProjectConfigured) ? null : _checkForUpdates,
+              onPressed: (_isConnecting || !_hasAnyProjectConfigured)
+                  ? null
+                  : _checkForUpdates,
               icon: _isConnecting
                   ? const SizedBox(
                       width: 20,
@@ -374,8 +377,7 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
                 itemCount: _remoteSurveys.length,
                 itemBuilder: (context, index) {
                   final survey = _remoteSurveys[index];
-                  final isDownloading =
-                      _downloadingSurveyId == survey.surveyId;
+                  final isDownloading = _downloadingSurveyId == survey.surveyId;
                   // Deliberately no project label here -- the survey name
                   // alone is what an interviewer needs to recognize it.
                   return ListTile(
@@ -404,8 +406,7 @@ class _HttpSyncScreenState extends State<HttpSyncScreen> {
   }
 
   Widget _buildUploadSection(BuildContext context) {
-    final unrouted =
-        _lastUploadResults.where((r) => !r.result.routed).toList();
+    final unrouted = _lastUploadResults.where((r) => !r.result.routed).toList();
 
     return Card(
       child: Padding(

@@ -14,27 +14,29 @@ ProjectSession _session(String code, {String? token, DateTime? expiresAt}) =>
 void main() {
   group('ProjectSession.isValid', () {
     test('a token with plenty of time left is valid', () {
-      final session = _session('a',
-          token: 't', expiresAt: DateTime(2026, 1, 1, 12));
+      final session =
+          _session('a', token: 't', expiresAt: DateTime(2026, 1, 1, 12));
       expect(session.isValid(now: DateTime(2026, 1, 1, 0)), isTrue);
     });
 
     test('a token already past its expiry is invalid', () {
-      final session = _session('a',
-          token: 't', expiresAt: DateTime(2026, 1, 1, 0));
+      final session =
+          _session('a', token: 't', expiresAt: DateTime(2026, 1, 1, 0));
       expect(session.isValid(now: DateTime(2026, 1, 1, 1)), isFalse);
     });
 
-    test('a token inside the skew margin is treated as invalid, not just-barely-valid', () {
-      final session = _session('a',
-          token: 't', expiresAt: DateTime(2026, 1, 1, 12, 3));
+    test(
+        'a token inside the skew margin is treated as invalid, not just-barely-valid',
+        () {
+      final session =
+          _session('a', token: 't', expiresAt: DateTime(2026, 1, 1, 12, 3));
       // 3 minutes left, default 5-minute skew -- must refresh, not squeak by.
       expect(session.isValid(now: DateTime(2026, 1, 1, 12, 0)), isFalse);
     });
 
     test('a token just outside the skew margin is still valid', () {
-      final session = _session('a',
-          token: 't', expiresAt: DateTime(2026, 1, 1, 12, 6));
+      final session =
+          _session('a', token: 't', expiresAt: DateTime(2026, 1, 1, 12, 6));
       expect(session.isValid(now: DateTime(2026, 1, 1, 12, 0)), isTrue);
     });
 
@@ -51,6 +53,23 @@ void main() {
         token: 'orphaned-token',
       );
       expect(session.isValid(now: DateTime(2026)), isFalse);
+    });
+  });
+
+  group('ProjectSession.withoutToken', () {
+    test('keeps every credential field and drops only the token', () {
+      final session = _session('a',
+          token: 'tok', expiresAt: DateTime.now().add(const Duration(days: 9)));
+
+      final stripped = session.withoutToken();
+
+      expect(stripped.isValid(), isFalse);
+      expect(stripped.token, isNull);
+      expect(stripped.expiresAt, isNull);
+      expect(stripped.projectCode, 'a');
+      expect(stripped.projectName, 'a display name');
+      expect(stripped.username, 'a_user');
+      expect(stripped.password, 'a_pw');
     });
   });
 
@@ -83,18 +102,22 @@ void main() {
       expect(ProjectSessionsDocument.decode('').sessions, isEmpty);
     });
 
-    test('decoding garbage JSON returns an empty document rather than throwing', () {
+    test('decoding garbage JSON returns an empty document rather than throwing',
+        () {
       final decoded = ProjectSessionsDocument.decode('{not valid json');
       expect(decoded.sessions, isEmpty);
       expect(decoded.associations, isEmpty);
     });
 
-    test('decoding a document with the wrong top-level shape returns empty', () {
+    test('decoding a document with the wrong top-level shape returns empty',
+        () {
       final decoded = ProjectSessionsDocument.decode('[1, 2, 3]');
       expect(decoded.sessions, isEmpty);
     });
 
-    test('a malformed individual session entry is skipped, not fatal to the whole document', () {
+    test(
+        'a malformed individual session entry is skipped, not fatal to the whole document',
+        () {
       final decoded = ProjectSessionsDocument.decode(
           '{"sessions": {"good": {"projectCode": "good", "username": "u", "password": "p"}, '
           '"bad": {"projectCode": "bad"}}, "associations": {}}');
@@ -103,7 +126,8 @@ void main() {
   });
 
   group('ProjectSessionsDocument mutation', () {
-    test('withSession adds a new project and withSession again replaces it', () {
+    test('withSession adds a new project and withSession again replaces it',
+        () {
       final doc = ProjectSessionsDocument.empty
           .withSession(_session('a', token: 'old'))
           .withSession(_session('a', token: 'new'));
@@ -111,7 +135,8 @@ void main() {
       expect(doc.sessionFor('a')?.token, 'new');
     });
 
-    test('withoutSession removes the session but leaves associations intact', () {
+    test('withoutSession removes the session but leaves associations intact',
+        () {
       final doc = ProjectSessionsDocument.empty
           .withSession(_session('a'))
           .withAssociation('survey-1', 'a')
@@ -134,7 +159,8 @@ void main() {
       expect(identical(doc, again) || again.projectFor('s1') == 'a', isTrue);
     });
 
-    test('withAssociation refuses to rebind a surveyId to a different project', () {
+    test('withAssociation refuses to rebind a surveyId to a different project',
+        () {
       final doc = ProjectSessionsDocument.empty.withAssociation('s1', 'a');
       expect(
         () => doc.withAssociation('s1', 'b'),
@@ -170,9 +196,8 @@ void main() {
   group('ProjectSessionsRepository', () {
     test('load() decodes whatever the injected read closure returns', () async {
       final repo = ProjectSessionsRepository(
-        read: () async => ProjectSessionsDocument.empty
-            .withSession(_session('a'))
-            .encode(),
+        read: () async =>
+            ProjectSessionsDocument.empty.withSession(_session('a')).encode(),
         write: (_) async {},
       );
       final doc = await repo.load();
@@ -192,7 +217,8 @@ void main() {
       expect(reloaded.sessionFor('a')?.token, 'tok');
     });
 
-    test('update() propagates a thrown conflict without writing anything', () async {
+    test('update() propagates a thrown conflict without writing anything',
+        () async {
       var writeCalls = 0;
       final repo = ProjectSessionsRepository(
         read: () async =>
@@ -232,7 +258,8 @@ void main() {
       expect(result.sessionFor('b'), isNotNull);
     });
 
-    test('a failed update does not wedge the queue for the next caller', () async {
+    test('a failed update does not wedge the queue for the next caller',
+        () async {
       final repo = ProjectSessionsRepository(
         read: () async =>
             ProjectSessionsDocument.empty.withAssociation('s1', 'a').encode(),

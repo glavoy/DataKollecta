@@ -65,8 +65,13 @@ class HttpSyncStrings {
       'This survey\'s project was removed from Settings. Add it back to '
       'upload its records.';
   String get routingLoginFailed =>
-      'Could not log back in to upload this survey -- check its project\'s '
-      'saved password in Settings.';
+      'The username or password saved for this survey\'s project was '
+      'rejected. Tap the project in Settings to update its credentials.';
+  String get routingNoConnection =>
+      'Could not reach the server to sign in. Check your connection and try '
+      'again.';
+  String get routingLoginUnavailable =>
+      'The server could not sign in right now. Try again in a few minutes.';
 
   // -- Settings: multi-project management --
 
@@ -75,10 +80,12 @@ class HttpSyncStrings {
   String get noProjectsConfigured =>
       'No projects added yet. Add one to download and sync its surveys.';
   String get projectCodeHint => 'e.g. prism-css-test-2026';
-  String get savingAnywayNoConnection =>
-      'Could not reach the server. Save this project anyway and verify the '
-      'password once you\'re back online?';
-  String get saveAnyway => 'Save anyway';
+  String get cannotReachServer =>
+      'Could not reach the server. Credentials can only be saved once the '
+      'server has checked them -- connect to the internet and try again.';
+  String get updateCredentials => 'Update credentials';
+  String credentialsUpdated(String projectCode) =>
+      'Updated credentials for project "$projectCode".';
   String get removeProject => 'Remove project';
   String removeProjectWarning(String projectCode, int pendingCount) => pendingCount ==
           0

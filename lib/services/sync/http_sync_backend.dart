@@ -68,17 +68,33 @@ enum RoutingFailure {
   /// Settings).
   noSessionForProject,
 
-  /// The stored token was missing/expired and a silent re-login with the
-  /// stored password failed.
+  /// The stored token was missing, expired or rejected, and the server
+  /// rejected a silent re-login with the stored credentials -- typically a
+  /// password reset (or credential deleted/disabled) on the portal. Only
+  /// re-entering the credentials in Settings fixes this.
   loginFailed,
+
+  /// A silent re-login was needed but the server could not be reached.
+  /// Kept apart from [loginFailed] so an offline phone is never told its
+  /// password is wrong.
+  noConnection,
+
+  /// The server was reached but could not complete a silent re-login for a
+  /// reason that says nothing about the credentials (throttled, 5xx).
+  loginUnavailable,
 }
 
 class TokenResolution {
   final String? token;
   final RoutingFailure? failure;
 
-  const TokenResolution.token(this.token) : failure = null;
-  const TokenResolution.failed(this.failure) : token = null;
+  /// The project the token belongs to -- what [HttpSyncBackend.uploadPending]
+  /// needs to discard it if the server turns out to reject it. Null only
+  /// when routing failed before a project was determined.
+  final String? projectCode;
+
+  const TokenResolution.token(this.token, this.projectCode) : failure = null;
+  const TokenResolution.failed(this.failure, [this.projectCode]) : token = null;
 
   bool get hasToken => token != null;
 }
@@ -132,13 +148,24 @@ class HttpSyncBackend {
   /// login and must not be offered for download until checked again.
   final Set<String> _failedProjectCodes = {};
 
+  /// Runs one survey's record upload with a given token. Defaults to the
+  /// real SQLite-backed [_uploadWithToken]; tests replace it so the token
+  /// retry logic in [uploadPending] can run without a database.
+  late final Future<UploadOutcome> Function(String surveyId, String token)
+      _upload;
+
   HttpSyncBackend({
     ApiClient? apiClient,
     SurveyConfigService? surveyConfig,
     ProjectSessionsRepository? repository,
+    @visibleForTesting
+    Future<UploadOutcome> Function(String surveyId, String token)?
+        uploadWithToken,
   })  : _api = apiClient ?? ApiClient(),
         _surveyConfig = surveyConfig ?? SurveyConfigService(),
-        _repo = repository ?? ProjectSessionsRepository.shared;
+        _repo = repository ?? ProjectSessionsRepository.shared {
+    _upload = uploadWithToken ?? _uploadWithToken;
+  }
 
   Future<void> disconnect() async => _api.close();
 
@@ -174,9 +201,12 @@ class HttpSyncBackend {
     return (session: session, apiSession: apiSession);
   }
 
-  /// Adds (or re-authenticates) a project from Settings -- the one place a
-  /// login failure must surface to the user immediately rather than be
-  /// silently retried later. Throws [SyncException] on failure.
+  /// Adds a project, or updates an existing project's credentials, from
+  /// Settings -- the one place a login failure must surface to the user
+  /// immediately rather than be silently retried later. Nothing is stored
+  /// unless the server accepts the credentials: a failure (including no
+  /// connection) throws [SyncException] and leaves any existing session for
+  /// [projectCode] exactly as it was.
   Future<ProjectSession> addProject(
       String projectCode, String username, String password) async {
     final result = await _login(projectCode, username, password);
@@ -348,23 +378,39 @@ class HttpSyncBackend {
 
     final session = doc.sessionFor(projectCode);
     if (session == null) {
-      return const TokenResolution.failed(RoutingFailure.noSessionForProject);
+      return TokenResolution.failed(
+          RoutingFailure.noSessionForProject, projectCode);
     }
 
     if (session.isValid(now: now)) {
-      return TokenResolution.token(session.token);
+      return TokenResolution.token(session.token, projectCode);
     }
 
     try {
       final result =
           await _login(session.projectCode, session.username, session.password);
-      return TokenResolution.token(result.session.token);
+      return TokenResolution.token(result.session.token, projectCode);
     } on SyncException catch (e) {
       debugPrint(
           '[HttpSyncBackend] silent re-login failed for $projectCode: $e');
-      return const TokenResolution.failed(RoutingFailure.loginFailed);
+      final failure = switch (e) {
+        SyncAuthException() => RoutingFailure.loginFailed,
+        SyncConnectionException() => RoutingFailure.noConnection,
+        SyncThrottledException() ||
+        SyncTransferException() =>
+          RoutingFailure.loginUnavailable,
+      };
+      return TokenResolution.failed(failure, projectCode);
     }
   }
+
+  /// Drops [projectCode]'s stored token (keeping its credentials), so the
+  /// next [resolveToken] performs a real login instead of trusting the
+  /// local expiry date.
+  Future<void> _invalidateToken(String projectCode) => _repo.update((doc) {
+        final session = doc.sessionFor(projectCode);
+        return session == null ? doc : doc.withSession(session.withoutToken());
+      });
 
   /// Uploads every unsynced record and formchange for [surveyId], routed to
   /// whichever project it's associated with, re-authenticating silently if
@@ -375,17 +421,27 @@ class HttpSyncBackend {
       return SurveyUploadResult.notRouted(resolution.failure!);
     }
 
-    var outcome = await _uploadWithToken(surveyId, resolution.token!);
+    var outcome = await _upload(surveyId, resolution.token!);
 
-    // The stored token can still expire mid-run (a long upload against a
-    // token that had, say, four minutes left when resolveToken checked it).
-    // One retry with a freshly resolved token recovers automatically, since
-    // the cursor restart only ever re-reads rows still marked unsynced.
+    // The server rejected the token. Either it expired mid-run (a long
+    // upload against a token that had, say, four minutes left when
+    // resolveToken checked it), or it was revoked server-side long before
+    // its local expiry -- the credential's password was reset, or it was
+    // deleted/disabled, on the portal. The token is discarded first in both
+    // cases: resolveToken trusts the local expiry date, so without this the
+    // retry would resend the same dead token. One retry then recovers the
+    // expiry case automatically (the cursor restart only ever re-reads rows
+    // still marked unsynced); if the re-login itself is rejected, the
+    // routing failure is reported instead, because "update this project's
+    // credentials in Settings" is the actionable message, not "session
+    // expired".
     if (outcome.stopReason == UploadStopReason.sessionExpired) {
+      await _invalidateToken(resolution.projectCode!);
       final retry = await resolveToken(surveyId);
-      if (retry.hasToken) {
-        outcome = await _uploadWithToken(surveyId, retry.token!);
+      if (!retry.hasToken) {
+        return SurveyUploadResult.notRouted(retry.failure!);
       }
+      outcome = await _upload(surveyId, retry.token!);
     }
     return SurveyUploadResult.completed(outcome);
   }
