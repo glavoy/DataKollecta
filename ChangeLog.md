@@ -4,6 +4,57 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [1.4.1+19] - 2026-10-02
+
+### Changed
+- **DataKollecta: a project's credentials can now be updated from Settings.** Tapping a
+  project (or its new edit icon) opens *Update credentials*, with the project code locked and
+  the username prefilled. It goes through the same verified login as *Add project*, which
+  already replaced a project's stored credentials when the same code was re-added. Nothing
+  showed that, though, so after a password change the only fix was one nobody would think to
+  try. A failed update leaves the existing credentials untouched. Each project row now also
+  shows the username it signs in with.
+
+  This is the device half of a password change. The other half is the portal's new *Reset
+  password* (DataKollecta-Web, `reset_app_credential_password`), which re-hashes the password
+  and deletes that credential's `app_sessions`, so every phone using it is cut off on its next
+  upload.
+
+- **DataKollecta: credentials are only stored once the server has accepted them.** *Add
+  project* used to offer "Save anyway" when the server could not be reached, storing the
+  credentials unverified. A typo then went unnoticed until the first upload, possibly days
+  later and far from a connection. Offline, the dialog now says it cannot reach the server and
+  stays open with what was typed. Projects already saved that way still work: they log in on
+  first use as before.
+
+### Fixed
+- **DataKollecta: a token the server had revoked was retried, unchanged, until it expired
+  locally.** When an upload got a 401, `uploadPending` retried once with a "freshly resolved"
+  token. But `resolveToken` judges a token only by its stored `expiresAt`, which can be up to
+  30 days away, so the retry resent the same dead token. Nothing ever cleared it. Whenever a
+  credential was deleted, disabled or (now) had its password reset, the phone reported "session
+  expired" on every upload, with no hint of what to do. The rejected token is now discarded
+  before the retry (`ProjectSession.withoutToken`), so the retry performs a real login with
+  the stored credentials. That recovers an ordinary expiry automatically. If the stored
+  credentials are rejected too, the survey reports *"The username or password saved for this
+  survey's project was rejected. Tap the project in Settings to update its credentials."*
+  Unsynced records stay on the device, untouched.
+
+- **DataKollecta: an offline phone was told its password might be wrong.** Every failed silent
+  re-login was reported as `RoutingFailure.loginFailed` ("check its project's saved
+  password"), including no connection at all. Two new routing failures split this out:
+  `noConnection` (server unreachable) and `loginUnavailable` (throttled, or a server error).
+  `loginFailed` now means only that the server rejected the credentials.
+
+### Housekeeping
+- **`windows/CMakeLists.txt` declares a literal `set(BINARY_NAME "gistx")`.**
+  `flutter run`/`flutter build` find the exe name by regex-scanning this file for that line,
+  and never process the `include(product.cmake)` that sets it per product. Without the
+  literal, `flutter run -d windows` tried to launch `null.exe`. The include still wins for the
+  actual CMake configure, so a `tool/build.dart` product-swapped build is unaffected.
+- `HttpSyncBackend` takes an optional `@visibleForTesting` `uploadWithToken`, so the
+  token-retry logic in `uploadPending` is tested without a SQLite database.
+
 ## [1.4.0+18] - 2026-09-06
 
 ### Changed
