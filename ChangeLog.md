@@ -4,6 +4,12 @@
 > `## [UNRELEASED] - TBD`, which is renamed to `## [X.Y.Z+B] - <date>` at release. Commits do
 > not get version numbers. See CLAUDE.md's "Versioning" section.
 
+## [UNRELEASED] - TBD
+
+### Housekeeping
+- README points to the validation package (`DataKollecta-Validation`), which replaces the
+  deleted repository of the same name.
+
 ## [1.4.1+19] - 2026-10-02
 
 ### Changed

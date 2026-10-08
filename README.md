@@ -98,3 +98,12 @@ layer, ID generation, the two sync backends, reserved/computed system variables 
 - **Survey Definition**: XML, normally generated from an Excel data dictionary by
   `DataKollecta-SurveyGen`
 - **Sync**: FTP/SFTP (GiSTX) or Supabase edge functions over HTTP (DataKollecta)
+
+## Validation
+
+DataKollecta is validated as a computerised system for regulated research. The validation
+package is in the separate `DataKollecta-Validation` repository: validation plan,
+requirements and risk assessment, design specification, test protocol, summary report, the
+system management SOP (change control, access, backup, incidents, periodic review), and the
+per-study build validation record. A release of this app is a change under that SOP
+(DK-SOP-001 §4).
